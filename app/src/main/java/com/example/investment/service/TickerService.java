@@ -22,6 +22,7 @@ import com.example.investment.task.TickerDataLoader;
 import com.example.investment.repository.cache.CacheModels;
 import com.example.investment.MainActivity;
 import com.example.investment.util.Logger;
+import com.example.investment.util.SharedPrefManager;
 
 import java.util.List;
 import java.util.Locale;
@@ -155,7 +156,7 @@ public class TickerService extends Service {
     private void checkAndNotifyHighestTicker(TickerInfo ticker) {
         if (ticker == null) return;
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        double savedHighestPercentageIncreasePerDay = prefs.getFloat(KEY_HIGHEST_PERCENTAGE, 0);
+        double savedHighestPercentageIncreasePerDay = SharedPrefManager.getDouble(prefs, KEY_HIGHEST_PERCENTAGE, 0);
 
         if (ticker.getPercentageIncreasePerDay() > savedHighestPercentageIncreasePerDay) {
             String name = ticker.getName();
@@ -164,9 +165,8 @@ public class TickerService extends Service {
             }
             
             // Save new highest
-            prefs.edit()
+            SharedPrefManager.putDouble(prefs.edit(), KEY_HIGHEST_PERCENTAGE, ticker.getPercentageIncreasePerDay())
                 .putString(KEY_HIGHEST_TICKER, name)
-                .putFloat(KEY_HIGHEST_PERCENTAGE, (float) ticker.getPercentageIncreasePerDay())
                 .apply();
 
             // Show high priority notification

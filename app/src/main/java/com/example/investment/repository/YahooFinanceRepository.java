@@ -122,12 +122,26 @@ public class YahooFinanceRepository {
                             .getJSONObject(0);
                     JSONArray closes = quote.getJSONArray("close");
 
-                    double averageClose = calculateAverage(closes);
-                    double firstOpenPrice = quote.getJSONArray("open").getDouble(0);
+                    // Get Indicators and Prices
+                    double firstPrice = quote.getJSONArray("open").getDouble(0);
                     long numberOfDays = closes.length();
+                    double sumOfClose = 0;
+                    double sumOfVolatility = 0;
+                    for (int i = 0; i < numberOfDays; i++) {
+                        double closePrice = closes.getDouble(i);
+                        sumOfClose += closePrice;
+                        // Calculate and Sum Volatility
+                        if (i > 0) {
+                            sumOfVolatility += Math.abs(closePrice - (sumOfClose / (i + 1)));
+                        }
+                    }
+                    double densePrice = sumOfClose / numberOfDays;
+                    double averageVolatility = sumOfVolatility / (numberOfDays - 1);
+                    double upperPriceBoundary = densePrice + averageVolatility;
+                    double lowerPriceBoundary = densePrice - averageVolatility;
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lowerPriceBoundary, numberOfDays);
 
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstOpenPrice, averageClose, numberOfDays);
-
+                    // Get Name
                     String name = null;
                     try {
                         name = meta.getString("longName");
@@ -138,12 +152,23 @@ public class YahooFinanceRepository {
                         } catch (Exception ignored) {}
                     }
 
+                    // Get Type
                     String type = null;
                     try {
                         type = meta.getString("instrumentType");
                     } catch (Exception ignored) {}
 
-                    tickers.add(new TickerInfo(symbol, type, name, percentageIncreasePerDay, closes.length()));
+                    tickers.add(new TickerInfo(
+                        symbol,
+                        name,
+                        type,
+                        closes.getDouble(closes.length() - 1),
+                        densePrice,
+                        upperPriceBoundary,
+                        lowerPriceBoundary,
+                        percentageIncreasePerDay,
+                        closes.length()
+                    ));
 
                     tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickers);
@@ -269,24 +294,17 @@ public class YahooFinanceRepository {
         return null;
     }
 
-    private double calculatePercentageIncreasePerDay(double firstOpenPrice, double averageClose, long numberOfDays) throws Exception {
-        // Calculate score based on price history
-        double priceChange = (((averageClose - firstOpenPrice) / firstOpenPrice) * 100) / numberOfDays;
-
-        // You can add more sophisticated scoring logic here
+    private double calculatePercentageIncreasePerDay(
+        double firstPrice,
+        double lowerPriceBoundary,
+        long numberOfDays
+    ) throws Exception {
+        double priceChange = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
         if (isFinite(priceChange)) {
             return priceChange;
         } else {
             throw new Exception("Invalid Price Change");
         }
-    }
-
-    private double calculateAverage(JSONArray array) throws Exception {
-        double sum = 0;
-        for (int i = 0; i < array.length(); i++) {
-            sum += array.getDouble(i);
-        }
-        return sum / array.length();
     }
 
     private void saveHtmlCache(@NonNull Context context, String html, String cacheFilename) {

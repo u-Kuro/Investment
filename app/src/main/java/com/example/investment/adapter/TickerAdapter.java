@@ -4,6 +4,7 @@ import android.os.Build;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -73,17 +74,23 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
 
     public static class TickerViewHolder extends RecyclerView.ViewHolder {
         private final TextView nameText;
-        private final TextView percentageIncreasePerDay;
-        private final TextView typeText;
+        private final ImageView typeIcon;
         private final TextView timeSpan;
+        private final TextView percentageIncreasePerDay;
+        private final TextView upperPriceBoundaryText;
+        private final TextView densePriceText;
+        private final TextView lowerPriceBoundaryText;
         private TickerInfo currentTicker;
 
         public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
             super(itemView);
             nameText = itemView.findViewById(R.id.nameText);
-            percentageIncreasePerDay = itemView.findViewById(R.id.percentageIncreasePerDay);
-            typeText = itemView.findViewById(R.id.typeText);
+            typeIcon = itemView.findViewById(R.id.typeIcon);
             timeSpan = itemView.findViewById(R.id.timeSpan);
+            percentageIncreasePerDay = itemView.findViewById(R.id.percentageIncreasePerDay);
+            upperPriceBoundaryText = itemView.findViewById(R.id.upperPriceBoundaryText);
+            densePriceText = itemView.findViewById(R.id.densePriceText);
+            lowerPriceBoundaryText = itemView.findViewById(R.id.lowerPriceBoundaryText);
 
             if (listener != null) {
                 itemView.setOnClickListener(v -> listener.onTickerClick(currentTicker));
@@ -102,11 +109,23 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
                 name = ticker.getSymbol();
             }
             nameText.setText(name);
-            percentageIncreasePerDay.setText(String.format(Locale.US, "%.4f%%", ticker.getPercentageIncreasePerDay()));
-            typeText.setText(ticker.getType());
+            if ("cryptocurrency".equalsIgnoreCase(ticker.getType())) {
+                typeIcon.setImageResource(R.drawable.crypto);
+                typeIcon.setVisibility(View.VISIBLE);
+            } else if ("equity".equalsIgnoreCase(ticker.getType())) {
+                typeIcon.setImageResource(R.drawable.stock);
+                typeIcon.setVisibility(View.VISIBLE);
+            } else {
+                typeIcon.setVisibility(View.GONE);
+            }
 
             String timeSpanText = formatTimeSpan(ticker.getDays());
             timeSpan.setText(timeSpanText);
+            percentageIncreasePerDay.setText(String.format(Locale.US, "%.4f%%", ticker.getPercentageIncreasePerDay()));
+
+            upperPriceBoundaryText.setText(String.format(Locale.US, "%.4e", ticker.getUpperPriceBoundary()));
+            densePriceText.setText(String.format(Locale.US, "%.4e", ticker.getDensePrice()));
+            lowerPriceBoundaryText.setText(String.format(Locale.US, "%.4e", ticker.getLowerPriceBoundary()));
         }
 
         private String formatTimeSpan(long days) {

@@ -31,17 +31,15 @@ import com.example.investment.adapter.TickerAdapter;
 import com.example.investment.model.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.util.Logger;
-import com.example.investment.util.WorkManagerUtil;
+import com.example.investment.util.WorkManager;
 import com.example.investment.service.TickerService;
 
 import java.lang.ref.WeakReference;
-import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -56,7 +54,6 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private View progressContainer;
     private static final int PERMISSION_REQUEST_CODE = 123;
-    private RecyclerView recyclerView;
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
@@ -74,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        recyclerView = findViewById(R.id.recyclerView);
+        RecyclerView recyclerView = findViewById(R.id.recyclerView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         lastUpdateText = findViewById(R.id.lastUpdateText);
         progressText = findViewById(R.id.progressText);
@@ -235,7 +232,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // Permission granted, start the worker
-                WorkManagerUtil.scheduleTickerWork(this);
+                WorkManager.scheduleTickerWork(this);
             } else {
                 // Permission denied, show a message to the user
                 Toast.makeText(this, 
