@@ -146,17 +146,19 @@ public class YahooFinanceRepository {
         tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
 
         if (!tickers.isEmpty()) {
-            saveCache(context, tickers);
+            saveCache(context, tickers, listener);
+        } else {
+            listener.onFinish(0);
         }
-
-        listener.onFinish();
     }
 
-    private void saveCache(@NonNull Context context, List<TickerInfo> results) {
+    private void saveCache(@NonNull Context context, List<TickerInfo> results, Listener listener) {
         File cacheFile = getCacheFile(context);
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(cacheFile))) {
-            CachedData cache = new CachedData(System.currentTimeMillis(), results);
+            long updateTime = System.currentTimeMillis();
+            CachedData cache = new CachedData(updateTime, results);
             oos.writeObject(cache);
+            listener.onFinish(updateTime);
         } catch (IOException e) {
             Logger.error("Error saving cache", e);
         }

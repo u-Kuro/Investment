@@ -124,7 +124,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
             }
 
             timeSpan.setText(formatTimeSpan(ticker.getDays()));
-            percentageIncreasePerDay.setText(String.format(Locale.US, "%.2f%%", ticker.getPercentageIncreasePerDay()));
+            percentageIncreasePerDay.setText(String.format(Locale.US, "%.2f%% | D", ticker.getPercentageIncreasePerDay()));
 
             upperPriceBoundaryText.setText(formatPrice(ticker.getUpperPriceBoundary()));
             densePriceText.setText(formatPrice(ticker.getDensePrice()));

@@ -89,7 +89,7 @@ public class TickerService extends Service {
             future.cancel(true);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            checkAndNotifyHighestTicker(potentialHighestTicker);
+            checkAndNotifyHighestTicker();
         }
         super.onDestroy();
     }
@@ -129,8 +129,13 @@ public class TickerService extends Service {
                 }
             }
             @Override
-            public void onFinish() {
-                checkAndNotifyHighestTicker(potentialHighestTicker);
+            public void onFinish(long updateTime) {
+                checkAndNotifyHighestTicker();
+
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) {
+                    activity.updateFinished(updateTime);
+                }
 
                 TickerService.this.stopForeground(true);
                 TickerService.this.stopSelf();
@@ -155,45 +160,36 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void checkAndNotifyHighestTicker(TickerInfo ticker) {
-        if (ticker == null) return;
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        double savedHighestPercentageIncreasePerDay = SharedPrefManager.getDouble(prefs, KEY_HIGHEST_PERCENTAGE, 0);
+    private void checkAndNotifyHighestTicker() {
+        if (potentialHighestTicker == null) return;
 
-        if (ticker.getPercentageIncreasePerDay() > savedHighestPercentageIncreasePerDay) {
-            String name = ticker.getName();
-            if (name == null || name.isEmpty()) {
-                name = ticker.getSymbol();
-            }
-            
-            // Save new highest
-            SharedPrefManager.putDouble(prefs.edit(), KEY_HIGHEST_PERCENTAGE, ticker.getPercentageIncreasePerDay())
-                .putString(KEY_HIGHEST_TICKER, name)
-                .apply();
-
-            // Show high priority notification
-            NotificationChannel channel = new NotificationChannel(
-                "highest_ticker",
-                "Highest Ticker Alerts",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.enableVibration(true);
-            
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(channel);
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "highest_ticker")
-                .setContentTitle("New Highest Performing Ticker!")
-                .setContentText(String.format(Locale.US, "%s: %.2f%% per day", name, ticker.getPercentageIncreasePerDay()))
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true);
-
-            manager.notify(2, builder.build());
-            
-            // Clear the potential highest ticker after notification
-            potentialHighestTicker = null;
+        String name = potentialHighestTicker.getName();
+        if (name == null || name.isEmpty()) {
+            name = potentialHighestTicker.getSymbol();
         }
+
+        // Show high priority notification
+        NotificationChannel channel = new NotificationChannel(
+            "highest_ticker",
+            "Highest Ticker Alert",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.enableVibration(true);
+
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        manager.createNotificationChannel(channel);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "highest_ticker")
+            .setContentTitle("New Highest Performing Ticker!")
+            .setContentText(String.format(Locale.US, "%s: %.2f%% Per Day", name, potentialHighestTicker.getPercentageIncreasePerDay()))
+            .setSmallIcon(R.mipmap.ic_launcher_round)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true);
+
+        manager.notify(2, builder.build());
+
+        // Clear the potential highest ticker after notification
+        potentialHighestTicker = null;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -212,9 +208,9 @@ public class TickerService extends Service {
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setSmallIcon(R.drawable.logo)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .addAction(R.drawable.ic_launcher_foreground, "EXIT", stopPendingIntent)
+                .addAction(R.drawable.xclose_white, "EXIT", stopPendingIntent)
                 .setVibrate(null);
     }
 

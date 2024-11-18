@@ -19,6 +19,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -48,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private TickerAdapter adapter;
     private SwipeRefreshLayout swipeRefreshLayout;
     private TickerDataLoader dataLoader;
+    private RecyclerView recyclerView;
     private TextView lastUpdateText;
     private TextView progressText;
     private ProgressBar progressBar;
@@ -61,6 +63,10 @@ public class MainActivity extends AppCompatActivity {
             Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
         }
 
+        // Create WebView App Instance
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+        splashScreen.setKeepOnScreenCondition(() -> false);
+
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
@@ -70,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        RecyclerView recyclerView = findViewById(R.id.recyclerView);
+        recyclerView = findViewById(R.id.recyclerView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         lastUpdateText = findViewById(R.id.lastUpdateText);
         progressText = findViewById(R.id.progressText);
@@ -133,14 +139,14 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateTickerList(List<TickerInfo> tickers) {
         adapter.setTickers(tickers);
-        updateLastUpdateTime(dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext()));
+        recyclerView.smoothScrollToPosition(0);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateLastUpdateTime(long timestamp) {
         if (timestamp > 0) {
             LocalDateTime updateTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(timestamp), 
+                Instant.ofEpochMilli(timestamp),
                 ZoneId.systemDefault()
             );
             LocalDateTime now = LocalDateTime.now();
@@ -207,6 +213,17 @@ public class MainActivity extends AppCompatActivity {
             progressContainer.setLayoutParams(params);
             progressContainer.requestLayout();
         });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void updateFinished(long updateTime) {
+        ViewGroup.LayoutParams params = progressContainer.getLayoutParams();
+        progressContainer.setVisibility(View.GONE);
+        params.height = 0;
+        progressContainer.setLayoutParams(params);
+        progressContainer.requestLayout();
+
+        updateLastUpdateTime(updateTime);
     }
 
     public static MainActivity getInstanceActivity() {

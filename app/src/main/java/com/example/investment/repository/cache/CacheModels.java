@@ -12,7 +12,7 @@ public class CacheModels {
     public interface Listener {
         void onProgress(int current, int total);
         void onTickerUpdate(@NonNull List<TickerInfo> tickers);
-        void onFinish();
+        void onFinish(long updateTime);
     }
     public static class CachedData implements Serializable {
         private static final long serialVersionUID = 1L;

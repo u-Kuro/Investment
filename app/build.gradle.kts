@@ -45,4 +45,5 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.work.runtime)
     implementation(libs.browser)
+    implementation(libs.core.splashscreen)
 }
