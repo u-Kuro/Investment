@@ -9,11 +9,8 @@ public class Logger {
         Log.e(TAG, message, throwable);
     }
     
+    /** @noinspection unused*/
     public static void debug(String message) {
         Log.d(TAG, message);
-    }
-    
-    public static void info(String message) {
-        Log.i(TAG, message);
     }
 } 

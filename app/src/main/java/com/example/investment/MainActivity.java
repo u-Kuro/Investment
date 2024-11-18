@@ -1,5 +1,6 @@
 package com.example.investment;
 
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -7,9 +8,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -45,7 +45,6 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
     public static WeakReference<MainActivity> weakActivity;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private TickerAdapter adapter;
     private SwipeRefreshLayout swipeRefreshLayout;
     private TickerDataLoader dataLoader;
@@ -100,10 +99,9 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
-                Logger.info("KANSHII "+lastUpdateTime);
-                mainHandler.post(() -> updateLastUpdateTime(lastUpdateTime));
+                runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));
                 List<TickerInfo> cachedTickers = dataLoader.loadCachedTickers(MainActivity.this.getApplicationContext());
-                mainHandler.post(() -> {
+                runOnUiThread(() -> {
                     if (cachedTickers != null && !cachedTickers.isEmpty()) {
                         updateTickerList(cachedTickers);
                     }
@@ -123,13 +121,13 @@ public class MainActivity extends AppCompatActivity {
     private void loadTickers(boolean showRefresh) {
         if (showRefresh) {
             swipeRefreshLayout.setRefreshing(true);
+            Intent serviceIntent = new Intent(this, TickerService.class);
+            startService(serviceIntent);
+            swipeRefreshLayout.setRefreshing(false);
+        } else {
+            Intent serviceIntent = new Intent(this, TickerService.class);
+            startService(serviceIntent);
         }
-        progressContainer.setVisibility(View.VISIBLE);
-
-        Intent serviceIntent = new Intent(this, TickerService.class);
-        startService(serviceIntent);
-
-        swipeRefreshLayout.setRefreshing(false);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -184,27 +182,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void updateProgress(int current, int total) {
-        mainHandler.post(() -> {
+        runOnUiThread(() -> {
+            ViewGroup.LayoutParams params = progressContainer.getLayoutParams();
             if (total > 0) {
-                double progress = ((double) current / total) * 100;
-                if (current < total) {
-                    progressText.setText(getString(R.string.processing_ticker_progress, current, total, progress));
-                } else {
-                    progressText.setText(R.string.successful_ticker_progress);
-                }
                 progressBar.setMax(total);
                 progressBar.setProgress(current);
                 progressBar.setIndeterminate(false);
+                
+                if (current < total) {
+                    progressText.setText(getString(R.string.processing_ticker_progress, current, total, (double)current/total * 100));
+                    progressContainer.setVisibility(View.VISIBLE);
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                } else {
+                    progressText.setText(R.string.successful_ticker_progress);
+                    progressContainer.setVisibility(View.GONE);
+                    params.height = 0;
+                }
             } else {
                 progressText.setText(getString(R.string.fetching_tickers));
                 progressBar.setIndeterminate(true);
+                progressContainer.setVisibility(View.VISIBLE);
+                params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             }
+            progressContainer.setLayoutParams(params);
+            progressContainer.requestLayout();
         });
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
     }
 
     public static MainActivity getInstanceActivity() {
@@ -216,14 +218,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 requestPermissions(
-                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     PERMISSION_REQUEST_CODE
                 );
+                return;
             }
         }
+        WorkManager.scheduleTickerWork(this);
     }
 
     @Override
@@ -246,7 +250,9 @@ public class MainActivity extends AppCompatActivity {
         // Regular click - open Yahoo Finance
         adapter.setOnTickerClickListener(ticker -> {
             try {
-                String url = "https://finance.yahoo.com/quote/" + ticker.getSymbol();
+                String symbol = ticker.getSymbol();
+                if (symbol == null || symbol.isEmpty()) throw new Exception("Empty Symbol");
+                String url = "https://finance.yahoo.com/quote/" + symbol;
                 CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder();
                 CustomTabsIntent customTabsIntent = builder.build();
                 customTabsIntent.launchUrl(this, Uri.parse(url));

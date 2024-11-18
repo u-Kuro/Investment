@@ -59,7 +59,6 @@ public class TickerService extends Service {
             Logger.error("Failed to Start Service", e);
             stopForeground(true);
             stopSelf();
-            return;
         }
 
         updateTickers();
@@ -68,10 +67,11 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && STOP_SERVICE_ACTION.equals(intent.getAction())) {
-            Logger.info("hereeee");
-            stopForeground(true);
-            stopSelf();
+        if (intent != null) {
+            if (STOP_SERVICE_ACTION.equals(intent.getAction())) {
+                stopForeground(true);
+                stopSelf();
+            }
         }
         return START_NOT_STICKY;
     }
@@ -113,11 +113,6 @@ public class TickerService extends Service {
             @RequiresApi(api = Build.VERSION_CODES.O)
             @Override
             public void onProgress(int current, int total) {
-                if (total > 0 && current < total) {
-                    updateNotification(String.format(Locale.US, "Processing tickers: %d/%d", current, total));
-                } else {
-                    updateNotification(getString(R.string.successful_ticker_progress));
-                }
                 if (total > 0) {
                     double progress = ((double) current / total) * 100;
                     if (current < total) {
@@ -145,9 +140,16 @@ public class TickerService extends Service {
 
     private void updatePotentialHighestTicker(TickerInfo ticker) {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        double savedHighestPercentageIncreasePerDay = prefs.getFloat(KEY_HIGHEST_PERCENTAGE, 0);
+        double savedHighestPercentageIncreasePerDay = SharedPrefManager.getDouble(prefs, KEY_HIGHEST_PERCENTAGE, 0);
 
         if (ticker.getPercentageIncreasePerDay() > savedHighestPercentageIncreasePerDay) {
+            String name = ticker.getName();
+            if (name == null || name.isEmpty()) {
+                name = ticker.getSymbol();
+            }
+            SharedPrefManager.putDouble(prefs.edit(), KEY_HIGHEST_PERCENTAGE, ticker.getPercentageIncreasePerDay())
+                .putString(KEY_HIGHEST_TICKER, name)
+                .apply();
             potentialHighestTicker = ticker;
         }
     }

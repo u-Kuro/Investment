@@ -15,7 +15,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
 import com.example.investment.adapter.diff.TickerDiffCallback;
 import com.example.investment.model.TickerInfo;
+import com.google.android.material.card.MaterialCardView;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +34,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
     }
 
     public interface OnTickerLongClickListener {
+        /** @noinspection SameReturnValue*/
         boolean onTickerLongClick(TickerInfo ticker);
     }
 
@@ -119,80 +123,74 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
                 typeIcon.setVisibility(View.GONE);
             }
 
-            String timeSpanText = formatTimeSpan(ticker.getDays());
-            timeSpan.setText(timeSpanText);
-            percentageIncreasePerDay.setText(String.format(Locale.US, "%.4f%%", ticker.getPercentageIncreasePerDay()));
+            timeSpan.setText(formatTimeSpan(ticker.getDays()));
+            percentageIncreasePerDay.setText(String.format(Locale.US, "%.2f%%", ticker.getPercentageIncreasePerDay()));
 
-            upperPriceBoundaryText.setText(String.format(Locale.US, "%.4e", ticker.getUpperPriceBoundary()));
-            densePriceText.setText(String.format(Locale.US, "%.4e", ticker.getDensePrice()));
-            lowerPriceBoundaryText.setText(String.format(Locale.US, "%.4e", ticker.getLowerPriceBoundary()));
+            upperPriceBoundaryText.setText(formatPrice(ticker.getUpperPriceBoundary()));
+            densePriceText.setText(formatPrice(ticker.getDensePrice()));
+            lowerPriceBoundaryText.setText(formatPrice(ticker.getLowerPriceBoundary()));
+
+            // Get the MaterialCardView and set its stroke color
+            MaterialCardView cardView = (MaterialCardView) itemView;
+
+            // Get the base color based on price
+            int baseColor = getCardColor(
+                ticker.getUpperPriceBoundary(),
+                ticker.getLowerPriceBoundary(),
+                ticker.getLastPrice()
+            );
+
+            // Set stroke color
+            cardView.setStrokeColor(baseColor);
         }
 
-        private String formatTimeSpan(long days) {
-            if (days < 7) {
-                return days + (days == 1 ? " day" : " days");
-            } 
-            
-            if (days < 14) {
-                return "1 week " + (days - 7) + " days";
-            }
-            
-            if (days < 30) {
-                long weeks = days / 7;
-                long remainingDays = days % 7;
-                if (remainingDays > 0) {
-                    return weeks + " weeks " + remainingDays + (remainingDays == 1 ? " day" : " days");
-                }
-                return weeks + " weeks";
-            }
-            
-            if (days < 365) {
-                long months = days / 30;
-                long remainingDays = days % 30;
-                if (remainingDays >= 7) {
-                    long remainingWeeks = remainingDays / 7;
-                    return months + (months == 1 ? " month " : " months ") +
-                           remainingWeeks + (remainingWeeks == 1 ? " week" : " weeks");
-                }
-                if (remainingDays > 0) {
-                    return months + (months == 1 ? " month " : " months ") +
-                           remainingDays + (remainingDays == 1 ? " day" : " days");
-                }
-                return months + (months == 1 ? " month" : " months");
-            }
-            
-            // For years
-            long years = days / 365;
-            long remainingDays = days % 365;
-            
-            if (remainingDays == 0) {
-                return years + (years == 1 ? " year" : " years");
-            }
+        @RequiresApi(api = Build.VERSION_CODES.O)
+        private String formatTimeSpan(double days) {
+            // Format the start date
+            LocalDate startDate = LocalDate.now().minusDays((long) days);
+            return startDate.format(DateTimeFormatter.ofPattern("MMM dd yyyy"));
+        }
 
-            long months = remainingDays / 30;
-            if (months > 0) {
-                remainingDays = remainingDays % 30;
-                String result = years + (years == 1 ? " year " : " years ") +
-                              months + (months == 1 ? " month" : " months");
-                
-                // Add weeks for more precision if there are remaining days
-                if (remainingDays >= 7) {
-                    long weeks = remainingDays / 7;
-                    return result + " " + weeks + (weeks == 1 ? " week" : " weeks");
+        private String formatPrice(double price) {
+            if (price == 0) return "$ 0";
+            
+            // Count significant digits needed for whole number part
+            long wholeNumber = (long) price;
+            
+            if (wholeNumber == 0) {
+                // For numbers < 1, count leading zeros after decimal
+                String decimalStr = String.format(Locale.US, "%.20f", price).split("\\.")[1];
+                int leadingZeros = 0;
+                while (leadingZeros < decimalStr.length() && decimalStr.charAt(leadingZeros) == '0') {
+                    leadingZeros++;
                 }
-                
-                return result;
+                String formatPattern = "%." + (leadingZeros + 5) + "f";
+                return "$ " + String.format(Locale.US, formatPattern, price);
+            } else {
+                // For numbers >= 1, handle as before
+                long wholeNumberDigits = String.valueOf(wholeNumber).length();
+                if (wholeNumberDigits >= 5) {
+                    return "$ " + Math.floor(wholeNumber);
+                } else {
+                    long decimalsNeeded = Math.max(5 - wholeNumberDigits, 0);
+                    String formatPattern = "%." + decimalsNeeded + "f";
+                    return "$ " + String.format(Locale.US, formatPattern, price);
+                }
+            }
+        }
+
+        private int getCardColor(double upper, double lower, double current) {
+            int colorResId;
+            
+            if (current >= upper) {
+                colorResId = R.color.hold;
+            } else if (current >= lower) {
+                colorResId = R.color.good;
+            } else {
+                colorResId = R.color.bad;
             }
             
-            // If less than a month of remaining days, show in weeks
-            long weeks = remainingDays / 7;
-            if (weeks > 0) {
-                return years + (years == 1 ? " year " : " years ") +
-                       weeks + (weeks == 1 ? " week" : " weeks");
-            }
-            
-            return years + (years == 1 ? " year " : " years ") +
-                   remainingDays + (remainingDays == 1 ? " day" : " days");
+            return itemView.getContext().getColor(colorResId);
         }
     }
 } 
