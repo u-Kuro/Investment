@@ -4,10 +4,11 @@ import android.content.Context;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
-import com.example.investment.model.TickerInfo;
+import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.repository.YahooFinanceRepository;
-import com.example.investment.repository.cache.CacheModels;
+import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
 
 import java.util.List;
@@ -30,11 +31,9 @@ public class TickerDataLoader {
         return instance;
     }
 
-    public void loadTickers(@NonNull Context context, CacheModels.Listener listener) {
-        repository.loadTickerScores(
-            context,
-            listener
-        );
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void loadTickers(@NonNull Context context, TickerUpdateListener listener) {
+        repository.loadTickerScores(context, listener);
     }
 
     public List<TickerInfo> loadCachedTickers(@NonNull Context context) {

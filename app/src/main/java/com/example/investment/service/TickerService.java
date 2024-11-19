@@ -6,9 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -17,31 +15,31 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
-import com.example.investment.R;
-import com.example.investment.model.TickerInfo;
-import com.example.investment.task.TickerDataLoader;
-import com.example.investment.repository.cache.CacheModels;
 import com.example.investment.MainActivity;
+import com.example.investment.R;
+import com.example.investment.model.ticker.HighestTickerInfo;
+import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.task.TickerDataLoader;
+import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
-import com.example.investment.util.SharedPrefManager;
+import com.example.investment.util.Constants;
+import com.example.investment.util.FileUtils;
+import com.example.investment.util.NotificationUtils;
+import com.example.investment.util.PriceUtils;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class TickerService extends Service {
-    private static final String CHANNEL_ID = "ticker_updates";
-    private static final String PREFS_NAME = "TickerPrefs";
-    private static final String KEY_HIGHEST_TICKER = "highest_ticker";
-    private static final String KEY_HIGHEST_PERCENTAGE = "highest_percentage";
     public static final String STOP_SERVICE_ACTION = "stop_service";
-    private static final int NOTIFICATION_ID = 1;
     private TickerDataLoader dataLoader;
     private final ExecutorService executorService = Executors.newFixedThreadPool(1);
     private Future<?> future;
-    private TickerInfo potentialHighestTicker = null;
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
@@ -55,7 +53,7 @@ public class TickerService extends Service {
         dataLoader = TickerDataLoader.getInstance();
 
         try {
-            startForeground(NOTIFICATION_ID, createNotification("Ticker service running").build(), FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(Constants.ID_SERVICE, createServiceNotification("Ticker service running").build(), FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } catch (Exception e) {
             Logger.error("Failed to Start Service", e);
             stopForeground(true);
@@ -89,29 +87,12 @@ public class TickerService extends Service {
         if (future != null) {
             future.cancel(true);
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            checkAndNotifyHighestTicker();
-        }
         super.onDestroy();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers() {
-        future = executorService.submit(() -> dataLoader.loadTickers(getApplicationContext(), new CacheModels.Listener() {
-            @RequiresApi(api = Build.VERSION_CODES.O)
-            @Override
-            public void onTickerUpdate(@NonNull List<TickerInfo> tickers) {
-                if (!tickers.isEmpty()) {
-                    // Just store the highest ticker
-                    updatePotentialHighestTicker(tickers.get(0));
-                }
-
-                MainActivity activity = MainActivity.getInstanceActivity();
-                if (activity != null) {
-                    activity.updateTickerList(tickers);
-                }
-            }
-            @RequiresApi(api = Build.VERSION_CODES.O)
+        future = executorService.submit(() -> dataLoader.loadTickers(getApplicationContext(), new TickerUpdateListener() {
             @Override
             public void onProgress(int current, int total) {
                 if (total > 0) {
@@ -129,9 +110,20 @@ public class TickerService extends Service {
                     activity.updateProgress(current, total);
                 }
             }
+            
             @Override
-            public void onFinish(long updateTime) {
-                checkAndNotifyHighestTicker();
+            public void onTickerUpdate(@NonNull List<TickerInfo> tickers) {
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) {
+                    activity.updateTickerList(tickers);
+                }
+            }
+            
+            @Override
+            public void onFinish(@NonNull List<TickerInfo> tickers, long updateTime) {
+                if (!tickers.isEmpty()) {
+                    checkAndNotifyTickerChanges(tickers);
+                }
 
                 MainActivity activity = MainActivity.getInstanceActivity();
                 if (activity != null) {
@@ -141,69 +133,184 @@ public class TickerService extends Service {
                 TickerService.this.stopForeground(true);
                 TickerService.this.stopSelf();
             }
+            
+            @Override
+            public void onError() {
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) {
+                    activity.updateError();
+                }
+
+                TickerService.this.stopForeground(true);
+                TickerService.this.stopSelf();
+            }
         }));
     }
 
-    private void updatePotentialHighestTicker(TickerInfo ticker) {
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        double savedHighestPercentageIncreasePerDay = SharedPrefManager.getDouble(prefs, KEY_HIGHEST_PERCENTAGE, 0);
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void checkAndNotifyTickerChanges(List<TickerInfo> currentTickers) {
+        HighestTickerInfo savedHighest = getSavedHighestTicker();
+        TickerInfo highestTicker = currentTickers.get(0);
+        
+        if (isPreviousHighestMissing(currentTickers, savedHighest)) {
+            handleMissingTicker(highestTicker, savedHighest);
+        } else if (highestTicker != null) {
+            handleExistingTicker(highestTicker, savedHighest);
+        }
+    }
 
-        if (ticker.getPercentageIncreasePerDay() > savedHighestPercentageIncreasePerDay) {
-            String name = ticker.getName();
-            if (name == null || name.isEmpty()) {
-                name = ticker.getSymbol();
+    private boolean isPreviousHighestMissing(List<TickerInfo> currentTickers, HighestTickerInfo savedHighest) {
+        if (savedHighest == null) return false;
+        return currentTickers.stream()
+            .filter(t -> t.getSymbol().equals(savedHighest.getSymbol()))
+            .findFirst().isEmpty();
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void handleMissingTicker(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
+        if (highestTicker != null) {
+            notifyAndSaveNewHighestPerformer(highestTicker);
+        } else {
+            showNotification(
+                Constants.CHANNEL_WARNING,
+                Constants.NAME_MISSING,
+                String.format(
+                    "Previous highest performer %s is not found",
+                    savedHighest.getName(true)
+                ),
+                Constants.ID_MISSING
+            );
+            FileUtils.deleteFile(getApplicationContext(), Constants.CACHE_FILE_HIGHEST);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void handleExistingTicker(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
+        if (isSameSymbol(highestTicker, savedHighest)) {
+            handlePriceStateChanges(highestTicker, savedHighest);
+        } else if (isNewHighestPerformer(highestTicker, savedHighest)) {
+            notifyAndSaveNewHighestPerformer(highestTicker);
+        }
+    }
+
+    private boolean isSameSymbol(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
+        return savedHighest != null
+            && savedHighest.getSymbol() != null
+            && highestTicker.getSymbol() != null
+            && Objects.equals(highestTicker.getSymbol(), savedHighest.getSymbol());
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void handlePriceStateChanges(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
+        String currentState = getPriceState(highestTicker);
+        String previousState = savedHighest.getPriceState();
+
+        if (!previousState.equals(currentState)) {
+            if (isReturnToTradingRange(currentState, previousState)) {
+                showNotification(
+                        Constants.CHANNEL_PRICE_CROSS,
+                        Constants.NAME_PRICE_CROSS,
+                        String.format(
+                                "%s price is now within trading range",
+                                highestTicker.getName(true)
+                        ),
+                        Constants.ID_PRICE_CROSS
+                );
+            } else if (currentState.equals(Constants.PRICE_BELOW)) {
+                showNotification(
+                        Constants.CHANNEL_WARNING,
+                        Constants.NAME_WARNING,
+                        String.format(
+                                "%s price has dropped below threshold",
+                                highestTicker.getName(true)
+                        ),
+                        Constants.ID_WARNING
+                );
             }
-            SharedPrefManager.putDouble(prefs.edit(), KEY_HIGHEST_PERCENTAGE, ticker.getPercentageIncreasePerDay())
-                .putString(KEY_HIGHEST_TICKER, name)
-                .apply();
-            potentialHighestTicker = ticker;
         }
+
+        saveHighestTicker(highestTicker, currentState);
+    }
+
+    private boolean isReturnToTradingRange(String currentState, String previousState) {
+        return currentState.equals(Constants.PRICE_BETWEEN)
+            && (previousState.equals(Constants.PRICE_ABOVE) 
+                || previousState.equals(Constants.PRICE_BELOW));
+    }
+
+    private boolean isNewHighestPerformer(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
+        return savedHighest == null
+            || highestTicker.getPercentageIncreasePerDay() > savedHighest.getPercentageIncreasePerDay();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void checkAndNotifyHighestTicker() {
-        if (potentialHighestTicker == null) return;
-
-        String name = potentialHighestTicker.getName();
-        if (name == null || name.isEmpty()) {
-            name = potentialHighestTicker.getSymbol();
-        }
-
-        // Show high priority notification
-        NotificationChannel channel = new NotificationChannel(
-            "highest_ticker",
-            "Highest Ticker Alert",
-            NotificationManager.IMPORTANCE_HIGH
+    private void notifyAndSaveNewHighestPerformer(TickerInfo highestTicker) {
+        showNotification(
+            Constants.CHANNEL_HIGHEST,
+            Constants.NAME_HIGHEST,
+            String.format(
+                Locale.US,
+                "%s: %.2f%% Per Day",
+                highestTicker.getName(true),
+                highestTicker.getPercentageIncreasePerDay()
+            ),
+            Constants.ID_HIGHEST
         );
-        channel.enableVibration(true);
+        saveHighestTicker(highestTicker, getPriceState(highestTicker));
+    }
 
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(channel);
-
-        // Create an intent to launch the main activity
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "highest_ticker")
-            .setContentTitle("New Highest Performing Ticker!")
-            .setContentText(String.format(Locale.US, "%s: %.2f%% Per Day", name, potentialHighestTicker.getPercentageIncreasePerDay()))
-            .setSmallIcon(R.drawable.logo)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent);
-
-        manager.notify(2, builder.build());
-
-        // Clear the potential highest ticker after notification
-        potentialHighestTicker = null;
+    private @NonNull String getPriceState(TickerInfo tickerInfo) {
+        return PriceUtils.getPriceState(
+            tickerInfo.getLastPrice(),
+            tickerInfo.getUpperPriceBoundary(),
+            tickerInfo.getLowerPriceBoundary()
+        );
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private NotificationCompat.Builder createNotification(String title) {
+    private void showNotification(String channelId, String title, String content, int notificationId) {
+        NotificationCompat.Builder builder = NotificationUtils.createNotification(
+            this, 
+            channelId,
+            title,
+            NotificationManager.IMPORTANCE_HIGH,
+            true
+        )
+        .setContentTitle(title)
+        .setContentText(content)
+        .setContentIntent(NotificationUtils.createActivityIntent(this, MainActivity.class));
+        
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        manager.notify(notificationId, builder.build());
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void saveHighestTicker(TickerInfo ticker, @NonNull String priceState) {
+        try {
+            FileUtils.saveObject(
+                getApplicationContext(),
+                Constants.CACHE_FILE_HIGHEST,
+                new HighestTickerInfo(ticker, priceState)
+            );
+        } catch (IOException e) {
+            Logger.error("Error saving highest ticker", e);
+        }
+    }
+
+    private HighestTickerInfo getSavedHighestTicker() {
+        try {
+            return (HighestTickerInfo) FileUtils.loadObject(getApplicationContext(), Constants.CACHE_FILE_HIGHEST);
+        } catch (IOException | ClassNotFoundException e) {
+            Logger.error("Error loading highest ticker", e);
+            return null;
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private NotificationCompat.Builder createServiceNotification(String title) {
         NotificationChannel channel = new NotificationChannel(
-            CHANNEL_ID,
-            "Ticker Updates",
+            Constants.CHANNEL_SERVICE,
+            Constants.NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         );
         NotificationManager manager = getSystemService(NotificationManager.class);
@@ -217,7 +324,7 @@ public class TickerService extends Service {
         stopIntent.setAction(STOP_SERVICE_ACTION);
         PendingIntent stopPendingIntent = PendingIntent.getService(this.getApplicationContext(), 0, stopIntent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new NotificationCompat.Builder(this, Constants.CHANNEL_SERVICE)
             .setContentTitle(title)
             .setSmallIcon(R.drawable.logo)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -229,8 +336,8 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateNotification(String message) {
-        NotificationCompat.Builder builder = createNotification(message);
+        NotificationCompat.Builder builder = createServiceNotification(message);
         NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.notify(NOTIFICATION_ID, builder.build());
+        manager.notify(Constants.ID_SERVICE, builder.build());
     }
 } 

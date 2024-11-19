@@ -4,13 +4,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-import com.example.investment.util.WorkManager;
+import com.example.investment.task.WorkerManager;
 
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            WorkManager.scheduleTickerWork(context);
+            WorkerManager.scheduleTickerWork(context);
         }
     }
 } 

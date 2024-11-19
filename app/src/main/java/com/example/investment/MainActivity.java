@@ -35,13 +35,14 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import android.net.Uri;
 
-import com.example.investment.adapter.TickerAdapter;
-import com.example.investment.model.TickerInfo;
+import com.example.investment.model.adapter.TickerAdapter;
+import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
+import com.example.investment.util.Constants;
 import com.example.investment.util.Logger;
-import com.example.investment.util.WorkManager;
+import com.example.investment.task.WorkerManager;
 import com.example.investment.service.TickerService;
-import com.example.investment.util.CustomTabsHelper;
+import com.example.investment.util.CustomTabsUtils;
 
 import java.lang.ref.WeakReference;
 import java.time.Instant;
@@ -63,15 +64,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView updateText;
     private ProgressBar progressBar;
     private static final int PERMISSION_REQUEST_CODE = 123;
-    private static final String PREFS_NAME = "TickerFilterPrefs";
-    private static final String PREF_FILTER_TYPE = "filterType";
-    private static final String PREF_FILTER_STATUS = "filterStatus";
-
     private ImageView filterStatusImage;
     private boolean filterStatus = false;
     private ImageView stopProcessingImage;
 
-    private final CustomTabsHelper customTabsHelper = CustomTabsHelper.getInstance();
+    private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
 
     private RecyclerView recyclerView;
 
@@ -138,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        customTabsHelper.warmup(MainActivity.this);
+        customTabsUtils.warmup(MainActivity.this);
 
         // Add back press handling
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -280,11 +277,20 @@ public class MainActivity extends AppCompatActivity {
             progressBar.requestLayout();
             ((View) progressBar.getParent()).requestLayout();
 
-            if (updateTime == 0) {
-                loadCachedData(false);
-            } else {
-                updateLastUpdateTime(updateTime);
-            }
+            updateLastUpdateTime(updateTime);
+        });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void updateError() {
+        runOnUiThread(() -> {
+            stopProcessingImage.setVisibility(View.GONE);
+            progressBar.setVisibility(View.GONE);
+            progressBar.getLayoutParams().height = 0;
+            progressBar.requestLayout();
+            ((View) progressBar.getParent()).requestLayout();
+
+            loadCachedData(false);
         });
     }
 
@@ -306,7 +312,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
         }
-        WorkManager.scheduleTickerWork(this);
+        WorkerManager.scheduleTickerWork(this);
     }
 
     @Override
@@ -315,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // Permission granted, start the worker
-                WorkManager.scheduleTickerWork(this);
+                WorkerManager.scheduleTickerWork(this);
             } else {
                 // Permission denied, show a message to the user
                 Toast.makeText(this, 
@@ -332,7 +338,7 @@ public class MainActivity extends AppCompatActivity {
                 String symbol = ticker.getSymbol();
                 if (symbol == null || symbol.isEmpty()) throw new Exception("Empty Symbol");
                 String url = "https://finance.yahoo.com/quote/" + symbol;
-                customTabsHelper.launchUrl(
+                customTabsUtils.launchUrl(
                     this,
                     Uri.parse(url),
                     ContextCompat.getColor(this, R.color.black),
@@ -345,15 +351,14 @@ public class MainActivity extends AppCompatActivity {
 
         // Long click - copy symbol
         adapter.setOnTickerLongClickListener(ticker -> {
-            String textToCopy = ticker.getName();
-            if (textToCopy == null || textToCopy.isEmpty()) {
-                textToCopy = ticker.getSymbol();
-            }
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            ClipData clip = ClipData.newPlainText("Ticker", textToCopy);
-            clipboard.setPrimaryClip(clip);
+            String name = ticker.getName(true);
+            if (name != null && !name.isEmpty()) {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("Ticker", name);
+                clipboard.setPrimaryClip(clip);
 
-            Toast.makeText(this, "Copied to clipboard.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Copied to clipboard.", Toast.LENGTH_SHORT).show();
+            }
             return true;
         });
     }
@@ -364,9 +369,9 @@ public class MainActivity extends AppCompatActivity {
         filterStatusImage = findViewById(R.id.statusFilterImage);
 
         // Load saved preferences
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
-        int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
+        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+        filterStatus = prefs.getBoolean(Constants.PREF_FILTER_STATUS, false);
+        int savedFilterPosition = prefs.getInt(Constants.PREF_FILTER_TYPE, 0);
 
         // Setup spinner
         ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
@@ -387,8 +392,8 @@ public class MainActivity extends AppCompatActivity {
         typeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
-                editor.putInt(PREF_FILTER_TYPE, position);
+                SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
+                editor.putInt(Constants.PREF_FILTER_TYPE, position);
                 editor.apply();
                 
                 adapter.setTypeFilter(parent.getSelectedItem().toString());
@@ -402,8 +407,8 @@ public class MainActivity extends AppCompatActivity {
             filterStatus = !filterStatus;
             filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
                 
-            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
-            editor.putBoolean(PREF_FILTER_STATUS, filterStatus);
+            SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
+            editor.putBoolean(Constants.PREF_FILTER_STATUS, filterStatus);
             editor.apply();
             
             adapter.setStatusFilter(filterStatus);

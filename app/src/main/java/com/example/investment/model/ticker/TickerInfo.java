@@ -1,4 +1,4 @@
-package com.example.investment.model;
+package com.example.investment.model.ticker;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -40,7 +40,10 @@ public class TickerInfo implements Serializable {
         return symbol;
     }
 
-    public String getName() {
+    public String getName(boolean defaultToSymbol) {
+        if (defaultToSymbol && (name == null || name.isEmpty())) {
+            return symbol;
+        }
         return name;
     }
 
@@ -74,13 +77,13 @@ public class TickerInfo implements Serializable {
 
     public boolean equals(TickerInfo tickerInfo) {
         return Objects.equals(this.symbol, tickerInfo.getSymbol())
-                && Objects.equals(this.name, tickerInfo.getName())
-                && Objects.equals(this.type, tickerInfo.getType())
-                && this.lastPrice == tickerInfo.getLastPrice()
-                && this.densePrice == tickerInfo.getDensePrice()
-                && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
-                && this.lowerPriceBoundary == tickerInfo.getLowerPriceBoundary()
-                && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
-                && this.days == tickerInfo.getDays();
+            && Objects.equals(this.name, tickerInfo.getName(false))
+            && Objects.equals(this.type, tickerInfo.getType())
+            && this.lastPrice == tickerInfo.getLastPrice()
+            && this.densePrice == tickerInfo.getDensePrice()
+            && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
+            && this.lowerPriceBoundary == tickerInfo.getLowerPriceBoundary()
+            && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
+            && this.days == tickerInfo.getDays();
     }
-} 
+}

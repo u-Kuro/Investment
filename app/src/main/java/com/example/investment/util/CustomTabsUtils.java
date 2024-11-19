@@ -17,19 +17,19 @@ import com.example.investment.R;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CustomTabsHelper {
+public class CustomTabsUtils {
     private CustomTabsClient mCustomTabsClient;
     private CustomTabsSession mCustomTabsSession;
-    private static CustomTabsHelper INSTANCE;
+    private static CustomTabsUtils INSTANCE;
 
-    public static CustomTabsHelper getInstance() {
+    public static CustomTabsUtils getInstance() {
         if (INSTANCE == null) {
-            INSTANCE = new CustomTabsHelper();
+            INSTANCE = new CustomTabsUtils();
         }
         return INSTANCE;
     }
 
-    private CustomTabsHelper() {}
+    private CustomTabsUtils() {}
 
     public void warmup(Context context) {
         if (mCustomTabsClient != null) return;

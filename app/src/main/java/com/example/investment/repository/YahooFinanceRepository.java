@@ -3,20 +3,19 @@ package com.example.investment.repository;
 import static java.lang.Double.isFinite;
 
 import android.content.Context;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
-import com.example.investment.model.TickerInfo;
+import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.util.Constants;
 import com.example.investment.util.Logger;
-import com.example.investment.repository.cache.CacheModels.CachedData;
-import com.example.investment.repository.cache.CacheModels.Listener;
+import com.example.investment.model.ticker.CachedTickerData;
+import com.example.investment.model.listener.TickerUpdateListener;
+import com.example.investment.util.FileUtils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -34,18 +33,11 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 public class YahooFinanceRepository {
-    private static final String CRYPTO_URL = "https://finance.yahoo.com/markets/crypto/all/?start=0&count=250";
-    private static final String STOCKS_URL = "https://finance.yahoo.com/markets/stocks/most-active/?start=0&count=250";
-    private static final String CACHE_FILE = "ticker_cache.ser";
-    private static final String BASE_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
     private final OkHttpClient client = new OkHttpClient();
     private final Random random = new Random();
 
-    private @NonNull File getCacheFile(@NonNull Context context) {
-        return new File(context.getApplicationContext().getCacheDir(), YahooFinanceRepository.CACHE_FILE);
-    }
-
-    public void loadTickerScores(Context context, Listener listener) {
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void loadTickerScores(Context context, TickerUpdateListener listener) {
         List<TickerInfo> tickers = new ArrayList<>();
 
         try {
@@ -53,9 +45,13 @@ public class YahooFinanceRepository {
 
             // Parse tickers from HTML
             Thread.sleep(1000 + random.nextInt(2000));
-            List<String> tickerHTMLs = new ArrayList<>(parseTickersFromHtml(Jsoup.connect(STOCKS_URL).get().html()));
+            List<String> tickerHTMLs = new ArrayList<>(parseTickersFromHtml(
+                Jsoup.connect(Constants.YAHOO_STOCKS_URL).get().html()
+            ));
             Thread.sleep(1000 + random.nextInt(2000));
-            tickerHTMLs.addAll(parseTickersFromHtml(Jsoup.connect(CRYPTO_URL).get().html()));
+            tickerHTMLs.addAll(parseTickersFromHtml(
+                Jsoup.connect(Constants.YAHOO_CRYPTO_URL).get().html()
+            ));
 
             int total = tickerHTMLs.size();
             int current = 0;
@@ -125,8 +121,7 @@ public class YahooFinanceRepository {
                     if (name == null) {
                         try {
                             name = meta.getString("shortName");
-                        } catch (Exception ignored) {
-                        }
+                        } catch (Exception ignored) { }
                     }
 
                     // Get Type
@@ -152,7 +147,7 @@ public class YahooFinanceRepository {
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
-                    listener.onFinish(0);
+                    listener.onError();
                     return;
                 } catch (Exception e) {
                     Logger.error("Unexpected error processing " + symbol, e);
@@ -161,7 +156,7 @@ public class YahooFinanceRepository {
         } catch (InterruptedException e) {
             Logger.error("InterruptedException fetching ticker data", e);
             Thread.currentThread().interrupt();
-            listener.onFinish(0);
+            listener.onError();
             return;
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);
@@ -169,38 +164,29 @@ public class YahooFinanceRepository {
 
         tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
 
-        if (!tickers.isEmpty()) {
-            saveCache(context, tickers, listener);
+        if (tickers.isEmpty()) {
+            listener.onError();
         } else {
-            listener.onFinish(0);
+            saveCache(context, tickers, listener);
         }
     }
 
-    private void saveCache(@NonNull Context context, List<TickerInfo> results, Listener listener) {
-        File cacheFile = getCacheFile(context);
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(cacheFile))) {
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void saveCache(@NonNull Context context, @NonNull List<TickerInfo> tickers, TickerUpdateListener listener) {
+        try {
             long updateTime = System.currentTimeMillis();
-            CachedData cache = new CachedData(updateTime, results);
-            oos.writeObject(cache);
-            listener.onFinish(updateTime);
+            CachedTickerData cache = new CachedTickerData(tickers, updateTime);
+            FileUtils.saveObject(context, Constants.CACHE_FILE_DATA, cache);
+            listener.onFinish(tickers, updateTime);
         } catch (IOException e) {
             Logger.error("Error saving cache", e);
         }
     }
 
     public List<TickerInfo> loadCache(@NonNull Context context) {
-        CachedData cache = loadCachedData(context);
-        return cache != null ? cache.data : null;
-    }
-
-    private CachedData loadCachedData(@NonNull Context context) {
-        File cacheFile = getCacheFile(context);
-        if (!cacheFile.exists()) {
-            return null;
-        }
-
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(cacheFile))) {
-            return (CachedData) ois.readObject();
+        try {
+            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
+            return cache != null ? cache.data : null;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache", e);
             return null;
@@ -208,10 +194,11 @@ public class YahooFinanceRepository {
     }
 
     public long getCacheTimestamp(@NonNull Context context) {
-        CachedData cachedData = loadCachedData(context);
-        if (cachedData != null) {
-            return cachedData.timestamp;
-        } else {
+        try {
+            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
+            return cache != null ? cache.timestamp : 0;
+        } catch (IOException | ClassNotFoundException e) {
+            Logger.error("Error loading cache timestamp", e);
             return 0;
         }
     }
@@ -240,7 +227,7 @@ public class YahooFinanceRepository {
     }
 
     private @NonNull JSONObject fetchTickerData(String symbol) throws Exception {
-        String url = BASE_URL + symbol + "?interval=1d&range=max";
+        String url = Constants.YAHOO_BASE_URL + symbol + "?interval=1d&range=max";
         Request request = new Request.Builder()
             .url(url)
             .build();

@@ -8,4 +8,5 @@
     <string name="crypto">crypto</string>
     <string name="filter_status">Filter Status</string>
     <string name="stop_processing">Stop Processing</string>
+    <string name="na">NA</string>
 </resources>
