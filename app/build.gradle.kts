@@ -42,7 +42,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.swiperefreshlayout)
     implementation(libs.recyclerview)
-    implementation(libs.jsoup)
     implementation(libs.work.runtime)
     implementation(libs.browser)
     implementation(libs.core.splashscreen)

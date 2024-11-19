@@ -2,9 +2,6 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
@@ -13,7 +10,6 @@ import android.os.IBinder;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import androidx.core.app.NotificationCompat;
 
 import com.example.investment.MainActivity;
 import com.example.investment.R;
@@ -53,7 +49,11 @@ public class TickerService extends Service {
         dataLoader = TickerDataLoader.getInstance();
 
         try {
-            startForeground(Constants.ID_SERVICE, createServiceNotification("Ticker service running").build(), FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(
+                Constants.ID_SERVICE, 
+                NotificationUtils.createLowPriorityServiceNotification(this, "Ticker service running"),
+                FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            );
         } catch (Exception e) {
             Logger.error("Failed to Start Service", e);
             stopForeground(true);
@@ -98,12 +98,24 @@ public class TickerService extends Service {
                 if (total > 0) {
                     double progress = ((double) current / total) * 100;
                     if (current < total) {
-                        updateNotification(String.format(Locale.US, "%.2f%% Processing Tickers", progress));
+                        NotificationUtils.showLowPriorityServiceNotification(
+                            TickerService.this,
+                            String.format(
+                                Locale.US,
+                                "%.2f%% Processing Tickers", progress
+                            )
+                        );
                     } else {
-                        updateNotification(getString(R.string.successful_ticker_progress));
+                        NotificationUtils.showLowPriorityServiceNotification(
+                            TickerService.this,
+                            getString(R.string.successful_ticker_progress)
+                        );
                     }
                 } else {
-                    updateNotification(getString(R.string.fetching_tickers));
+                    NotificationUtils.showLowPriorityServiceNotification(
+                        TickerService.this,
+                        getString(R.string.fetching_tickers)
+                    );
                 }
                 MainActivity activity = MainActivity.getInstanceActivity();
                 if (activity != null) {
@@ -171,7 +183,8 @@ public class TickerService extends Service {
         if (highestTicker != null) {
             notifyAndSaveNewHighestPerformer(highestTicker);
         } else {
-            showNotification(
+            NotificationUtils.showHighPriorityNotification(
+                this,
                 Constants.CHANNEL_WARNING,
                 Constants.NAME_MISSING,
                 String.format(
@@ -207,24 +220,26 @@ public class TickerService extends Service {
 
         if (!previousState.equals(currentState)) {
             if (isReturnToTradingRange(currentState, previousState)) {
-                showNotification(
-                        Constants.CHANNEL_PRICE_CROSS,
-                        Constants.NAME_PRICE_CROSS,
-                        String.format(
-                                "%s price is now within trading range",
-                                highestTicker.getName(true)
-                        ),
-                        Constants.ID_PRICE_CROSS
+                NotificationUtils.showHighPriorityNotification(
+                    this,
+                    Constants.CHANNEL_PRICE_CROSS,
+                    Constants.NAME_PRICE_CROSS,
+                    String.format(
+                            "%s price is now within trading range",
+                            highestTicker.getName(true)
+                    ),
+                    Constants.ID_PRICE_CROSS
                 );
             } else if (currentState.equals(Constants.PRICE_BELOW)) {
-                showNotification(
-                        Constants.CHANNEL_WARNING,
-                        Constants.NAME_WARNING,
-                        String.format(
-                                "%s price has dropped below threshold",
-                                highestTicker.getName(true)
-                        ),
-                        Constants.ID_WARNING
+                NotificationUtils.showHighPriorityNotification(
+                    this,
+                    Constants.CHANNEL_WARNING,
+                    Constants.NAME_WARNING,
+                    String.format(
+                            "%s price has dropped below threshold",
+                            highestTicker.getName(true)
+                    ),
+                    Constants.ID_WARNING
                 );
             }
         }
@@ -245,7 +260,8 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void notifyAndSaveNewHighestPerformer(TickerInfo highestTicker) {
-        showNotification(
+        NotificationUtils.showHighPriorityNotification(
+            this,
             Constants.CHANNEL_HIGHEST,
             Constants.NAME_HIGHEST,
             String.format(
@@ -268,23 +284,6 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void showNotification(String channelId, String title, String content, int notificationId) {
-        NotificationCompat.Builder builder = NotificationUtils.createNotification(
-            this, 
-            channelId,
-            title,
-            NotificationManager.IMPORTANCE_HIGH,
-            true
-        )
-        .setContentTitle(title)
-        .setContentText(content)
-        .setContentIntent(NotificationUtils.createActivityIntent(this, MainActivity.class));
-        
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.notify(notificationId, builder.build());
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private void saveHighestTicker(TickerInfo ticker, @NonNull String priceState) {
         try {
             FileUtils.saveObject(
@@ -304,40 +303,5 @@ public class TickerService extends Service {
             Logger.error("Error loading highest ticker", e);
             return null;
         }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private NotificationCompat.Builder createServiceNotification(String title) {
-        NotificationChannel channel = new NotificationChannel(
-            Constants.CHANNEL_SERVICE,
-            Constants.NAME_SERVICE,
-            NotificationManager.IMPORTANCE_LOW
-        );
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(channel);
-
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-        Intent stopIntent = new Intent(this.getApplicationContext(), TickerService.class);
-        stopIntent.setAction(STOP_SERVICE_ACTION);
-        PendingIntent stopPendingIntent = PendingIntent.getService(this.getApplicationContext(), 0, stopIntent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
-
-        return new NotificationCompat.Builder(this, Constants.CHANNEL_SERVICE)
-            .setContentTitle(title)
-            .setSmallIcon(R.drawable.logo)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(R.drawable.sync_crossed, "STOP", stopPendingIntent)
-            .setVibrate(null)
-            .setAutoCancel(false)
-            .setContentIntent(pendingIntent);
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void updateNotification(String message) {
-        NotificationCompat.Builder builder = createServiceNotification(message);
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.notify(Constants.ID_SERVICE, builder.build());
     }
 } 

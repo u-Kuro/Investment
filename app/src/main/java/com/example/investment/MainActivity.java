@@ -228,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
                     timeAgo += ", " + updateTime.format(dayFormatter);
                 }
             } else {
-                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm", Locale.getDefault());
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MMMM d yyyy", Locale.getDefault());
                 timeAgo = updateTime.format(dateFormatter);
             }
             

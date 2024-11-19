@@ -10,11 +10,15 @@ public class Constants {
     public static final String PREF_FILTER_TYPE = "filterType";
     public static final String PREF_FILTER_STATUS = "filterStatus";
     
-    // Yahoo Finance
-    public static final String YAHOO_BASE_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
-    public static final String YAHOO_CRYPTO_URL = "https://finance.yahoo.com/markets/crypto/all/?start=0&count=250";
-    public static final String YAHOO_STOCKS_URL = "https://finance.yahoo.com/markets/stocks/most-active/?start=0&count=250";
+    // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
+    public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
+    public static final String YAHOO_SCREENER_URL = "https://query2.finance.yahoo.com/v1/finance/screener/predefined/saved";
     
+    // Yahoo Finance Screener Parameters
+    public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
+    public static final String SCREENER_STOCKS = "MOST_ACTIVES";
+    public static final int SCREENER_COUNT = 250;
+
     // Price States
     public static final String PRICE_ABOVE = "above_upper";
     public static final String PRICE_BELOW = "below_lower";

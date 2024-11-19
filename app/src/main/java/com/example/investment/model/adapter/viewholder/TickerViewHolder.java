@@ -1,11 +1,9 @@
 package com.example.investment.model.adapter.viewholder;
 
-import android.os.Build;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
 import com.example.investment.model.ticker.TickerInfo;
@@ -13,8 +11,8 @@ import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
 import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 
 public class TickerViewHolder extends RecyclerView.ViewHolder {
@@ -46,7 +44,6 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     public void bind(TickerInfo ticker) {
         this.currentTicker = ticker;
         String name = ticker.getName(true);
@@ -65,7 +62,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             typeIcon.setVisibility(View.GONE);
         }
 
-        timeSpan.setText(formatTimeSpan(ticker.getDays()));
+        timeSpan.setText(formatTimeSpan(ticker.getTimestampSeconds()));
         percentageIncreasePerDay.setText(String.format(Locale.US, "%.2f%% | D", ticker.getPercentageIncreasePerDay()));
 
         upperPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getUpperPriceBoundary()));
@@ -80,10 +77,13 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         ));
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private String formatTimeSpan(double days) {
-        LocalDate startDate = LocalDate.now().minusDays((long) days);
-        return startDate.format(DateTimeFormatter.ofPattern("MMM dd yyyy"));
+    private String formatTimeSpan(long timestampSeconds) {
+        if (timestampSeconds == 0) {
+            return itemView.getContext().getString(R.string.na);
+        }
+        Date date = new Date(timestampSeconds * 1000L); // Convert seconds to milliseconds
+        SimpleDateFormat formatter = new SimpleDateFormat("MMM d yyyy", Locale.US);
+        return formatter.format(date);
     }
 
     private int getCardColor(double upper, double lower, double lastPrice) {

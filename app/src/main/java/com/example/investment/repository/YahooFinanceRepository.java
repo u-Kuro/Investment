@@ -14,11 +14,13 @@ import com.example.investment.util.Logger;
 import com.example.investment.model.ticker.CachedTickerData;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.FileUtils;
+import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Calendar;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -26,11 +28,6 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.json.JSONArray;
 import org.json.JSONObject;
-
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 
 public class YahooFinanceRepository {
     private final OkHttpClient client = new OkHttpClient();
@@ -43,25 +40,13 @@ public class YahooFinanceRepository {
         try {
             listener.onProgress(0, 0);
 
-            // Parse tickers from HTML
-            Thread.sleep(1000 + random.nextInt(2000));
-            List<String> tickerHTMLs = new ArrayList<>(parseTickersFromHtml(
-                Jsoup.connect(Constants.YAHOO_STOCKS_URL).get().html()
-            ));
-            Thread.sleep(1000 + random.nextInt(2000));
-            tickerHTMLs.addAll(parseTickersFromHtml(
-                Jsoup.connect(Constants.YAHOO_CRYPTO_URL).get().html()
-            ));
-
-            int total = tickerHTMLs.size();
+            // Get Ticker Symbols
+            List<String> symbols = fetchSymbols();
+            int total = symbols.size();
             int current = 0;
-            for (String symbol : tickerHTMLs) {
+
+            for (String symbol : symbols) {
                 try {
-                    current++;
-                    listener.onProgress(current, total);
-
-                    Thread.sleep(1000 + random.nextInt(2000));
-
                     JSONObject data = fetchTickerData(symbol);
 
                     // Extract additional data as needed
@@ -75,13 +60,13 @@ public class YahooFinanceRepository {
                     }
 
                     JSONArray adjCloses = result.getJSONObject("indicators")
-                            .getJSONArray("adjclose")
-                            .getJSONObject(0)
-                            .getJSONArray("adjclose");
+                        .getJSONArray("adjclose")
+                        .getJSONObject(0)
+                        .getJSONArray("adjclose");
 
                     // Get Indicators and Prices
                     long numberOfDays = adjCloses.length();
-                    double firstPrice = adjCloses.getDouble(0);
+                    double firstPrice = 0;
                     double lastPrice = 0;
                     double sumOfClose = 0;
                     double sumOfPercentageDifference = 0;
@@ -90,6 +75,11 @@ public class YahooFinanceRepository {
                         // Get and Include Close Price if Available
                         try {
                             closePrice = adjCloses.getDouble(i);
+                            if (firstPrice <= 0) {
+                                firstPrice = closePrice;
+                                --numberOfDays;
+                                continue;
+                            }
                         } catch (Exception ignored) {
                             --numberOfDays;
                             continue;
@@ -116,8 +106,7 @@ public class YahooFinanceRepository {
                     String name = null;
                     try {
                         name = meta.getString("longName");
-                    } catch (Exception ignored) {
-                    }
+                    } catch (Exception ignored) {}
                     if (name == null) {
                         try {
                             name = meta.getString("shortName");
@@ -130,26 +119,56 @@ public class YahooFinanceRepository {
                         type = meta.getString("instrumentType");
                     } catch (Exception ignored) {}
 
+                    // Get First Date
+                    long timestampSeconds = 0;
+                    try {
+                        timestampSeconds = meta.getLong("firstTradeDate");
+                        if (!isFinite(timestampSeconds)) {
+                            timestampSeconds = 0;
+                        }
+                    } catch (Exception ignored) {}
+                    if (timestampSeconds == 0) {
+                        try {
+                            timestampSeconds = result.getJSONArray("timestamp").getLong(0);
+                            if (!isFinite(timestampSeconds)) {
+                                timestampSeconds = 0;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    if (timestampSeconds == 0) {
+                        try {
+                            Calendar calendar = Calendar.getInstance();
+                            calendar.add(Calendar.DAY_OF_YEAR, -adjCloses.length());
+                            timestampSeconds = (long) Math.ceil((double) calendar.getTimeInMillis() / 1000);
+                            if (!isFinite(timestampSeconds)) {
+                                timestampSeconds = 0;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
                     tickers.add(new TickerInfo(
-                            symbol,
-                            name,
-                            type,
-                            lastPrice,
-                            densePrice,
-                            upperPriceBoundary,
-                            lowerPriceBoundary,
-                            percentageIncreasePerDay,
-                            adjCloses.length()
+                        symbol,
+                        name,
+                        type,
+                        lastPrice,
+                        densePrice,
+                        upperPriceBoundary,
+                        lowerPriceBoundary,
+                        percentageIncreasePerDay,
+                        timestampSeconds
                     ));
 
                     tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickers);
+
+                    listener.onProgress(++current, total);
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
                     listener.onError();
                     return;
                 } catch (Exception e) {
+                    listener.onProgress(++current, total);
                     Logger.error("Unexpected error processing " + symbol, e);
                 }
             }
@@ -168,6 +187,22 @@ public class YahooFinanceRepository {
             listener.onError();
         } else {
             saveCache(context, tickers, listener);
+        }
+    }
+
+    private double calculatePercentageIncreasePerDay(
+        double firstPrice,
+        double lowerPriceBoundary,
+        long numberOfDays
+    ) throws Exception {
+        double priceChange = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
+        if (isFinite(priceChange)) {
+            return priceChange;
+        } else {
+            Logger.debug("lowerPriceBoundary "+lowerPriceBoundary);
+            Logger.debug("firstPrice "+firstPrice);
+            Logger.debug("numberOfDays "+numberOfDays);
+            throw new Exception("Invalid Price Change");
         }
     }
 
@@ -203,57 +238,89 @@ public class YahooFinanceRepository {
         }
     }
 
-    public List<String> parseTickersFromHtml(String html) {
-        List<String> tickers = new ArrayList<>();
-
-        // Use JSoup to parse HTML
-        Document doc = Jsoup.parse(html);
-
-        // Select all ticker cells using the attribute
-        Elements tickerCells = doc.select("a[data-testid='table-cell-ticker']");
-
-        // Extract ticker symbols
-        for (Element cell : tickerCells) {
-            Element symbolSpan = cell.select("span.symbol").first();
-            if (symbolSpan != null) {
-                String ticker = symbolSpan.text().trim();
-                // Remove any trailing whitespace that might be present
-                ticker = ticker.replaceAll("\\s+$", "");
-                tickers.add(ticker);
-            }
-        }
-
-        return tickers;
-    }
-
     private @NonNull JSONObject fetchTickerData(String symbol) throws Exception {
-        String url = Constants.YAHOO_BASE_URL + symbol + "?interval=1d&range=max";
+        String url = new UrlBuilder(Constants.YAHOO_CHART_URL)
+            .addPath(symbol)
+            .addParam("events", "capitalGain|div|split")
+            .addParam("formatted", "true")
+            .addParam("includeAdjustedClose", "true")
+            .addParam("interval", "1d")
+            .addParam("period1", "0")
+            .addParam("period2", String.valueOf((long) Math.floor((double) System.currentTimeMillis() / 1000)))
+            .addParam("symbol", symbol)
+            .addParam("userYfid", "true")
+            .addParam("lang", "en-US")
+            .addParam("region", "US")
+            .build();
+
         Request request = new Request.Builder()
             .url(url)
             .build();
 
+        // Add delay between requests
+        Thread.sleep(1000 + random.nextInt(2000));
+
         try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new Exception("Unexpected response " + response);
+            if (!response.isSuccessful()) throw new Exception("Unexpected ticker response: " + response);
 
             ResponseBody body = response.body();
             if (body == null) throw new Exception("Empty response body");
 
-            String responseData = body.string();
-
-            return new JSONObject(responseData);
+            return new JSONObject(body.string());
         }
     }
 
-    private double calculatePercentageIncreasePerDay(
-        double firstPrice,
-        double lowerPriceBoundary,
-        long numberOfDays
-    ) throws Exception {
-        double priceChange = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
-        if (isFinite(priceChange)) {
-            return priceChange;
-        } else {
-            throw new Exception("Invalid Price Change");
+    private List<String> fetchSymbols() throws Exception {
+        List<String> symbols = new ArrayList<>();
+
+        // Fetch crypto symbols
+        String[] screeners = new String[]{
+            Constants.SCREENER_CRYPTO,
+            Constants.SCREENER_STOCKS
+        };
+
+        for (String screener : screeners) {
+            String url = new UrlBuilder(Constants.YAHOO_SCREENER_URL)
+                .addParam("count", Constants.SCREENER_COUNT)
+                .addParam("formatted", "true")
+                .addParam("scrIds", screener)
+                .addParam("sortField", "intradaymarketcap")
+                .addParam("sortType", "DESC")
+                .addParam("start", "0")
+                .addParam("fields", "symbol")
+                .addParam("lang", "en-US")
+                .addParam("region", "US")
+                .build();
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .build();
+
+            // Add delay between requests
+            Thread.sleep(1000 + random.nextInt(2000));
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) throw new Exception("Unexpected "+screener+" response: " + response);
+
+                ResponseBody body = response.body();
+                if (body == null) throw new Exception("Empty " + screener + " response body");
+
+                JSONArray quotes = new JSONObject(body.string())
+                    .getJSONObject("finance")
+                    .getJSONArray("result")
+                    .getJSONObject(0)
+                    .getJSONArray("quotes");
+
+                for (int i = 0; i < quotes.length(); i++) {
+                    try {
+                        symbols.add(quotes.getJSONObject(i).getString("symbol"));
+                    } catch (Exception ex) {
+                        Logger.debug("ex "+ex);
+                    }
+                }
+            }
         }
+
+        return symbols;
     }
 } 

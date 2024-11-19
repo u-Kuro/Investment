@@ -2,7 +2,6 @@
 agp = "8.7.2"
 browser = "1.8.0"
 coreSplashscreen = "1.0.1"
-jsoup = "1.17.2"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
@@ -18,7 +17,6 @@ workRuntime = "2.10.0"
 [libraries]
 browser = { module = "androidx.browser:browser", version.ref = "browser" }
 core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
-jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
