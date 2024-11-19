@@ -1,6 +1,8 @@
 package com.example.investment.adapter;
 
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,9 +24,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerViewHolder> {
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<TickerInfo> tickers = new ArrayList<>();
+    private final List<TickerInfo> originalTickers = new ArrayList<>();
+    private String typeFilter = "All";
+    private boolean statusFilter = false;
     private OnTickerClickListener clickListener;
     private OnTickerLongClickListener longClickListener;
 
@@ -67,13 +74,60 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
         return tickers.size();
     }
 
-    public void setTickers(List<TickerInfo> newTickers) {
-        // Calculate the difference between old and new lists
-        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(new TickerDiffCallback(this.tickers, newTickers), true);
-        diffResult.dispatchUpdatesTo(this);
+    public void setTickers(List<TickerInfo> newOriginalTickers) {
+        mainHandler.post(() -> {
+            originalTickers.clear();
+            originalTickers.addAll(newOriginalTickers);
+            applyFilters();
+        });
+    }
 
-        this.tickers.clear();
-        this.tickers.addAll(newTickers);
+    public void setTypeFilter(String type) {
+        mainHandler.post(() -> {
+            this.typeFilter = type;
+            applyFilters();
+        });
+    }
+
+    public void setStatusFilter(boolean status) {
+        mainHandler.post(() -> {
+            this.statusFilter = status;
+            applyFilters();
+        });
+    }
+
+    private void applyFilters() {
+        List<TickerInfo> filteredList = originalTickers.stream()
+                .filter(ticker -> {
+                    // Type filter
+                    boolean typeMatch = typeFilter.equals("All")
+                            || typeFilter.equals("Crypto") && "cryptocurrency".equalsIgnoreCase(ticker.getType())
+                            || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
+
+                    // Status filter
+                    boolean statusMatch = !statusFilter
+                            || (
+                                ticker.getLastPrice() > ticker.getLowerPriceBoundary()
+                                && ticker.getLastPrice() < ticker.getUpperPriceBoundary()
+                            );
+
+                    return typeMatch && statusMatch;
+                })
+                .collect(Collectors.toList());
+
+        setFilteredTickers(filteredList);
+    }
+
+    private void setFilteredTickers(List<TickerInfo> filteredTickers) {
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
+            new TickerDiffCallback(tickers, filteredTickers),
+            true
+        );
+
+        tickers.clear();
+        tickers.addAll(filteredTickers);
+
+        diffResult.dispatchUpdatesTo(this);
     }
 
     public static class TickerViewHolder extends RecyclerView.ViewHolder {
@@ -179,12 +233,12 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerAdapter.TickerView
             }
         }
 
-        private int getCardColor(double upper, double lower, double current) {
+        private int getCardColor(double upper, double lower, double lastPrice) {
             int colorResId;
             
-            if (current >= upper) {
+            if (lastPrice >= upper) {
                 colorResId = R.color.hold;
-            } else if (current >= lower) {
+            } else if (lastPrice > lower) {
                 colorResId = R.color.good;
             } else {
                 colorResId = R.color.bad;

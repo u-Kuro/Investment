@@ -3,6 +3,7 @@
     <color name="white">#FFF</color>
     <color name="black">#000</color>
     <color name="dark_grey">#FF262626</color>
+    <color name="darker_grey">#FF101010</color>
     <color name="good">#00FF7F</color>
     <color name="hold">#708090</color>
     <color name="bad">#DC143C</color>

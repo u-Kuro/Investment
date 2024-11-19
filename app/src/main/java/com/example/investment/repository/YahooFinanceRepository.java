@@ -59,7 +59,7 @@ public class YahooFinanceRepository {
 
             int total = tickerHTMLs.size();
             int current = 0;
-
+            JSONArray adjCloses = null;
             for (String symbol : tickerHTMLs) {
                 try {
                     current++;
@@ -79,23 +79,37 @@ public class YahooFinanceRepository {
                         continue;
                     }
 
-                    JSONObject quote = result.getJSONObject("indicators")
-                            .getJSONArray("quote")
-                            .getJSONObject(0);
-                    JSONArray closes = quote.getJSONArray("close");
+                    adjCloses = result.getJSONObject("indicators")
+                            .getJSONArray("adjclose")
+                            .getJSONObject(0)
+                            .getJSONArray("adjclose");
 
                     // Get Indicators and Prices
-                    double firstPrice = quote.getJSONArray("open").getDouble(0);
-                    long numberOfDays = closes.length();
+                    long numberOfDays = adjCloses.length();
+                    double firstPrice = adjCloses.getDouble(0);
+                    double lastPrice = 0;
                     double sumOfClose = 0;
                     double sumOfPercentageDifference = 0;
                     for (int i = 0; i < numberOfDays; i++) {
-                        double closePrice = closes.getDouble(i);
+                        double closePrice;
+                        // Get and Include Close Price if Available
+                        try {
+                            closePrice = adjCloses.getDouble(i);
+                        } catch (Exception ignored) {
+                            --numberOfDays;
+                            continue;
+                        }
                         sumOfClose += closePrice;
                         // Calculate and Sum Percentage Difference of Mean and Price
                         double densePrice = sumOfClose / (i + 1);
                         sumOfPercentageDifference += Math.abs(closePrice - densePrice) / ((closePrice + densePrice) / 2);
+                        // Set Last Price Available
+                        lastPrice = closePrice;
                     }
+                    // Check Invalid Last Price
+                    if (lastPrice == 0) throw new Exception("Invalid Last Price");
+                    if (numberOfDays < 1) throw new Exception("Invalid Number Of Days");
+                    // Calculate Indicators
                     double densePrice = sumOfClose / numberOfDays;
                     double averagePercentageDifference = sumOfPercentageDifference / numberOfDays;
                     double priceBoundary = averagePercentageDifference * densePrice;
@@ -107,11 +121,13 @@ public class YahooFinanceRepository {
                     String name = null;
                     try {
                         name = meta.getString("longName");
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                     if (name == null) {
                         try {
                             name = meta.getString("shortName");
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     // Get Type
@@ -121,25 +137,42 @@ public class YahooFinanceRepository {
                     } catch (Exception ignored) {}
 
                     tickers.add(new TickerInfo(
-                        symbol,
-                        name,
-                        type,
-                        closes.getDouble(closes.length() - 1),
-                        densePrice,
-                        upperPriceBoundary,
-                        lowerPriceBoundary,
-                        percentageIncreasePerDay,
-                        closes.length()
+                            symbol,
+                            name,
+                            type,
+                            lastPrice,
+                            densePrice,
+                            upperPriceBoundary,
+                            lowerPriceBoundary,
+                            percentageIncreasePerDay,
+                            adjCloses.length()
                     ));
 
                     tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickers);
+                } catch (InterruptedException e) {
+                    Logger.debug("e "+symbol+" "+e);
+                    Logger.error("InterruptedException processing " + symbol, e);
+                    Thread.currentThread().interrupt();
+                    listener.onFinish(0);
+                    return;
                 } catch (Exception e) {
+                    Logger.debug("e "+symbol+" "+e);
+                    if (adjCloses != null) {
+                        Logger.debug("closes.len "+symbol+" "+adjCloses.length());
+                    }
+                    Logger.debug("closes "+symbol+" "+adjCloses);
                     Logger.error("Unexpected error processing " + symbol, e);
                 }
             }
-
+        } catch (InterruptedException e) {
+            Logger.debug("e "+e);
+            Logger.error("InterruptedException ticker data", e);
+            Thread.currentThread().interrupt();
+            listener.onFinish(0);
+            return;
         } catch (Exception e) {
+            Logger.debug("e "+e);
             Logger.error("Error fetching ticker data", e);
         }
 

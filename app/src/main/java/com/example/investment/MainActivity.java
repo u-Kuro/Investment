@@ -1,6 +1,7 @@
 package com.example.investment;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -10,7 +11,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -44,17 +50,23 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 
+import android.content.SharedPreferences;
+
 public class MainActivity extends AppCompatActivity {
     public static WeakReference<MainActivity> weakActivity;
     private TickerAdapter adapter;
     private SwipeRefreshLayout swipeRefreshLayout;
     private TickerDataLoader dataLoader;
-    private RecyclerView recyclerView;
-    private TextView lastUpdateText;
-    private TextView progressText;
+    private TextView updateText;
     private ProgressBar progressBar;
-    private View progressContainer;
     private static final int PERMISSION_REQUEST_CODE = 123;
+    private static final String PREFS_NAME = "TickerFilterPrefs";
+    private static final String PREF_FILTER_TYPE = "filterType";
+    private static final String PREF_FILTER_STATUS = "filterStatus";
+
+    private ImageView filterStatusImage;
+    private boolean filterStatus = false;
+    private ImageView stopProcessingImage;
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
@@ -76,12 +88,10 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        recyclerView = findViewById(R.id.recyclerView);
+        RecyclerView recyclerView = findViewById(R.id.recyclerView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
-        lastUpdateText = findViewById(R.id.lastUpdateText);
-        progressText = findViewById(R.id.progressText);
+        updateText = findViewById(R.id.updateText);
         progressBar = findViewById(R.id.progressBar);
-        progressContainer = findViewById(R.id.progressContainer);
         
         adapter = new TickerAdapter();
         recyclerView.setAdapter(adapter);
@@ -91,17 +101,38 @@ public class MainActivity extends AppCompatActivity {
 
         dataLoader = TickerDataLoader.getInstance();
         
-        loadCachedData();
+        loadCachedData(true);
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
         requestNotificationPermission();
 
         setupRecyclerView();
+
+        setupFilters();
+
+        stopProcessingImage = findViewById(R.id.stopProcessingImage);
+        stopProcessingImage.setVisibility(View.GONE);
+        stopProcessingImage.setOnClickListener(v -> {
+            AlertDialog alertDialog = new AlertDialog.Builder(this)
+                .setTitle("Confirmation")
+                .setMessage("Do you want to cancel the update?")
+                .setPositiveButton("YES", (dialog, which) -> {
+                    Intent stopIntent = new Intent(this, TickerService.class);
+                    stopIntent.setAction(TickerService.STOP_SERVICE_ACTION);
+                    startService(stopIntent);
+                })
+                .create();
+            Window dialogWindow = alertDialog.getWindow();
+            if (dialogWindow != null) {
+                dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
+            }
+            alertDialog.show();
+        });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadCachedData() {
+    private void loadCachedData(boolean checkUpdate) {
         new Thread(() -> {
             try {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
@@ -111,11 +142,13 @@ public class MainActivity extends AppCompatActivity {
                     if (cachedTickers != null && !cachedTickers.isEmpty()) {
                         updateTickerList(cachedTickers);
                     }
-                    LocalDateTime lastUpdate = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(lastUpdateTime), 
-                        ZoneId.systemDefault());
-                    if (lastUpdateTime == 0 || lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
-                        loadTickers(false);
+                    if (checkUpdate) {
+                        LocalDateTime lastUpdate = LocalDateTime.ofInstant(
+                            Instant.ofEpochMilli(lastUpdateTime),
+                            ZoneId.systemDefault());
+                        if (lastUpdateTime == 0 || lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
+                            loadTickers(false);
+                        }
                     }
                 });
             } catch (Exception e) {
@@ -139,7 +172,6 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateTickerList(List<TickerInfo> tickers) {
         adapter.setTickers(tickers);
-        recyclerView.smoothScrollToPosition(0);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -181,49 +213,57 @@ public class MainActivity extends AppCompatActivity {
                 timeAgo = updateTime.format(dateFormatter);
             }
             
-            lastUpdateText.setText(getString(R.string.last_updated_format, timeAgo));
+            updateText.setText(getString(R.string.last_updated_format, timeAgo));
         } else {
-            lastUpdateText.setText(R.string.last_updated_never);
+            updateText.setText(R.string.last_updated_never);
         }
     }
 
     public void updateProgress(int current, int total) {
         runOnUiThread(() -> {
-            ViewGroup.LayoutParams params = progressContainer.getLayoutParams();
             if (total > 0) {
                 progressBar.setMax(total);
                 progressBar.setProgress(current);
                 progressBar.setIndeterminate(false);
                 
                 if (current < total) {
-                    progressText.setText(getString(R.string.processing_ticker_progress, current, total, (double)current/total * 100));
-                    progressContainer.setVisibility(View.VISIBLE);
-                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                    stopProcessingImage.setVisibility(View.VISIBLE);
+                    updateText.setText(getString(R.string.processing_ticker_progress, current, total, (double)current/total * 100));
+                    progressBar.setVisibility(View.VISIBLE);
+                    progressBar.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
                 } else {
-                    progressText.setText(R.string.successful_ticker_progress);
-                    progressContainer.setVisibility(View.GONE);
-                    params.height = 0;
+                    stopProcessingImage.setVisibility(View.GONE);
+                    updateText.setText(R.string.successful_ticker_progress);
+                    progressBar.setVisibility(View.GONE);
+                    progressBar.getLayoutParams().height = 0;
                 }
             } else {
-                progressText.setText(getString(R.string.fetching_tickers));
+                stopProcessingImage.setVisibility(View.VISIBLE);
+                updateText.setText(getString(R.string.fetching_tickers));
                 progressBar.setIndeterminate(true);
-                progressContainer.setVisibility(View.VISIBLE);
-                params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                progressBar.setVisibility(View.VISIBLE);
+                progressBar.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
             }
-            progressContainer.setLayoutParams(params);
-            progressContainer.requestLayout();
+            progressBar.requestLayout();
+            ((View)progressBar.getParent()).requestLayout();
         });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateFinished(long updateTime) {
-        ViewGroup.LayoutParams params = progressContainer.getLayoutParams();
-        progressContainer.setVisibility(View.GONE);
-        params.height = 0;
-        progressContainer.setLayoutParams(params);
-        progressContainer.requestLayout();
+        runOnUiThread(() -> {
+            stopProcessingImage.setVisibility(View.GONE);
+            progressBar.setVisibility(View.GONE);
+            progressBar.getLayoutParams().height = 0;
+            progressBar.requestLayout();
+            ((View) progressBar.getParent()).requestLayout();
 
-        updateLastUpdateTime(updateTime);
+            if (updateTime == 0) {
+                loadCachedData(false);
+            } else {
+                updateLastUpdateTime(updateTime);
+            }
+        });
     }
 
     public static MainActivity getInstanceActivity() {
@@ -290,6 +330,58 @@ public class MainActivity extends AppCompatActivity {
 
             Toast.makeText(this, "Copied to clipboard.", Toast.LENGTH_SHORT).show();
             return true;
+        });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void setupFilters() {
+        Spinner typeFilterSpinner = findViewById(R.id.typeFilterSpinner);
+        filterStatusImage = findViewById(R.id.statusFilterImage);
+
+        // Load saved preferences
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
+        int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
+
+        // Setup spinner
+        ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
+            R.layout.spinner_item,
+            new String[]{"All", "Crypto", "Stock"}
+        );
+        filterAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+        typeFilterSpinner.setAdapter(filterAdapter);
+        typeFilterSpinner.setSelection(savedFilterPosition);
+
+        // Set initial filter states
+        adapter.setStatusFilter(filterStatus);
+        adapter.setTypeFilter(typeFilterSpinner.getSelectedItem().toString());
+
+        // Update UI to reflect saved state
+        filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
+
+        typeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+                editor.putInt(PREF_FILTER_TYPE, position);
+                editor.apply();
+                
+                adapter.setTypeFilter(parent.getSelectedItem().toString());
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        filterStatusImage.setOnClickListener(v -> {
+            filterStatus = !filterStatus;
+            filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
+                
+            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+            editor.putBoolean(PREF_FILTER_STATUS, filterStatus);
+            editor.apply();
+            
+            adapter.setStatusFilter(filterStatus);
         });
     }
 }

@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -35,7 +36,7 @@ public class TickerService extends Service {
     private static final String PREFS_NAME = "TickerPrefs";
     private static final String KEY_HIGHEST_TICKER = "highest_ticker";
     private static final String KEY_HIGHEST_PERCENTAGE = "highest_percentage";
-    private final String STOP_SERVICE_ACTION = "stop_service";
+    public static final String STOP_SERVICE_ACTION = "stop_service";
     private static final int NOTIFICATION_ID = 1;
     private TickerDataLoader dataLoader;
     private final ExecutorService executorService = Executors.newFixedThreadPool(1);
@@ -69,6 +70,7 @@ public class TickerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             if (STOP_SERVICE_ACTION.equals(intent.getAction())) {
+                Logger.debug("HERE");
                 stopForeground(true);
                 stopSelf();
             }
@@ -84,6 +86,7 @@ public class TickerService extends Service {
 
     @Override
     public void onDestroy() {
+        Logger.debug("HERE? DEST");
         executorService.shutdownNow();
         if (future != null) {
             future.cancel(true);
@@ -179,12 +182,18 @@ public class TickerService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(channel);
 
+        // Create an intent to launch the main activity
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "highest_ticker")
             .setContentTitle("New Highest Performing Ticker!")
             .setContentText(String.format(Locale.US, "%s: %.2f%% Per Day", name, potentialHighestTicker.getPercentageIncreasePerDay()))
-            .setSmallIcon(R.mipmap.ic_launcher_round)
+            .setSmallIcon(R.drawable.logo)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true);
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent);
 
         manager.notify(2, builder.build());
 
@@ -202,16 +211,22 @@ public class TickerService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(channel);
 
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
         Intent stopIntent = new Intent(this.getApplicationContext(), TickerService.class);
         stopIntent.setAction(STOP_SERVICE_ACTION);
         PendingIntent stopPendingIntent = PendingIntent.getService(this.getApplicationContext(), 0, stopIntent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(title)
-                .setSmallIcon(R.drawable.logo)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .addAction(R.drawable.xclose_white, "EXIT", stopPendingIntent)
-                .setVibrate(null);
+            .setContentTitle(title)
+            .setSmallIcon(R.drawable.logo)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(R.drawable.sync_crossed, "STOP", stopPendingIntent)
+            .setVibrate(null)
+            .setAutoCancel(false)
+            .setContentIntent(pendingIntent);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
