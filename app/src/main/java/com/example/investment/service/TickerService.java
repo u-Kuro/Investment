@@ -70,7 +70,6 @@ public class TickerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             if (STOP_SERVICE_ACTION.equals(intent.getAction())) {
-                Logger.debug("HERE");
                 stopForeground(true);
                 stopSelf();
             }
@@ -86,7 +85,6 @@ public class TickerService extends Service {
 
     @Override
     public void onDestroy() {
-        Logger.debug("HERE? DEST");
         executorService.shutdownNow();
         if (future != null) {
             future.cancel(true);

@@ -24,6 +24,7 @@ import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
@@ -31,7 +32,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-import androidx.browser.customtabs.CustomTabsIntent;
+
 import android.net.Uri;
 
 import com.example.investment.adapter.TickerAdapter;
@@ -40,6 +41,7 @@ import com.example.investment.task.TickerDataLoader;
 import com.example.investment.util.Logger;
 import com.example.investment.util.WorkManager;
 import com.example.investment.service.TickerService;
+import com.example.investment.util.CustomTabsHelper;
 
 import java.lang.ref.WeakReference;
 import java.time.Instant;
@@ -51,6 +53,7 @@ import java.util.List;
 import java.util.Locale;
 
 import android.content.SharedPreferences;
+import androidx.activity.OnBackPressedCallback;
 
 public class MainActivity extends AppCompatActivity {
     public static WeakReference<MainActivity> weakActivity;
@@ -68,10 +71,14 @@ public class MainActivity extends AppCompatActivity {
     private boolean filterStatus = false;
     private ImageView stopProcessingImage;
 
+    private final CustomTabsHelper customTabsHelper = CustomTabsHelper.getInstance();
+
+    private RecyclerView recyclerView;
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (savedInstanceState == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
         }
 
@@ -80,15 +87,16 @@ public class MainActivity extends AppCompatActivity {
         splashScreen.setKeepOnScreenCondition(() -> false);
 
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
+
+        EdgeToEdge.enable(this);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
 
-        RecyclerView recyclerView = findViewById(R.id.recyclerView);
+        recyclerView = findViewById(R.id.recyclerView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         updateText = findViewById(R.id.updateText);
         progressBar = findViewById(R.id.progressBar);
@@ -100,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(() -> this.loadTickers(true));
 
         dataLoader = TickerDataLoader.getInstance();
-        
+
         loadCachedData(true);
 
         weakActivity = new WeakReference<>(MainActivity.this);
@@ -128,6 +136,20 @@ public class MainActivity extends AppCompatActivity {
                 dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
             }
             alertDialog.show();
+        });
+
+        customTabsHelper.warmup(MainActivity.this);
+
+        // Add back press handling
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (recyclerView.canScrollVertically(-1)) {
+                    recyclerView.scrollToPosition(0);
+                } else {
+                    moveTaskToBack(true);
+                }
+            }
         });
     }
 
@@ -310,9 +332,12 @@ public class MainActivity extends AppCompatActivity {
                 String symbol = ticker.getSymbol();
                 if (symbol == null || symbol.isEmpty()) throw new Exception("Empty Symbol");
                 String url = "https://finance.yahoo.com/quote/" + symbol;
-                CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder();
-                CustomTabsIntent customTabsIntent = builder.build();
-                customTabsIntent.launchUrl(this, Uri.parse(url));
+                customTabsHelper.launchUrl(
+                    this,
+                    Uri.parse(url),
+                    ContextCompat.getColor(this, R.color.black),
+                    true
+                );
             } catch (Exception ignored) {
                 Toast.makeText(getApplicationContext(), "Can't open the link", Toast.LENGTH_LONG).show();
             }

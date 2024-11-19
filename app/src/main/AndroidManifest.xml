@@ -16,14 +16,14 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Investment">
+        android:theme="@style/Theme.Investment"
+        android:launchMode="singleInstance">
         <activity
             android:theme="@style/Theme.Investment.SplashScreen"
             android:name=".MainActivity"
-            android:hardwareAccelerated="true"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"
             android:exported="true"
-            android:alwaysRetainTaskState="true">
+            android:alwaysRetainTaskState="true"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

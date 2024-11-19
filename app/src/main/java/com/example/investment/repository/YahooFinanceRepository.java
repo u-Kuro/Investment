@@ -59,7 +59,6 @@ public class YahooFinanceRepository {
 
             int total = tickerHTMLs.size();
             int current = 0;
-            JSONArray adjCloses = null;
             for (String symbol : tickerHTMLs) {
                 try {
                     current++;
@@ -79,7 +78,7 @@ public class YahooFinanceRepository {
                         continue;
                     }
 
-                    adjCloses = result.getJSONObject("indicators")
+                    JSONArray adjCloses = result.getJSONObject("indicators")
                             .getJSONArray("adjclose")
                             .getJSONObject(0)
                             .getJSONArray("adjclose");
@@ -151,28 +150,20 @@ public class YahooFinanceRepository {
                     tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickers);
                 } catch (InterruptedException e) {
-                    Logger.debug("e "+symbol+" "+e);
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
                     listener.onFinish(0);
                     return;
                 } catch (Exception e) {
-                    Logger.debug("e "+symbol+" "+e);
-                    if (adjCloses != null) {
-                        Logger.debug("closes.len "+symbol+" "+adjCloses.length());
-                    }
-                    Logger.debug("closes "+symbol+" "+adjCloses);
                     Logger.error("Unexpected error processing " + symbol, e);
                 }
             }
         } catch (InterruptedException e) {
-            Logger.debug("e "+e);
-            Logger.error("InterruptedException ticker data", e);
+            Logger.error("InterruptedException fetching ticker data", e);
             Thread.currentThread().interrupt();
             listener.onFinish(0);
             return;
         } catch (Exception e) {
-            Logger.debug("e "+e);
             Logger.error("Error fetching ticker data", e);
         }
 
