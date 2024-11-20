@@ -25,10 +25,6 @@ public class UrlBuilder {
         return this;
     }
 
-    public UrlBuilder addParam(String key, int value) {
-        return addParam(key, String.valueOf(value));
-    }
-
     @SuppressLint("NewApi")
     private String encode(String value) {
         try {

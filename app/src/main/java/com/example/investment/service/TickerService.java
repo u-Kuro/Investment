@@ -215,7 +215,7 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void handlePriceStateChanges(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        String currentState = getPriceState(highestTicker);
+        String currentState = PriceUtils.getPriceState(highestTicker);
         String previousState = savedHighest.getPriceState();
 
         if (!previousState.equals(currentState)) {
@@ -272,15 +272,7 @@ public class TickerService extends Service {
             ),
             Constants.ID_HIGHEST
         );
-        saveHighestTicker(highestTicker, getPriceState(highestTicker));
-    }
-
-    private @NonNull String getPriceState(TickerInfo tickerInfo) {
-        return PriceUtils.getPriceState(
-            tickerInfo.getLastPrice(),
-            tickerInfo.getUpperPriceBoundary(),
-            tickerInfo.getLowerPriceBoundary()
-        );
+        saveHighestTicker(highestTicker, PriceUtils.getPriceState(highestTicker));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)

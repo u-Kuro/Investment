@@ -14,13 +14,14 @@ import com.example.investment.util.Logger;
 import com.example.investment.model.ticker.CachedTickerData;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.FileUtils;
+import com.example.investment.util.NumberUtils;
 import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.Calendar;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -65,42 +66,47 @@ public class YahooFinanceRepository {
                         .getJSONArray("adjclose");
 
                     // Get Indicators and Prices
-                    long numberOfDays = adjCloses.length();
+                    final long adjClosesLen = adjCloses.length();
+                    long pricesLen = 0;
                     double firstPrice = 0;
                     double lastPrice = 0;
-                    double sumOfClose = 0;
+                    double sumOfPrice = 0;
                     double sumOfPercentageDifference = 0;
-                    for (int i = 0; i < numberOfDays; i++) {
-                        double closePrice;
+                    for (int i = 0; i < adjClosesLen; i++) {
+                        double adjClose;
                         // Get and Include Close Price if Available
                         try {
-                            closePrice = adjCloses.getDouble(i);
-                            if (firstPrice <= 0) {
-                                firstPrice = closePrice;
-                                --numberOfDays;
-                                continue;
+                            adjClose = adjCloses.getDouble(i);
+                            if (adjClose < 0) throw new Exception("Invalid Adjusted Closing Price");
+                            if (firstPrice == 0) {
+                                if (adjClose > 0) {
+                                    firstPrice = adjClose;
+                                } else {
+                                    continue;
+                                }
                             }
                         } catch (Exception ignored) {
-                            --numberOfDays;
                             continue;
                         }
-                        sumOfClose += closePrice;
+                        // Add Valid Adjusted Close Price
+                        sumOfPrice += adjClose;
+                        ++pricesLen;
                         // Calculate and Sum Percentage Difference of Mean and Price
-                        double densePrice = sumOfClose / (i + 1);
-                        sumOfPercentageDifference += Math.abs(closePrice - densePrice) / ((closePrice + densePrice) / 2);
+                        double densePrice = sumOfPrice / pricesLen;
+                        sumOfPercentageDifference += Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2);
                         // Set Last Price Available
-                        lastPrice = closePrice;
+                        lastPrice = adjClose;
                     }
                     // Check Invalid Last Price
-                    if (lastPrice == 0) throw new Exception("Invalid Last Price");
-                    if (numberOfDays < 1) throw new Exception("Invalid Number Of Days");
+                    if (lastPrice <= 0) throw new Exception("Invalid Last Price");
+                    if (pricesLen < 1) throw new Exception("Invalid Number of Adjusted Closing Price");
                     // Calculate Indicators
-                    double densePrice = sumOfClose / numberOfDays;
-                    double averagePercentageDifference = sumOfPercentageDifference / numberOfDays;
+                    double densePrice = sumOfPrice / pricesLen;
+                    double averagePercentageDifference = sumOfPercentageDifference / pricesLen;
                     double priceBoundary = averagePercentageDifference * densePrice;
                     double upperPriceBoundary = densePrice + priceBoundary;
                     double lowerPriceBoundary = densePrice - priceBoundary;
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lowerPriceBoundary, numberOfDays);
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lowerPriceBoundary, pricesLen);
 
                     // Get Name
                     String name = null;
@@ -137,9 +143,9 @@ public class YahooFinanceRepository {
                     }
                     if (timestampSeconds == 0) {
                         try {
-                            Calendar calendar = Calendar.getInstance();
-                            calendar.add(Calendar.DAY_OF_YEAR, -adjCloses.length());
-                            timestampSeconds = (long) Math.ceil((double) calendar.getTimeInMillis() / 1000);
+                            timestampSeconds = TimeUnit.MILLISECONDS.toSeconds(
+                                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(adjCloses.length() - 1)
+                            );
                             if (!isFinite(timestampSeconds)) {
                                 timestampSeconds = 0;
                             }
@@ -195,14 +201,11 @@ public class YahooFinanceRepository {
         double lowerPriceBoundary,
         long numberOfDays
     ) throws Exception {
-        double priceChange = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
-        if (isFinite(priceChange)) {
-            return priceChange;
+        double percentageIncreasePerDay = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
+        if (isFinite(percentageIncreasePerDay)) {
+            return percentageIncreasePerDay;
         } else {
-            Logger.debug("lowerPriceBoundary "+lowerPriceBoundary);
-            Logger.debug("firstPrice "+firstPrice);
-            Logger.debug("numberOfDays "+numberOfDays);
-            throw new Exception("Invalid Price Change");
+            throw new Exception("Invalid Percentage Increase Per Day");
         }
     }
 
@@ -246,7 +249,7 @@ public class YahooFinanceRepository {
             .addParam("includeAdjustedClose", "true")
             .addParam("interval", "1d")
             .addParam("period1", "0")
-            .addParam("period2", String.valueOf((long) Math.floor((double) System.currentTimeMillis() / 1000)))
+            .addParam("period2", NumberUtils.toFullNumericString((long) Math.floor((double) System.currentTimeMillis() / 1000)))
             .addParam("symbol", symbol)
             .addParam("userYfid", "true")
             .addParam("lang", "en-US")
@@ -281,7 +284,7 @@ public class YahooFinanceRepository {
 
         for (String screener : screeners) {
             String url = new UrlBuilder(Constants.YAHOO_SCREENER_URL)
-                .addParam("count", Constants.SCREENER_COUNT)
+                .addParam("count", NumberUtils.toFullNumericString(Constants.SCREENER_COUNT))
                 .addParam("formatted", "true")
                 .addParam("scrIds", screener)
                 .addParam("sortField", "intradaymarketcap")
@@ -314,9 +317,7 @@ public class YahooFinanceRepository {
                 for (int i = 0; i < quotes.length(); i++) {
                     try {
                         symbols.add(quotes.getJSONObject(i).getString("symbol"));
-                    } catch (Exception ex) {
-                        Logger.debug("ex "+ex);
-                    }
+                    } catch (Exception ignored) {}
                 }
             }
         }

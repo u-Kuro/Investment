@@ -109,6 +109,8 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
                     android:textColor="@color/white"
+                    android:maxLines="1"
+                    android:ellipsize="end"
                     app:layout_constraintTop_toTopOf="parent" />
 
                 <ProgressBar

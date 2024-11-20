@@ -9,8 +9,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"
-        android:background="@color/black" >
+        android:paddingVertical="16dp"
+        android:paddingHorizontal="8dp"
+        android:background="@color/black"
+        android:useDefaultMargins="true">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
@@ -52,32 +54,49 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:padding="8dp"
-            android:columnCount="2">
+            android:columnCount="3"
+            android:useDefaultMargins="true">
 
             <TextView
                 android:id="@+id/timeSpan"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:layout_columnWeight="1"
                 android:textColor="@color/white"
+                android:maxLines="1"
+                android:ellipsize="end"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDay" />
+                app:layout_constraintRight_toLeftOf="@id/lastPrice" />
+
+            <TextView
+                android:id="@+id/lastPrice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_columnWeight="1"
+                android:textColor="@color/white"
+                android:textAlignment="center"
+                android:maxLines="1"
+                android:ellipsize="start"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDay"
+                app:layout_constraintLeft_toRightOf="@id/timeSpan" />
 
             <TextView
                 android:id="@+id/percentageIncreasePerDay"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:layout_columnWeight="1"
                 android:textColor="@color/white"
                 android:textAlignment="textEnd"
+                android:maxLines="1"
+                android:ellipsize="end"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/timeSpan" />
+                app:layout_constraintLeft_toRightOf="@id/lastPrice" />
 
         </GridLayout>
 
@@ -86,16 +105,18 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:padding="8dp"
-            android:columnCount="3">
+            android:columnCount="3"
+            android:useDefaultMargins="true">
 
             <TextView
                 android:id="@+id/upperPriceBoundaryText"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:layout_columnWeight="1"
                 android:textColor="@color/white"
                 android:textAlignment="textStart"
+                android:maxLines="1"
+                android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
@@ -103,25 +124,27 @@
 
             <TextView
                 android:id="@+id/densePriceText"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:layout_columnWeight="1"
                 android:textColor="@color/white"
+                android:textAlignment="center"
+                android:maxLines="1"
+                android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="@id/upperPriceBoundaryText"
-                app:layout_constraintRight_toLeftOf="@id/lowerPriceBoundaryText"
-                android:textAlignment="center" />
+                app:layout_constraintRight_toLeftOf="@id/lowerPriceBoundaryText" />
 
             <TextView
                 android:id="@+id/lowerPriceBoundaryText"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:layout_columnWeight="1"
                 android:textAlignment="textEnd"
                 android:textColor="@color/white"
+                android:maxLines="1"
+                android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintRight_toRightOf="parent"

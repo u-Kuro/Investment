@@ -9,6 +9,8 @@ import com.example.investment.R;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
+import com.example.investment.util.Constants;
+import com.example.investment.util.NumberUtils;
 import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
 import java.text.SimpleDateFormat;
@@ -19,6 +21,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView nameText;
     private final ImageView typeIcon;
     private final TextView timeSpan;
+    private final TextView lastPrice;
     private final TextView percentageIncreasePerDay;
     private final TextView upperPriceBoundaryText;
     private final TextView densePriceText;
@@ -30,6 +33,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         nameText = itemView.findViewById(R.id.nameText);
         typeIcon = itemView.findViewById(R.id.typeIcon);
         timeSpan = itemView.findViewById(R.id.timeSpan);
+        lastPrice = itemView.findViewById(R.id.lastPrice);
         percentageIncreasePerDay = itemView.findViewById(R.id.percentageIncreasePerDay);
         upperPriceBoundaryText = itemView.findViewById(R.id.upperPriceBoundaryText);
         densePriceText = itemView.findViewById(R.id.densePriceText);
@@ -63,18 +67,21 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         }
 
         timeSpan.setText(formatTimeSpan(ticker.getTimestampSeconds()));
-        percentageIncreasePerDay.setText(String.format(Locale.US, "%.2f%% | D", ticker.getPercentageIncreasePerDay()));
+        lastPrice.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
+        percentageIncreasePerDay.setText(
+            String.format(
+                Locale.US,
+                "%s%%",
+                NumberUtils.formatNumber(ticker.getPercentageIncreasePerDay(), 2)
+            )
+        );
 
         upperPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getUpperPriceBoundary()));
         densePriceText.setText(PriceUtils.formatPrice(ticker.getDensePrice()));
         lowerPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getLowerPriceBoundary()));
 
         MaterialCardView cardView = (MaterialCardView) itemView;
-        cardView.setStrokeColor(getCardColor(
-            ticker.getUpperPriceBoundary(),
-            ticker.getLowerPriceBoundary(),
-            ticker.getLastPrice()
-        ));
+        cardView.setStrokeColor(getCardColor(ticker));
     }
 
     private String formatTimeSpan(long timestampSeconds) {
@@ -86,13 +93,14 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         return formatter.format(date);
     }
 
-    private int getCardColor(double upper, double lower, double lastPrice) {
+    private int getCardColor(TickerInfo ticker) {
         int colorResId;
-        
-        if (lastPrice >= upper) {
-            colorResId = R.color.hold;
-        } else if (lastPrice > lower) {
+
+        @NonNull String priceState = PriceUtils.getPriceState(ticker);
+        if (priceState.equals(Constants.PRICE_BETWEEN)) {
             colorResId = R.color.good;
+        } else if (priceState.equals(Constants.PRICE_ABOVE)) {
+            colorResId = R.color.hold;
         } else {
             colorResId = R.color.bad;
         }

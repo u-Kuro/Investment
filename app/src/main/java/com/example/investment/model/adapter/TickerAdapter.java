@@ -15,6 +15,8 @@ import com.example.investment.model.adapter.viewholder.TickerViewHolder;
 import com.example.investment.model.adapter.diffcallback.TickerDiffCallback;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
+import com.example.investment.util.Constants;
+import com.example.investment.util.PriceUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,10 +91,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                             || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
 
                     boolean statusMatch = !statusFilter
-                            || (
-                                ticker.getLastPrice() > ticker.getLowerPriceBoundary()
-                                && ticker.getLastPrice() < ticker.getUpperPriceBoundary()
-                            );
+                            || PriceUtils.getPriceState(ticker).equals(Constants.PRICE_BETWEEN);
 
                     return typeMatch && statusMatch;
                 })
