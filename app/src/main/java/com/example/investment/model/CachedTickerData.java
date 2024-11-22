@@ -1,4 +1,6 @@
-package com.example.investment.model.ticker;
+package com.example.investment.model;
+
+import com.example.investment.model.ticker.TickerInfo;
 
 import java.io.Serializable;
 import java.util.List;

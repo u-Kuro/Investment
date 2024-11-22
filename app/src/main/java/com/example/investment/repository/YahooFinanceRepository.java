@@ -11,7 +11,7 @@ import androidx.annotation.RequiresApi;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.util.Constants;
 import com.example.investment.util.Logger;
-import com.example.investment.model.ticker.CachedTickerData;
+import com.example.investment.model.CachedTickerData;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.FileUtils;
 import com.example.investment.util.NumberUtils;
@@ -67,18 +67,23 @@ public class YahooFinanceRepository {
 
                     // Get Indicators and Prices
                     final long adjClosesLen = adjCloses.length();
+                    long currentRecurringNumberOfMissingData = 0;
                     long pricesLen = 0;
-                    double firstPrice = 0;
-                    double lastPrice = 0;
+                    Double firstPrice = null;
+                    Double lastPrice = null;
                     double sumOfPrice = 0;
                     double sumOfPercentageDifference = 0;
                     for (int i = 0; i < adjClosesLen; i++) {
                         double adjClose;
-                        // Get and Include Close Price if Available
+                        // Get and Include Close Price If Available
                         try {
                             adjClose = adjCloses.getDouble(i);
                             if (adjClose < 0) throw new Exception("Invalid Adjusted Closing Price");
-                            if (firstPrice == 0) {
+                            // Get Any Valid First Price First
+                            // Before Calculating Other Stuff
+                            if (firstPrice == null) {
+                                // Only Accept Non-Zero First Price
+                                // Since It's Used as a Divisor
                                 if (adjClose > 0) {
                                     firstPrice = adjClose;
                                 } else {
@@ -86,7 +91,23 @@ public class YahooFinanceRepository {
                                 }
                             }
                         } catch (Exception ignored) {
+                            // Count Number of Missing Data
+                            // Set Their Value as the Average of Last Available Price and Next Available Price
+                            // Only If Theres a Previous price Already Set
+                            if (lastPrice != null) {
+                                ++currentRecurringNumberOfMissingData;
+                            }
                             continue;
+                        }
+                        if (currentRecurringNumberOfMissingData > 0) {
+                            // Add N (Missing Data) Average of Last Available Price and Current Valid Price
+                            sumOfPrice += ((lastPrice + adjClose) / 2) * currentRecurringNumberOfMissingData;
+                            pricesLen += currentRecurringNumberOfMissingData;
+                            // Calculate and Sum N (Missing Data) Percentage Difference of Mean and Price
+                            double densePrice = sumOfPrice / pricesLen;
+                            sumOfPercentageDifference += (Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2)) * currentRecurringNumberOfMissingData;
+                            // Reset Recurring Number of Missing Data
+                            currentRecurringNumberOfMissingData = 0;
                         }
                         // Add Valid Adjusted Close Price
                         sumOfPrice += adjClose;
@@ -97,8 +118,8 @@ public class YahooFinanceRepository {
                         // Set Last Price Available
                         lastPrice = adjClose;
                     }
-                    // Check Invalid Last Price
-                    if (lastPrice <= 0) throw new Exception("Invalid Last Price");
+                    // Check Invalid Data
+                    if (firstPrice == null) throw new Exception("Invalid First Price");
                     if (pricesLen < 1) throw new Exception("Invalid Number of Adjusted Closing Price");
                     // Calculate Indicators
                     double densePrice = sumOfPrice / pricesLen;

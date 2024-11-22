@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TickerService extends Service {
     public static final String STOP_SERVICE_ACTION = "stop_service";
@@ -93,8 +94,11 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers() {
         future = executorService.submit(() -> dataLoader.loadTickers(getApplicationContext(), new TickerUpdateListener() {
+            private final AtomicBoolean isFinished = new AtomicBoolean(false);
             @Override
             public void onProgress(int current, int total) {
+                if (isFinished.get()) return;
+
                 if (total > 0) {
                     double progress = ((double) current / total) * 100;
                     if (current < total) {
@@ -125,6 +129,8 @@ public class TickerService extends Service {
             
             @Override
             public void onTickerUpdate(@NonNull List<TickerInfo> tickers) {
+                if (isFinished.get()) return;
+
                 MainActivity activity = MainActivity.getInstanceActivity();
                 if (activity != null) {
                     activity.updateTickerList(tickers);
@@ -133,6 +139,8 @@ public class TickerService extends Service {
             
             @Override
             public void onFinish(@NonNull List<TickerInfo> tickers, long updateTime) {
+                isFinished.set(true);
+
                 if (!tickers.isEmpty()) {
                     checkAndNotifyTickerChanges(tickers);
                 }
@@ -148,6 +156,8 @@ public class TickerService extends Service {
             
             @Override
             public void onError() {
+                isFinished.set(true);
+
                 MainActivity activity = MainActivity.getInstanceActivity();
                 if (activity != null) {
                     activity.updateError();

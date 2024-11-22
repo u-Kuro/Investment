@@ -67,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView filterStatusImage;
     private boolean filterStatus = false;
     private ImageView stopProcessingImage;
+    private boolean isUpdating = false;
 
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
 
@@ -240,6 +241,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void updateProgress(int current, int total) {
         runOnUiThread(() -> {
+            isUpdating = true;
             if (total > 0) {
                 progressBar.setMax(total);
                 progressBar.setProgress(current);
@@ -278,6 +280,11 @@ public class MainActivity extends AppCompatActivity {
             ((View) progressBar.getParent()).requestLayout();
 
             updateLastUpdateTime(updateTime);
+
+            Intent serviceIntent = new Intent(this, TickerService.class);
+            stopService(serviceIntent);
+
+            isUpdating = false;
         });
     }
 
@@ -291,6 +298,11 @@ public class MainActivity extends AppCompatActivity {
             ((View) progressBar.getParent()).requestLayout();
 
             loadCachedData(false);
+
+            Intent serviceIntent = new Intent(this, TickerService.class);
+            stopService(serviceIntent);
+
+            isUpdating = false;
         });
     }
 
@@ -413,5 +425,17 @@ public class MainActivity extends AppCompatActivity {
             
             adapter.setStatusFilter(filterStatus);
         });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && !isUpdating) {
+            new Thread(() -> {
+                long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
+                runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));
+            }).start();
+        }
     }
 }
