@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
@@ -43,6 +44,7 @@ import com.example.investment.util.Logger;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.service.TickerService;
 import com.example.investment.util.CustomTabsUtils;
+import com.example.investment.util.NumberUtils;
 
 import java.lang.ref.WeakReference;
 import java.time.Instant;
@@ -68,9 +70,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean filterStatus = false;
     private ImageView stopProcessingImage;
     private boolean isUpdating = false;
-
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
-
     private RecyclerView recyclerView;
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -135,6 +135,9 @@ public class MainActivity extends AppCompatActivity {
             }
             alertDialog.show();
         });
+
+        ImageView editDollarVolumeImage = findViewById(R.id.editDollarVolumeImage);
+        editDollarVolumeImage.setOnClickListener(v -> showDollarVolumeThresholdDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -437,5 +440,43 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));
             }).start();
         }
+    }
+
+    private void showDollarVolumeThresholdDialog() {
+        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+        long currentThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
+
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_dollar_volume_threshold, null);
+        EditText dollarVolumeThresholdInput = dialogView.findViewById(R.id.dollarVolumeThresholdInput);
+        dollarVolumeThresholdInput.setText(NumberUtils.toFullNumericString(currentThreshold));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Dollar Volume Threshold")
+            .setView(dialogView)
+            .setPositiveButton("Save", (dialogInterface, i) -> {
+                try {
+                    String input = dollarVolumeThresholdInput.getText().toString().trim();
+                    long newThreshold;
+                    if (input.isEmpty()) {
+                        newThreshold = Constants.DEFAULT_VOLUME_THRESHOLD;
+                    } else {
+                        newThreshold = Long.parseLong(dollarVolumeThresholdInput.getText().toString());
+                    }
+                    SharedPreferences.Editor editor = prefs.edit();
+                    editor.putLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, newThreshold);
+                    editor.apply();
+                    Toast.makeText(this, "Dollar Volume Threshold Updated", Toast.LENGTH_SHORT).show();
+                } catch (NumberFormatException e) {
+                    Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .create();
+
+        Window dialogWindow = dialog.getWindow();
+        if (dialogWindow != null) {
+            dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
+        }
+        dialog.show();
     }
 }

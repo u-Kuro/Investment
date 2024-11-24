@@ -43,4 +43,8 @@ public class Constants {
     public static final String NAME_PRICE_CROSS = "Investment Opportunity";
     public static final String NAME_WARNING = "Investment Warning";
     public static final String NAME_MISSING = "Investment Missing";
+
+    // Volume Settings
+    public static final String PREF_DOLLAR_VOLUME_THRESHOLD = "dollar_volume_threshold";
+    public static final long DEFAULT_VOLUME_THRESHOLD = 1_000_000;
 } 

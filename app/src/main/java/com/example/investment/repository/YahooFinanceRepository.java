@@ -3,6 +3,7 @@ package com.example.investment.repository;
 import static java.lang.Double.isFinite;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -82,23 +83,27 @@ public class YahooFinanceRepository {
                     int currentRecurringNumberOfMissingData = 0;
                     boolean hadNoValidVolume = true;
                     for (int i = 0; i < adjClosesLen; i++) {
-                        // Check Sufficient Volume
-                        if (hadNoValidVolume) {
-                            try {
-                                if (volumes.getDouble(i) >= 1_000_000) {
-                                    hadNoValidVolume = false;
-                                } else {
-                                    continue;
-                                }
-                            } catch (Exception ignored) {
-                                continue;
-                            }
-                        }
                         // Get and Include Close Price If Available
                         double adjClose;
                         try {
                             adjClose = adjCloses.getDouble(i);
                             if (adjClose < 0) throw new Exception("Invalid Adjusted Closing Price");
+                            // Check Sufficient Volume
+                            if (hadNoValidVolume) {
+                                try {
+                                    // At least $1M Traded Volume
+                                    double pricedVolume = volumes.getDouble(i) * adjClose;
+                                    SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+                                    long dollarVolumeThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
+                                    if (pricedVolume >= dollarVolumeThreshold) {
+                                        hadNoValidVolume = false;
+                                    } else {
+                                        continue;
+                                    }
+                                } catch (Exception ignored) {
+                                    continue;
+                                }
+                            }
                             // Get Any Valid First Price First
                             // Before Calculating Other Stuff
                             if (firstPrice == null) {

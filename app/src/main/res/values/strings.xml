@@ -9,4 +9,6 @@
     <string name="filter_status">Filter Status</string>
     <string name="stop_processing">Stop Processing</string>
     <string name="na">NA</string>
+    <string name="dollar_volume_threshold">Dollar Volume Threshold</string>
+    <string name="edit_price_volume_threshold">Edit Price Volume Threshold</string>
 </resources>
