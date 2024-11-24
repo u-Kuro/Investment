@@ -52,30 +52,50 @@ public class YahooFinanceRepository {
 
                     // Extract additional data as needed
                     JSONObject result = data.getJSONObject("chart")
-                            .getJSONArray("result")
-                            .getJSONObject(0);
+                        .getJSONArray("result")
+                        .getJSONObject(0);
                     JSONObject meta = result.getJSONObject("meta");
                     String currency = meta.getString("currency");
                     if (currency.isEmpty()) {
                         continue;
                     }
+                    JSONObject indicators = result.getJSONObject("indicators");
+                    JSONObject quotes = indicators.getJSONArray("quote").getJSONObject(0);
+                    JSONArray volumes = quotes.getJSONArray("volume");
+                    JSONArray lows = null;
+                    try {
+                        lows = quotes.getJSONArray("low");
+                    } catch (Exception ignored) {}
 
-                    JSONArray adjCloses = result.getJSONObject("indicators")
+                    // Get Indicators and Prices
+                    JSONArray adjCloses = indicators
                         .getJSONArray("adjclose")
                         .getJSONObject(0)
                         .getJSONArray("adjclose");
-
-                    // Get Indicators and Prices
                     final long adjClosesLen = adjCloses.length();
-                    long currentRecurringNumberOfMissingData = 0;
                     long pricesLen = 0;
                     Double firstPrice = null;
                     Double lastPrice = null;
+                    Integer lastPriceIdx = null;
                     double sumOfPrice = 0;
                     double sumOfPercentageDifference = 0;
+                    int currentRecurringNumberOfMissingData = 0;
+                    boolean hadNoValidVolume = true;
                     for (int i = 0; i < adjClosesLen; i++) {
-                        double adjClose;
+                        // Check Sufficient Volume
+                        if (hadNoValidVolume) {
+                            try {
+                                if (volumes.getDouble(i) >= 1_000_000) {
+                                    hadNoValidVolume = false;
+                                } else {
+                                    continue;
+                                }
+                            } catch (Exception ignored) {
+                                continue;
+                            }
+                        }
                         // Get and Include Close Price If Available
+                        double adjClose;
                         try {
                             adjClose = adjCloses.getDouble(i);
                             if (adjClose < 0) throw new Exception("Invalid Adjusted Closing Price");
@@ -99,6 +119,7 @@ public class YahooFinanceRepository {
                             }
                             continue;
                         }
+                        // Continue the Price Calculations
                         if (currentRecurringNumberOfMissingData > 0) {
                             // Add N (Missing Data) Average of Last Available Price and Current Valid Price
                             sumOfPrice += ((lastPrice + adjClose) / 2) * currentRecurringNumberOfMissingData;
@@ -117,17 +138,25 @@ public class YahooFinanceRepository {
                         sumOfPercentageDifference += Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2);
                         // Set Last Price Available
                         lastPrice = adjClose;
+                        lastPriceIdx = i;
                     }
                     // Check Invalid Data
                     if (firstPrice == null) throw new Exception("Invalid First Price");
-                    if (pricesLen < 1) throw new Exception("Invalid Number of Adjusted Closing Price");
+                    if (pricesLen < 2) throw new Exception("Invalid Number of Adjusted Closing Price");
                     // Calculate Indicators
                     double densePrice = sumOfPrice / pricesLen;
-                    double averagePercentageDifference = sumOfPercentageDifference / pricesLen;
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, densePrice, pricesLen);
+                    double averagePercentageDifference = sumOfPercentageDifference / (pricesLen - 1);
                     double priceBoundary = averagePercentageDifference * densePrice;
                     double upperPriceBoundary = densePrice + priceBoundary;
                     double lowerPriceBoundary = densePrice - priceBoundary;
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lowerPriceBoundary, pricesLen);
+
+                    // Get Used Value for Boundaries
+                    if (lows != null) {
+                        try {
+                            lastPrice = lows.getDouble(lastPriceIdx);
+                        } catch (Exception ignored) {}
+                    }
 
                     // Get Name
                     String name = null;
@@ -165,7 +194,7 @@ public class YahooFinanceRepository {
                     if (timestampSeconds == 0) {
                         try {
                             timestampSeconds = TimeUnit.MILLISECONDS.toSeconds(
-                                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(adjCloses.length() - 1)
+                                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(adjClosesLen - 1)
                             );
                             if (!isFinite(timestampSeconds)) {
                                 timestampSeconds = 0;
