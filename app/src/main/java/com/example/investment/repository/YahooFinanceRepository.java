@@ -47,6 +47,10 @@ public class YahooFinanceRepository {
             int total = symbols.size();
             int current = 0;
 
+            // Get Dollar Volume Threshold
+            SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+            long dollarVolumeThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
+
             for (String symbol : symbols) {
                 try {
                     JSONObject data = fetchTickerData(symbol);
@@ -87,15 +91,16 @@ public class YahooFinanceRepository {
                         double adjClose;
                         try {
                             adjClose = adjCloses.getDouble(i);
-                            if (adjClose < 0) throw new Exception("Invalid Adjusted Closing Price");
+                            // Check Valid Price
+                            if (adjClose < 0 || !isFinite(adjClose)) {
+                                throw new Exception("Invalid Adjusted Closing Price");
+                            }
                             // Check Sufficient Volume
                             if (hadNoValidVolume) {
                                 try {
                                     // At least $1M Traded Volume
-                                    double pricedVolume = volumes.getDouble(i) * adjClose;
-                                    SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-                                    long dollarVolumeThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
-                                    if (pricedVolume >= dollarVolumeThreshold) {
+                                    double dollarVolume = volumes.getDouble(i) * adjClose;
+                                    if (dollarVolume >= dollarVolumeThreshold && isFinite(dollarVolume)) {
                                         hadNoValidVolume = false;
                                     } else {
                                         continue;
@@ -104,8 +109,7 @@ public class YahooFinanceRepository {
                                     continue;
                                 }
                             }
-                            // Get Any Valid First Price First
-                            // Before Calculating Other Stuff
+                            // Then Get Valid First Price
                             if (firstPrice == null) {
                                 // Only Accept Non-Zero First Price
                                 // Since It's Used as a Divisor
@@ -145,12 +149,13 @@ public class YahooFinanceRepository {
                         lastPrice = adjClose;
                         lastPriceIdx = i;
                     }
-                    // Check Invalid Data
+                    // Remove Any Ticker with Invalid History
                     if (firstPrice == null) throw new Exception("Invalid First Price");
                     if (pricesLen < 2) throw new Exception("Invalid Number of Adjusted Closing Price");
-                    // Calculate Indicators
+                    // Calculate Ranking Indicator
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lastPrice, pricesLen);
+                    // Calculate Long Indicator
                     double densePrice = sumOfPrice / pricesLen;
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, densePrice, pricesLen);
                     double averagePercentageDifference = sumOfPercentageDifference / (pricesLen - 1);
                     double priceBoundary = averagePercentageDifference * densePrice;
                     double upperPriceBoundary = densePrice + priceBoundary;
@@ -159,7 +164,10 @@ public class YahooFinanceRepository {
                     // Get Used Value for Boundaries
                     if (lows != null) {
                         try {
-                            lastPrice = lows.getDouble(lastPriceIdx);
+                            double lastLowPrice = lows.getDouble(lastPriceIdx);
+                            if (lastLowPrice >= 0 && isFinite(lastLowPrice)) {
+                                lastPrice = lastLowPrice;
+                            }
                         } catch (Exception ignored) {}
                     }
 
