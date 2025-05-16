@@ -1,9 +1,11 @@
 package com.example.investment.model.ticker;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
 
 public class TickerInfo implements Serializable {
+    @Serial
     private static final long serialVersionUID = 1L;
     private final String symbol;
     private final String name;

@@ -287,7 +287,7 @@ public class YahooFinanceRepository {
     public List<TickerInfo> loadCache(@NonNull Context context) {
         try {
             CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
-            return cache != null ? cache.data : null;
+            return cache != null ? cache.data() : null;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache", e);
             return null;
@@ -297,7 +297,7 @@ public class YahooFinanceRepository {
     public long getCacheTimestamp(@NonNull Context context) {
         try {
             CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
-            return cache != null ? cache.timestamp : 0;
+            return cache != null ? cache.timestamp() : 0;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache timestamp", e);
             return 0;

@@ -26,11 +26,11 @@ public class NumberUtils {
 
         NumberRange currentRange = Arrays
             .stream(NUMBER_RANGES)
-            .filter(range -> number >= range.getValue())
+            .filter(range -> number >= range.value())
             .findFirst()
             .orElse(new NumberRange(1, ""));
 
-        double numberAbbrev = number / currentRange.getValue();
+        double numberAbbrev = number / currentRange.value();
         String wholeNumberAbbrevStr = toFullNumericString((long) Math.floor(numberAbbrev));
 
         String valueStr;
@@ -43,12 +43,12 @@ public class NumberUtils {
         } else {
             int decimalsNeeded = Objects.requireNonNullElseGet(
                 desiredNumberOfDecimal,
-                () -> MAX_NUMBER_OF_DIGITS - wholeNumberAbbrevStr.length() - currentRange.getSuffix().length()
+                () -> MAX_NUMBER_OF_DIGITS - wholeNumberAbbrevStr.length() - currentRange.suffix().length()
             );
             valueStr = truncateDecimal(numberAbbrev, decimalsNeeded);
         }
 
-        return valueStr + currentRange.getSuffix();
+        return valueStr + currentRange.suffix();
     }
 
     private static int getDecimalsNeeded(double number, Integer desiredNumberOfDecimal) {
