@@ -43,13 +43,9 @@ public class YahooFinanceRepository {
             listener.onProgress(0, 0);
 
             // Get Ticker Symbols
-            List<String> symbols = fetchSymbols();
+            List<String> symbols = fetchSymbols(context);
             int total = symbols.size();
             int current = 0;
-
-            // Get Dollar Volume Threshold
-            SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-            long dollarVolumeThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
 
             for (String symbol : symbols) {
                 try {
@@ -66,7 +62,6 @@ public class YahooFinanceRepository {
                     }
                     JSONObject indicators = result.getJSONObject("indicators");
                     JSONObject quotes = indicators.getJSONArray("quote").getJSONObject(0);
-                    JSONArray volumes = quotes.getJSONArray("volume");
                     JSONArray lows = null;
                     try {
                         lows = quotes.getJSONArray("low");
@@ -85,7 +80,6 @@ public class YahooFinanceRepository {
                     double sumOfPrice = 0;
                     double sumOfPercentageDifference = 0;
                     int currentRecurringNumberOfMissingData = 0;
-                    boolean hadNoValidVolume = true;
                     for (int i = 0; i < adjClosesLen; i++) {
                         // Get and Include Close Price If Available
                         double adjClose;
@@ -94,20 +88,6 @@ public class YahooFinanceRepository {
                             // Check Valid Price
                             if (adjClose < 0 || !isFinite(adjClose)) {
                                 throw new Exception("Invalid Adjusted Closing Price");
-                            }
-                            // Check Sufficient Volume
-                            if (hadNoValidVolume) {
-                                try {
-                                    // At least $1M Traded Volume
-                                    double dollarVolume = volumes.getDouble(i) * adjClose;
-                                    if (dollarVolume >= dollarVolumeThreshold && isFinite(dollarVolume)) {
-                                        hadNoValidVolume = false;
-                                    } else {
-                                        continue;
-                                    }
-                                } catch (Exception ignored) {
-                                    continue;
-                                }
                             }
                             // Then Get Valid First Price
                             if (firstPrice == null) {
@@ -336,7 +316,7 @@ public class YahooFinanceRepository {
         }
     }
 
-    private List<String> fetchSymbols() throws Exception {
+    private List<String> fetchSymbols(Context context) throws Exception {
         List<String> symbols = new ArrayList<>();
 
         // Fetch crypto symbols
@@ -345,15 +325,17 @@ public class YahooFinanceRepository {
             Constants.SCREENER_STOCKS
         };
 
+        // Get Market Cap Threshold
+        SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+        long marketCapThreshold = prefs.getLong(Constants.PREF_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
+
         for (String screener : screeners) {
             String url = new UrlBuilder(Constants.YAHOO_SCREENER_URL)
                 .addParam("count", NumberUtils.toFullNumericString(Constants.SCREENER_COUNT))
-                .addParam("formatted", "true")
                 .addParam("scrIds", screener)
                 .addParam("sortField", "intradaymarketcap")
                 .addParam("sortType", "DESC")
                 .addParam("start", "0")
-                .addParam("fields", "symbol")
                 .addParam("lang", "en-US")
                 .addParam("region", "US")
                 .build();
@@ -379,7 +361,11 @@ public class YahooFinanceRepository {
 
                 for (int i = 0; i < quotes.length(); i++) {
                     try {
-                        symbols.add(quotes.getJSONObject(i).getString("symbol"));
+                        JSONObject object = quotes.getJSONObject(i);
+                        long marketCap = object.getLong("marketCap");
+                        if (marketCap >= marketCapThreshold) {
+                            symbols.add(object.getString("symbol"));
+                        }
                     } catch (Exception ignored) {}
                 }
             }

@@ -136,8 +136,8 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        ImageView editDollarVolumeImage = findViewById(R.id.editDollarVolumeImage);
-        editDollarVolumeImage.setOnClickListener(v -> showDollarVolumeThresholdDialog());
+        ImageView editMarketCapImage = findViewById(R.id.editMarketCapImage);
+        editMarketCapImage.setOnClickListener(v -> showMarketCapThresholdDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -442,30 +442,30 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showDollarVolumeThresholdDialog() {
+    private void showMarketCapThresholdDialog() {
         SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-        long currentThreshold = prefs.getLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, Constants.DEFAULT_VOLUME_THRESHOLD);
+        long currentThreshold = prefs.getLong(Constants.PREF_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
 
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_dollar_volume_threshold, null);
-        EditText dollarVolumeThresholdInput = dialogView.findViewById(R.id.dollarVolumeThresholdInput);
-        dollarVolumeThresholdInput.setText(NumberUtils.toFullNumericString(currentThreshold));
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_market_cap_threshold, null);
+        EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
+        marketCapThresholdInput.setText(NumberUtils.toFullNumericString(currentThreshold));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("Dollar Volume Threshold")
+            .setTitle("Market Cap Threshold")
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
-                    String input = dollarVolumeThresholdInput.getText().toString().trim();
+                    String input = marketCapThresholdInput.getText().toString().trim();
                     long newThreshold;
                     if (input.isEmpty()) {
-                        newThreshold = Constants.DEFAULT_VOLUME_THRESHOLD;
+                        newThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
                     } else {
-                        newThreshold = Long.parseLong(dollarVolumeThresholdInput.getText().toString());
+                        newThreshold = Long.parseLong(marketCapThresholdInput.getText().toString());
                     }
                     SharedPreferences.Editor editor = prefs.edit();
-                    editor.putLong(Constants.PREF_DOLLAR_VOLUME_THRESHOLD, newThreshold);
+                    editor.putLong(Constants.PREF_MARKET_CAP_THRESHOLD, newThreshold);
                     editor.apply();
-                    Toast.makeText(this, "Dollar Volume Threshold Updated", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Market Cap Threshold Updated", Toast.LENGTH_SHORT).show();
                 } catch (NumberFormatException e) {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
                 }

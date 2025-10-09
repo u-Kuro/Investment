@@ -16,7 +16,7 @@ public class Constants {
     
     // Yahoo Finance Screener Parameters
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
-    public static final String SCREENER_STOCKS = "MOST_ACTIVES";
+    public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
     public static final int SCREENER_COUNT = 250;
 
     // Price States
@@ -44,7 +44,7 @@ public class Constants {
     public static final String NAME_WARNING = "Investment Warning";
     public static final String NAME_MISSING = "Investment Missing";
 
-    // Volume Settings
-    public static final String PREF_DOLLAR_VOLUME_THRESHOLD = "dollar_volume_threshold";
-    public static final long DEFAULT_VOLUME_THRESHOLD = 1_000_000;
+    // Market Cap Settings
+    public static final String PREF_MARKET_CAP_THRESHOLD = "market_cap_threshold";
+    public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L;
 } 

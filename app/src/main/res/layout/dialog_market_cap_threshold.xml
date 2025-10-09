@@ -7,11 +7,11 @@
     android:paddingVertical="16dp">
 
     <EditText
-        android:id="@+id/dollarVolumeThresholdInput"
+        android:id="@+id/marketCapThresholdInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="@string/dollar_volume_threshold"
+        android:hint="@string/market_cap_threshold"
         android:importantForAutofill="no" />
 
 </LinearLayout> 
