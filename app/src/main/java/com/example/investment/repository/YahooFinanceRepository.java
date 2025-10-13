@@ -3,7 +3,6 @@ package com.example.investment.repository;
 import static java.lang.Double.isFinite;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -20,7 +19,9 @@ import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -43,11 +44,13 @@ public class YahooFinanceRepository {
             listener.onProgress(0, 0);
 
             // Get Ticker Symbols
-            List<String> symbols = fetchSymbols(context);
+            Map<String, Long> symbols = fetchSymbols();
             int total = symbols.size();
             int current = 0;
 
-            for (String symbol : symbols) {
+            for (Map.Entry<String, Long> ticker : symbols.entrySet()) {
+                String symbol = ticker.getKey();
+                long marketCap = ticker.getValue();
                 try {
                     JSONObject data = fetchTickerData(symbol);
 
@@ -204,7 +207,8 @@ public class YahooFinanceRepository {
                         upperPriceBoundary,
                         lowerPriceBoundary,
                         percentageIncreasePerDay,
-                        timestampSeconds
+                        timestampSeconds,
+                        marketCap
                     ));
 
                     tickers.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
@@ -316,18 +320,14 @@ public class YahooFinanceRepository {
         }
     }
 
-    private List<String> fetchSymbols(Context context) throws Exception {
-        List<String> symbols = new ArrayList<>();
+    private Map<String, Long> fetchSymbols() throws Exception {
+        Map<String, Long> symbols = new HashMap<>();
 
         // Fetch crypto symbols
         String[] screeners = new String[]{
             Constants.SCREENER_CRYPTO,
             Constants.SCREENER_STOCKS
         };
-
-        // Get Market Cap Threshold
-        SharedPreferences prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-        long marketCapThreshold = prefs.getLong(Constants.PREF_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
 
         for (String screener : screeners) {
             String url = new UrlBuilder(Constants.YAHOO_SCREENER_URL)
@@ -363,8 +363,8 @@ public class YahooFinanceRepository {
                     try {
                         JSONObject object = quotes.getJSONObject(i);
                         long marketCap = object.getLong("marketCap");
-                        if (marketCap >= marketCapThreshold) {
-                            symbols.add(object.getString("symbol"));
+                        if (marketCap >= 0) {
+                            symbols.put(object.getString("symbol"), marketCap);
                         }
                     } catch (Exception ignored) {}
                 }

@@ -4,11 +4,12 @@ public class Constants {
     // Cache
     public static final String CACHE_FILE_HIGHEST = "highest_ticker.ser";
     public static final String CACHE_FILE_DATA = "ticker_cache.ser";
-    
+
     // Preferences
     public static final String PREFS_NAME = "TickerFilterPrefs";
     public static final String PREF_FILTER_TYPE = "filterType";
     public static final String PREF_FILTER_STATUS = "filterStatus";
+    public static final String PREF_FILTER_MARKET_CAP_THRESHOLD = "filterMarketCapThreshold";
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
     public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
@@ -44,7 +45,6 @@ public class Constants {
     public static final String NAME_WARNING = "Investment Warning";
     public static final String NAME_MISSING = "Investment Missing";
 
-    // Market Cap Settings
-    public static final String PREF_MARKET_CAP_THRESHOLD = "market_cap_threshold";
-    public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L;
+    // Filter Defaults
+    public static final long DEFAULT_MARKET_CAP_THRESHOLD = 200_000_000_000L;
 } 

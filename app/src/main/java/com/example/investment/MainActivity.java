@@ -68,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERMISSION_REQUEST_CODE = 123;
     private ImageView filterStatusImage;
     private boolean filterStatus = false;
+    private long filterMarketCapThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
     private ImageView stopProcessingImage;
     private boolean isUpdating = false;
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
@@ -386,6 +387,7 @@ public class MainActivity extends AppCompatActivity {
         // Load saved preferences
         SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
         filterStatus = prefs.getBoolean(Constants.PREF_FILTER_STATUS, false);
+        filterMarketCapThreshold = prefs.getLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
         int savedFilterPosition = prefs.getInt(Constants.PREF_FILTER_TYPE, 0);
 
         // Setup spinner
@@ -400,6 +402,7 @@ public class MainActivity extends AppCompatActivity {
         // Set initial filter states
         adapter.setStatusFilter(filterStatus);
         adapter.setTypeFilter(typeFilterSpinner.getSelectedItem().toString());
+        adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
 
         // Update UI to reflect saved state
         filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
@@ -443,12 +446,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMarketCapThresholdDialog() {
-        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-        long currentThreshold = prefs.getLong(Constants.PREF_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
-
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_market_cap_threshold, null);
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
-        marketCapThresholdInput.setText(NumberUtils.toFullNumericString(currentThreshold));
+        marketCapThresholdInput.setText(NumberUtils.toFullNumericString(filterMarketCapThreshold));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle("Market Cap Threshold")
@@ -456,14 +456,16 @@ public class MainActivity extends AppCompatActivity {
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
                     String input = marketCapThresholdInput.getText().toString().trim();
-                    long newThreshold;
+                    long newMarketCapThreshold;
                     if (input.isEmpty()) {
-                        newThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+                        newMarketCapThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
                     } else {
-                        newThreshold = Long.parseLong(marketCapThresholdInput.getText().toString());
+                        newMarketCapThreshold = Long.parseLong(marketCapThresholdInput.getText().toString());
                     }
-                    SharedPreferences.Editor editor = prefs.edit();
-                    editor.putLong(Constants.PREF_MARKET_CAP_THRESHOLD, newThreshold);
+                    filterMarketCapThreshold = newMarketCapThreshold;
+                    adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
+                    SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
+                    editor.putLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold);
                     editor.apply();
                     Toast.makeText(this, "Market Cap Threshold Updated", Toast.LENGTH_SHORT).show();
                 } catch (NumberFormatException e) {

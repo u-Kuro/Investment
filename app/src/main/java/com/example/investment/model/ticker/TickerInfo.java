@@ -16,6 +16,7 @@ public class TickerInfo implements Serializable {
     private final double lowerPriceBoundary;
     private final double percentageIncreasePerDay;
     private final long timestampSeconds;
+    private final long marketCap;
     public TickerInfo(
         String symbol,
         String name,
@@ -25,7 +26,8 @@ public class TickerInfo implements Serializable {
         double upperPriceBoundary,
         double lowerPriceBoundary,
         double percentageIncreasePerDay,
-        long timestampSeconds
+        long timestampSeconds,
+        long marketCap
     ) {
         this.symbol = symbol;
         this.name = name;
@@ -36,6 +38,7 @@ public class TickerInfo implements Serializable {
         this.lowerPriceBoundary = lowerPriceBoundary;
         this.percentageIncreasePerDay = percentageIncreasePerDay;
         this.timestampSeconds = timestampSeconds;
+        this.marketCap = marketCap;
     }
 
     public String getSymbol() {
@@ -77,6 +80,10 @@ public class TickerInfo implements Serializable {
         return timestampSeconds;
     }
 
+    public long getMarketCap() {
+        return marketCap;
+    }
+
     public boolean equals(TickerInfo tickerInfo) {
         return Objects.equals(this.symbol, tickerInfo.getSymbol())
             && Objects.equals(this.name, tickerInfo.getName(false))
@@ -86,6 +93,7 @@ public class TickerInfo implements Serializable {
             && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
             && this.lowerPriceBoundary == tickerInfo.getLowerPriceBoundary()
             && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
-            && this.timestampSeconds == tickerInfo.getTimestampSeconds();
+            && this.timestampSeconds == tickerInfo.getTimestampSeconds()
+            && this.marketCap == tickerInfo.getMarketCap();
     }
 }

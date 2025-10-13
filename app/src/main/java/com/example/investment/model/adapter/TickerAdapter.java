@@ -28,6 +28,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private final List<TickerInfo> originalTickers = new ArrayList<>();
     private String typeFilter = "All";
     private boolean statusFilter = false;
+    private long marketCapThresholdFilter;
     private OnTickerClickListener clickListener;
     private OnTickerLongClickListener longClickListener;
 
@@ -83,6 +84,13 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         });
     }
 
+    public void setMarketCapThresholdFilter(long marketCapThreshold) {
+        mainHandler.post(() -> {
+            this.marketCapThresholdFilter = marketCapThreshold;
+            applyFilters();
+        });
+    }
+
     private void applyFilters() {
         List<TickerInfo> filteredList = originalTickers.stream()
                 .filter(ticker -> {
@@ -93,7 +101,9 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                     boolean statusMatch = !statusFilter
                             || PriceUtils.getPriceState(ticker).equals(Constants.PRICE_BETWEEN);
 
-                    return typeMatch && statusMatch;
+                    boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
+
+                    return typeMatch && statusMatch && marketCapThresholdMatch;
                 })
                 .collect(Collectors.toList());
 
