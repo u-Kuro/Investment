@@ -3,7 +3,9 @@ package com.example.investment.service;
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -31,6 +33,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public class TickerService extends Service {
     public static final String STOP_SERVICE_ACTION = "stop_service";
@@ -170,9 +173,15 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void checkAndNotifyTickerChanges(List<TickerInfo> currentTickers) {
-        HighestTickerInfo savedHighest = getSavedHighestTicker();
+    private void checkAndNotifyTickerChanges(List<TickerInfo> tickers) {
+        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
+        long filterMarketCapThreshold = prefs.getLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
+        List<TickerInfo> currentTickers = tickers.stream()
+            .filter(t -> t.getMarketCap() >= filterMarketCapThreshold)
+            .collect(Collectors.toList());
+
         TickerInfo highestTicker = currentTickers.get(0);
+        HighestTickerInfo savedHighest = getSavedHighestTicker();
         
         if (isPreviousHighestMissing(currentTickers, savedHighest)) {
             handleMissingTicker(highestTicker, savedHighest);
