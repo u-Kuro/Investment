@@ -128,6 +128,7 @@ public class YahooFinanceRepository {
                         // Calculate and Sum Percentage Difference of Mean and Price
                         double densePrice = sumOfPrice / pricesLen;
                         sumOfPercentageDifference += Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2);
+                        // dif of close and dense /
                         // Set Last Price Available
                         lastPrice = adjClose;
                         lastPriceIdx = i;
@@ -140,9 +141,9 @@ public class YahooFinanceRepository {
                     // Calculate Long Indicator
                     double densePrice = sumOfPrice / pricesLen;
                     double averagePercentageDifference = sumOfPercentageDifference / (pricesLen - 1);
-                    double priceBoundary = averagePercentageDifference * densePrice;
-                    double upperPriceBoundary = densePrice + priceBoundary;
-                    double lowerPriceBoundary = densePrice - priceBoundary;
+                    double growthFactor = (1 + (averagePercentageDifference / 100));
+                    double upperPriceBoundary = densePrice * growthFactor;
+                    double lowerPriceBoundary = densePrice / growthFactor;
 
                     // Get Used Value for Boundaries
                     if (lows != null) {

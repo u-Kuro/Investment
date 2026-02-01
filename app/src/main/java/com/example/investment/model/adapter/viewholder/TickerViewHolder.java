@@ -1,9 +1,11 @@
 package com.example.investment.model.adapter.viewholder;
 
+import android.os.Build;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
 import com.example.investment.model.ticker.TickerInfo;
@@ -14,6 +16,10 @@ import com.example.investment.util.NumberUtils;
 import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Locale;
 
@@ -48,6 +54,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     public void bind(TickerInfo ticker) {
         this.currentTicker = ticker;
         String name = ticker.getName(true);
@@ -66,7 +73,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             typeIcon.setVisibility(View.GONE);
         }
 
-        timeSpan.setText(formatTimeSpan(ticker.getTimestampSeconds()));
+        timeSpan.setText(getTimeAgo(ticker.getTimestampSeconds()));
         lastPrice.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
         percentageIncreasePerDay.setText(
             String.format(
@@ -84,6 +91,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         cardView.setStrokeColor(getCardColor(ticker));
     }
 
+    /** @noinspection unused*/
     private String formatTimeSpan(long timestampSeconds) {
         if (timestampSeconds == 0) {
             return itemView.getContext().getString(R.string.na);
@@ -91,6 +99,36 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         Date date = new Date(timestampSeconds * 1000L); // Convert seconds to milliseconds
         SimpleDateFormat formatter = new SimpleDateFormat("MMM d yyyy", Locale.US);
         return formatter.format(date);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static String getTimeAgo(long timestampMillis) {
+        LocalDateTime now = LocalDateTime.now();
+        Instant pastInstant;
+        if (timestampMillis < 1000000000000L) { // likely in seconds
+            pastInstant = Instant.ofEpochSecond(timestampMillis);
+        } else { // milliseconds
+            pastInstant = Instant.ofEpochMilli(timestampMillis);
+        }
+        LocalDateTime past = pastInstant.atZone(ZoneId.systemDefault()).toLocalDateTime();
+
+        long years = ChronoUnit.YEARS.between(past, now);
+        if (years > 0) return years + (years == 1 ? " year" : " years");
+
+        long months = ChronoUnit.MONTHS.between(past, now);
+        if (months > 0) return months + (months == 1 ? " month" : " months");
+
+        long days = ChronoUnit.DAYS.between(past, now);
+        if (days > 0) return days + (days == 1 ? " day" : " days");
+
+        long hours = ChronoUnit.HOURS.between(past, now);
+        if (hours > 0) return hours + (hours == 1 ? " hour" : " hours");
+
+        long minutes = ChronoUnit.MINUTES.between(past, now);
+        if (minutes > 0) return minutes + (minutes == 1 ? " minute" : " minutes");
+
+        long seconds = ChronoUnit.SECONDS.between(past, now);
+        return seconds + (seconds == 1 ? " second" : " seconds");
     }
 
     private int getCardColor(TickerInfo ticker) {
