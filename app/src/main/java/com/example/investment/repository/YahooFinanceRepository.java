@@ -141,7 +141,7 @@ public class YahooFinanceRepository {
                     // Calculate Long Indicator
                     double densePrice = sumOfPrice / pricesLen;
                     double averagePercentageDifference = sumOfPercentageDifference / (pricesLen - 1);
-                    double growthFactor = (1 + (averagePercentageDifference / 100));
+                    double growthFactor = 1 + averagePercentageDifference;
                     double upperPriceBoundary = densePrice * growthFactor;
                     double lowerPriceBoundary = densePrice / growthFactor;
 
