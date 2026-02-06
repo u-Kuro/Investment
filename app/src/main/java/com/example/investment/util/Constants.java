@@ -19,6 +19,7 @@ public class Constants {
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
     public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
     public static final int SCREENER_COUNT = 250;
+    public static final long FIRST_TRADE_TIMESTAMP_SECONDS = -11607782632L; // March 1602
 
     // Price States
     public static final String PRICE_ABOVE = "above_upper";

@@ -57,12 +57,20 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void bind(TickerInfo ticker) {
         this.currentTicker = ticker;
-        String name = ticker.getName(true);
+        String symbol = ticker.getSymbol();
+        String name = ticker.getName(false);
         if (name == null || name.isEmpty()) {
-            nameText.setText(R.string.na);
+            name = symbol;
         } else {
-            nameText.setText(name);
+            name = String.format("%s | %s", symbol, name);
         }
+        String exchange = ticker.getExchange();
+        if (exchange == null || exchange.isEmpty()) {
+            nameText.setText(name);
+        } else {
+            nameText.setText(String.format("%s | %s ", name, exchange));
+        }
+
         if ("cryptocurrency".equalsIgnoreCase(ticker.getType())) {
             typeIcon.setImageResource(R.drawable.crypto);
             typeIcon.setVisibility(View.VISIBLE);
@@ -73,7 +81,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             typeIcon.setVisibility(View.GONE);
         }
 
-        timeSpan.setText(getTimeAgo(ticker.getTimestampSeconds()));
+        timeSpan.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
         lastPrice.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
         percentageIncreasePerDay.setText(
             String.format(
@@ -102,14 +110,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public static String getTimeAgo(long timestampMillis) {
+    public static String getTimeAgo(long timestampSeconds) {
         LocalDateTime now = LocalDateTime.now();
-        Instant pastInstant;
-        if (timestampMillis < 1000000000000L) { // likely in seconds
-            pastInstant = Instant.ofEpochSecond(timestampMillis);
-        } else { // milliseconds
-            pastInstant = Instant.ofEpochMilli(timestampMillis);
-        }
+        Instant pastInstant = Instant.ofEpochSecond(timestampSeconds);
         LocalDateTime past = pastInstant.atZone(ZoneId.systemDefault()).toLocalDateTime();
 
         long years = ChronoUnit.YEARS.between(past, now);

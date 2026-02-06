@@ -1,5 +1,6 @@
 package com.example.investment.repository;
 
+import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static java.lang.Double.isFinite;
 
 import android.content.Context;
@@ -23,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -52,17 +52,16 @@ public class YahooFinanceRepository {
                 String symbol = ticker.getKey();
                 long marketCap = ticker.getValue();
                 try {
-                    JSONObject data = fetchTickerData(symbol);
+                    JSONObject result = fetchTickerData(symbol);
 
                     // Extract additional data as needed
-                    JSONObject result = data.getJSONObject("chart")
-                        .getJSONArray("result")
-                        .getJSONObject(0);
                     JSONObject meta = result.getJSONObject("meta");
                     String currency = meta.getString("currency");
                     if (currency.isEmpty()) {
                         continue;
                     }
+                    String exchange = meta.getString("fullExchangeName");
+                    JSONArray timestamps = result.getJSONArray("timestamp");
                     JSONObject indicators = result.getJSONObject("indicators");
                     JSONObject quotes = indicators.getJSONArray("quote").getJSONObject(0);
                     JSONArray lows = null;
@@ -77,6 +76,7 @@ public class YahooFinanceRepository {
                         .getJSONArray("adjclose");
                     final long adjClosesLen = adjCloses.length();
                     long pricesLen = 0;
+                    long firstTradeDateTimestampSeconds = 0;
                     Double firstPrice = null;
                     Double lastPrice = null;
                     Integer lastPriceIdx = null;
@@ -86,21 +86,22 @@ public class YahooFinanceRepository {
                     for (int i = 0; i < adjClosesLen; i++) {
                         // Get and Include Close Price If Available
                         double adjClose;
+                        long timestampSeconds;
                         try {
                             adjClose = adjCloses.getDouble(i);
                             // Check Valid Price
-                            if (adjClose < 0 || !isFinite(adjClose)) {
+                            if (adjClose <= 0 || !isFinite(adjClose)) {
                                 throw new Exception("Invalid Adjusted Closing Price");
                             }
                             // Then Get Valid First Price
                             if (firstPrice == null) {
-                                // Only Accept Non-Zero First Price
-                                // Since It's Used as a Divisor
-                                if (adjClose > 0) {
-                                    firstPrice = adjClose;
-                                } else {
-                                    continue;
+                                timestampSeconds = timestamps.getLong(i);
+                                // Check Valid Timestamp
+                                if (Math.floor(System.currentTimeMillis() / 1000D) <= timestampSeconds || !isFinite(timestampSeconds)) {
+                                    throw new Exception("Invalid Timestamp");
                                 }
+                                firstTradeDateTimestampSeconds = timestampSeconds;
+                                firstPrice = adjClose;
                             }
                         } catch (Exception ignored) {
                             // Count Number of Missing Data
@@ -127,7 +128,7 @@ public class YahooFinanceRepository {
                         ++pricesLen;
                         // Calculate and Sum Percentage Difference of Mean and Price
                         double densePrice = sumOfPrice / pricesLen;
-                        sumOfPercentageChangeGrowthFactor += adjClose / densePrice;
+                        sumOfPercentageChangeGrowthFactor += adjClose / densePrice; // OR (1 + ((adjClose - densePrice) / densePrice))
                         // dif of close and dense /
                         // Set Last Price Available
                         lastPrice = adjClose;
@@ -135,19 +136,20 @@ public class YahooFinanceRepository {
                     }
                     // Remove Any Ticker with Invalid History
                     if (firstPrice == null) throw new Exception("Invalid First Price");
+                    if (firstTradeDateTimestampSeconds == 0) throw new Exception("Invalid First Trade Date Timestamp");
                     if (pricesLen < 2) throw new Exception("Invalid Number of Adjusted Closing Price");
                     // Calculate Ranking Indicator
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lastPrice, pricesLen);
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lastPrice, firstTradeDateTimestampSeconds);
                     // Calculate Long Indicator
                     double densePrice = sumOfPrice / pricesLen;
                     double averagePercentageChangeGrowthFactor = sumOfPercentageChangeGrowthFactor / pricesLen;
                     double upperPriceBoundary = densePrice * averagePercentageChangeGrowthFactor * 0.7; // 70% Target | 30% Risk | Stop-Loss Based
 
-                    // Get Used Value for Boundaries
+                    // Get Last Low Only Used for Boundaries
                     if (lows != null) {
                         try {
                             double lastLowPrice = lows.getDouble(lastPriceIdx);
-                            if (lastLowPrice >= 0 && isFinite(lastLowPrice)) {
+                            if (lastLowPrice > 0 && isFinite(lastLowPrice)) {
                                 lastPrice = lastLowPrice;
                             }
                         } catch (Exception ignored) {}
@@ -170,42 +172,16 @@ public class YahooFinanceRepository {
                         type = meta.getString("instrumentType");
                     } catch (Exception ignored) {}
 
-                    // Get First Date
-                    long timestampSeconds = 0;
-                    try {
-                        timestampSeconds = meta.getLong("firstTradeDate");
-                        if (!isFinite(timestampSeconds)) {
-                            timestampSeconds = 0;
-                        }
-                    } catch (Exception ignored) {}
-                    if (timestampSeconds == 0) {
-                        try {
-                            timestampSeconds = result.getJSONArray("timestamp").getLong(0);
-                            if (!isFinite(timestampSeconds)) {
-                                timestampSeconds = 0;
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                    if (timestampSeconds == 0) {
-                        try {
-                            timestampSeconds = TimeUnit.MILLISECONDS.toSeconds(
-                                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(adjClosesLen - 1)
-                            );
-                            if (!isFinite(timestampSeconds)) {
-                                timestampSeconds = 0;
-                            }
-                        } catch (Exception ignored) {}
-                    }
-
                     tickers.add(new TickerInfo(
                         symbol,
+                        exchange,
                         name,
                         type,
                         lastPrice,
                         densePrice,
                         upperPriceBoundary,
                         percentageIncreasePerDay,
-                        timestampSeconds,
+                        firstTradeDateTimestampSeconds,
                         marketCap
                     ));
 
@@ -244,8 +220,9 @@ public class YahooFinanceRepository {
     private double calculatePercentageIncreasePerDay(
         double firstPrice,
         double lastPrice,
-        long numberOfDays
+        long firstTradeDateTimestampSeconds
     ) throws Exception {
+        double numberOfDays = (System.currentTimeMillis() - (firstTradeDateTimestampSeconds * 1000)) / 86400000D; // Decimals allowed
         double percentageIncreasePerDay = (((lastPrice - firstPrice) / firstPrice) * 100) / numberOfDays;
         if (isFinite(percentageIncreasePerDay)) {
             return percentageIncreasePerDay;
@@ -286,19 +263,24 @@ public class YahooFinanceRepository {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     private @NonNull JSONObject fetchTickerData(String symbol) throws Exception {
+        return fetchTickerData(symbol, "1d");
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private @NonNull JSONObject fetchTickerData(String symbol, String interval) throws Exception {
         String url = new UrlBuilder(Constants.YAHOO_CHART_URL)
             .addPath(symbol)
-            .addParam("events", "capitalGain|div|split")
-            .addParam("formatted", "true")
-            .addParam("includeAdjustedClose", "true")
-            .addParam("interval", "1d")
-            .addParam("period1", "0")
-            .addParam("period2", NumberUtils.toFullNumericString((long) Math.floor((double) System.currentTimeMillis() / 1000)))
-            .addParam("symbol", symbol)
-            .addParam("userYfid", "true")
+            .addParam("period1", NumberUtils.toFullNumericString(FIRST_TRADE_TIMESTAMP_SECONDS))
+            // Add a month (31 days) buffer
+            .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
+            .addParam("interval", interval)
+            .addParam("includePrePost", "true")
+            .addParam("events", "div|split|earn")
             .addParam("lang", "en-US")
             .addParam("region", "US")
+            .addParam("source", "cosaic")
             .build();
 
         Request request = new Request.Builder()
@@ -314,7 +296,19 @@ public class YahooFinanceRepository {
             ResponseBody body = response.body();
             if (body == null) throw new Exception("Empty response body");
 
-            return new JSONObject(body.string());
+            return new JSONObject(body.string())
+                .getJSONObject("chart")
+                .getJSONArray("result")
+                .getJSONObject(0);
+
+        } catch (Exception exception) {
+            if ("1d".equals(interval)) {
+                return fetchTickerData(symbol, "1mo");
+            } else if ("1mo".equals(interval)) {
+                return fetchTickerData(symbol, "3mo");
+            } else {
+                throw exception;
+            }
         }
     }
 

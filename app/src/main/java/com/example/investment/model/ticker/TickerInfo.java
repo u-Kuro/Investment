@@ -8,38 +8,45 @@ public class TickerInfo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
     private final String symbol;
+    private final String exchange;
     private final String name;
     private final String type;
     private final double lastPrice;
     private final double densePrice;
     private final double upperPriceBoundary;
     private final double percentageIncreasePerDay;
-    private final long timestampSeconds;
+    private final long firstTradeTimestampSeconds;
     private final long marketCap;
     public TickerInfo(
         String symbol,
+        String exchange,
         String name,
         String type,
         double lastPrice,
         double densePrice,
         double upperPriceBoundary,
         double percentageIncreasePerDay,
-        long timestampSeconds,
+        long firstTradeTimestampSeconds,
         long marketCap
     ) {
         this.symbol = symbol;
+        this.exchange = exchange;
         this.name = name;
         this.type = type;
         this.lastPrice = lastPrice;
         this.densePrice = densePrice;
         this.upperPriceBoundary = upperPriceBoundary;
         this.percentageIncreasePerDay = percentageIncreasePerDay;
-        this.timestampSeconds = timestampSeconds;
+        this.firstTradeTimestampSeconds = firstTradeTimestampSeconds;
         this.marketCap = marketCap;
     }
 
     public String getSymbol() {
         return symbol;
+    }
+
+    public String getExchange() {
+        return exchange;
     }
 
     public String getName(boolean defaultToSymbol) {
@@ -69,8 +76,8 @@ public class TickerInfo implements Serializable {
         return percentageIncreasePerDay;
     }
 
-    public long getTimestampSeconds() {
-        return timestampSeconds;
+    public long getFirstTradeTimestampSeconds() {
+        return firstTradeTimestampSeconds;
     }
 
     public long getMarketCap() {
@@ -79,13 +86,14 @@ public class TickerInfo implements Serializable {
 
     public boolean equals(TickerInfo tickerInfo) {
         return Objects.equals(this.symbol, tickerInfo.getSymbol())
+            && Objects.equals(this.exchange, tickerInfo.getExchange())
             && Objects.equals(this.name, tickerInfo.getName(false))
             && Objects.equals(this.type, tickerInfo.getType())
             && this.lastPrice == tickerInfo.getLastPrice()
             && this.densePrice == tickerInfo.getDensePrice()
             && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
             && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
-            && this.timestampSeconds == tickerInfo.getTimestampSeconds()
+            && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
             && this.marketCap == tickerInfo.getMarketCap();
     }
 }
