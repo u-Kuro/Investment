@@ -81,7 +81,7 @@ public class YahooFinanceRepository {
                     Double lastPrice = null;
                     Integer lastPriceIdx = null;
                     double sumOfPrice = 0;
-                    double sumOfPercentageDifference = 0;
+                    double sumOfPercentageChangeGrowthFactor = 0;
                     int currentRecurringNumberOfMissingData = 0;
                     for (int i = 0; i < adjClosesLen; i++) {
                         // Get and Include Close Price If Available
@@ -118,7 +118,7 @@ public class YahooFinanceRepository {
                             pricesLen += currentRecurringNumberOfMissingData;
                             // Calculate and Sum N (Missing Data) Percentage Difference of Mean and Price
                             double densePrice = sumOfPrice / pricesLen;
-                            sumOfPercentageDifference += (Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2)) * currentRecurringNumberOfMissingData;
+                            sumOfPercentageChangeGrowthFactor += (adjClose / densePrice) * currentRecurringNumberOfMissingData; // OR (1 + ((adjClose - densePrice) / densePrice))
                             // Reset Recurring Number of Missing Data
                             currentRecurringNumberOfMissingData = 0;
                         }
@@ -127,7 +127,7 @@ public class YahooFinanceRepository {
                         ++pricesLen;
                         // Calculate and Sum Percentage Difference of Mean and Price
                         double densePrice = sumOfPrice / pricesLen;
-                        sumOfPercentageDifference += Math.abs(adjClose - densePrice) / ((adjClose + densePrice) / 2);
+                        sumOfPercentageChangeGrowthFactor += adjClose / densePrice;
                         // dif of close and dense /
                         // Set Last Price Available
                         lastPrice = adjClose;
@@ -140,10 +140,8 @@ public class YahooFinanceRepository {
                     double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lastPrice, pricesLen);
                     // Calculate Long Indicator
                     double densePrice = sumOfPrice / pricesLen;
-                    double averagePercentageDifference = sumOfPercentageDifference / (pricesLen - 1);
-                    double growthFactor = 1 + averagePercentageDifference;
-                    double upperPriceBoundary = densePrice * growthFactor;
-                    double lowerPriceBoundary = densePrice / growthFactor;
+                    double averagePercentageChangeGrowthFactor = sumOfPercentageChangeGrowthFactor / pricesLen;
+                    double upperPriceBoundary = densePrice * averagePercentageChangeGrowthFactor * 0.7; // 70% Target | 30% Risk | Stop-Loss Based
 
                     // Get Used Value for Boundaries
                     if (lows != null) {
@@ -206,7 +204,6 @@ public class YahooFinanceRepository {
                         lastPrice,
                         densePrice,
                         upperPriceBoundary,
-                        lowerPriceBoundary,
                         percentageIncreasePerDay,
                         timestampSeconds,
                         marketCap
@@ -246,10 +243,10 @@ public class YahooFinanceRepository {
 
     private double calculatePercentageIncreasePerDay(
         double firstPrice,
-        double lowerPriceBoundary,
+        double lastPrice,
         long numberOfDays
     ) throws Exception {
-        double percentageIncreasePerDay = (((lowerPriceBoundary - firstPrice) / firstPrice) * 100) / numberOfDays;
+        double percentageIncreasePerDay = (((lastPrice - firstPrice) / firstPrice) * 100) / numberOfDays;
         if (isFinite(percentageIncreasePerDay)) {
             return percentageIncreasePerDay;
         } else {

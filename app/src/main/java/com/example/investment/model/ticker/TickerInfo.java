@@ -13,7 +13,6 @@ public class TickerInfo implements Serializable {
     private final double lastPrice;
     private final double densePrice;
     private final double upperPriceBoundary;
-    private final double lowerPriceBoundary;
     private final double percentageIncreasePerDay;
     private final long timestampSeconds;
     private final long marketCap;
@@ -24,7 +23,6 @@ public class TickerInfo implements Serializable {
         double lastPrice,
         double densePrice,
         double upperPriceBoundary,
-        double lowerPriceBoundary,
         double percentageIncreasePerDay,
         long timestampSeconds,
         long marketCap
@@ -35,7 +33,6 @@ public class TickerInfo implements Serializable {
         this.lastPrice = lastPrice;
         this.densePrice = densePrice;
         this.upperPriceBoundary = upperPriceBoundary;
-        this.lowerPriceBoundary = lowerPriceBoundary;
         this.percentageIncreasePerDay = percentageIncreasePerDay;
         this.timestampSeconds = timestampSeconds;
         this.marketCap = marketCap;
@@ -68,10 +65,6 @@ public class TickerInfo implements Serializable {
         return upperPriceBoundary;
     }
 
-    public double getLowerPriceBoundary() {
-        return lowerPriceBoundary;
-    }
-
     public double getPercentageIncreasePerDay() {
         return percentageIncreasePerDay;
     }
@@ -91,7 +84,6 @@ public class TickerInfo implements Serializable {
             && this.lastPrice == tickerInfo.getLastPrice()
             && this.densePrice == tickerInfo.getDensePrice()
             && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
-            && this.lowerPriceBoundary == tickerInfo.getLowerPriceBoundary()
             && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
             && this.timestampSeconds == tickerInfo.getTimestampSeconds()
             && this.marketCap == tickerInfo.getMarketCap();

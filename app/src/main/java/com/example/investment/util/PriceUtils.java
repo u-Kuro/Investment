@@ -14,7 +14,7 @@ public class PriceUtils {
     public static @NonNull String getPriceState(TickerInfo tickerInfo) {
         if (
             tickerInfo.getPercentageIncreasePerDay() <= 0
-            || tickerInfo.getLastPrice() <= tickerInfo.getLowerPriceBoundary()
+            || tickerInfo.getLastPrice() <= tickerInfo.getDensePrice()
         ) return Constants.PRICE_BELOW;
         if (tickerInfo.getLastPrice() >= tickerInfo.getUpperPriceBoundary()) return Constants.PRICE_ABOVE;
         return Constants.PRICE_BETWEEN;

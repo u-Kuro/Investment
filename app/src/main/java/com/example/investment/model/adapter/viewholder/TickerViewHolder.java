@@ -29,9 +29,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView timeSpan;
     private final TextView lastPrice;
     private final TextView percentageIncreasePerDay;
+    private final TextView marketCapText;
     private final TextView upperPriceBoundaryText;
     private final TextView densePriceText;
-    private final TextView lowerPriceBoundaryText;
     private TickerInfo currentTicker;
 
     public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
@@ -41,9 +41,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         timeSpan = itemView.findViewById(R.id.timeSpan);
         lastPrice = itemView.findViewById(R.id.lastPrice);
         percentageIncreasePerDay = itemView.findViewById(R.id.percentageIncreasePerDay);
+        marketCapText = itemView.findViewById(R.id.marketCapText);
         upperPriceBoundaryText = itemView.findViewById(R.id.upperPriceBoundaryText);
         densePriceText = itemView.findViewById(R.id.densePriceText);
-        lowerPriceBoundaryText = itemView.findViewById(R.id.lowerPriceBoundaryText);
 
         if (listener != null) {
             itemView.setOnClickListener(v -> listener.onTickerClick(currentTicker));
@@ -83,9 +83,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             )
         );
 
+        marketCapText.setText(NumberUtils.formatNumber(ticker.getMarketCap()));
         upperPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getUpperPriceBoundary()));
         densePriceText.setText(PriceUtils.formatPrice(ticker.getDensePrice()));
-        lowerPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getLowerPriceBoundary()));
 
         MaterialCardView cardView = (MaterialCardView) itemView;
         cardView.setStrokeColor(getCardColor(ticker));
@@ -136,9 +136,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
 
         @NonNull String priceState = PriceUtils.getPriceState(ticker);
         if (priceState.equals(Constants.PRICE_BETWEEN)) {
-            colorResId = R.color.good;
+            colorResId = R.color.profit_taking;
         } else if (priceState.equals(Constants.PRICE_ABOVE)) {
-            colorResId = R.color.hold;
+            colorResId = R.color.momentum;
         } else {
             colorResId = R.color.bad;
         }

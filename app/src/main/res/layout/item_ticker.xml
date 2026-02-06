@@ -109,7 +109,7 @@
             android:useDefaultMargins="true">
 
             <TextView
-                android:id="@+id/upperPriceBoundaryText"
+                android:id="@+id/marketCapText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -120,10 +120,10 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/densePriceText" />
+                app:layout_constraintRight_toLeftOf="@id/upperPriceBoundaryText" />
 
             <TextView
-                android:id="@+id/densePriceText"
+                android:id="@+id/upperPriceBoundaryText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -133,11 +133,11 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toLeftOf="@id/upperPriceBoundaryText"
-                app:layout_constraintRight_toLeftOf="@id/lowerPriceBoundaryText" />
+                app:layout_constraintLeft_toLeftOf="@id/marketCapText"
+                app:layout_constraintRight_toLeftOf="@id/densePriceText" />
 
             <TextView
-                android:id="@+id/lowerPriceBoundaryText"
+                android:id="@+id/densePriceText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -148,7 +148,7 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/densePriceText" />
+                app:layout_constraintLeft_toRightOf="@id/upperPriceBoundaryText" />
 
         </GridLayout>
 

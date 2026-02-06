@@ -99,7 +99,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                             || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
 
                     boolean statusMatch = !statusFilter
-                            || PriceUtils.getPriceState(ticker).equals(Constants.PRICE_BETWEEN);
+                            || PriceUtils.getPriceState(ticker).equals(Constants.PRICE_ABOVE);
 
                     boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
 
