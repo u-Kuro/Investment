@@ -4,9 +4,9 @@ An Android application that tracks and analyzes stock and cryptocurrency investm
 
 ## Features
 
-- Price boundary calculations for investment decisions
+- Price boundaries for investment decisions
 - Daily percentage increase tracking
-- Investment range status filtering
+- Investment opportunity status filtering
 - Notification system for price changes and opportunities
 
 ## Technical Details
