@@ -6,7 +6,7 @@ An Android application that tracks and analyzes stock and cryptocurrency investm
 
 - Price boundary calculations for investment decisions
 - Daily percentage increase tracking
-- Profit taking range status filtering
+- Investment range status filtering
 - Notification system for price changes and opportunities
 
 ## Technical Details
