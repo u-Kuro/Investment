@@ -2,6 +2,26 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
+import static com.example.investment.util.Constants.CACHE_FILE_HIGHEST;
+import static com.example.investment.util.Constants.CHANNEL_HIGHEST;
+import static com.example.investment.util.Constants.CHANNEL_PRICE_CROSS;
+import static com.example.investment.util.Constants.CHANNEL_WARNING;
+import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.ID_HIGHEST;
+import static com.example.investment.util.Constants.ID_MISSING;
+import static com.example.investment.util.Constants.ID_PRICE_CROSS;
+import static com.example.investment.util.Constants.ID_SERVICE;
+import static com.example.investment.util.Constants.ID_WARNING;
+import static com.example.investment.util.Constants.NAME_HIGHEST;
+import static com.example.investment.util.Constants.NAME_MISSING;
+import static com.example.investment.util.Constants.NAME_PRICE_CROSS;
+import static com.example.investment.util.Constants.NAME_WARNING;
+import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PRICE_ABOVE;
+import static com.example.investment.util.Constants.PRICE_BELOW;
+import static com.example.investment.util.Constants.PRICE_BETWEEN;
+
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -20,7 +40,6 @@ import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
-import com.example.investment.util.Constants;
 import com.example.investment.util.FileUtils;
 import com.example.investment.util.NotificationUtils;
 import com.example.investment.util.PriceUtils;
@@ -54,7 +73,7 @@ public class TickerService extends Service {
 
         try {
             startForeground(
-                Constants.ID_SERVICE, 
+                ID_SERVICE,
                 NotificationUtils.createLowPriorityServiceNotification(this, "Ticker service running"),
                 FOREGROUND_SERVICE_TYPE_DATA_SYNC
             );
@@ -174,8 +193,8 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void checkAndNotifyTickerChanges(List<TickerInfo> tickers) {
-        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-        long filterMarketCapThreshold = prefs.getLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        long filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         List<TickerInfo> currentTickers = tickers.stream()
             .filter(t -> t.getMarketCap() >= filterMarketCapThreshold)
             .collect(Collectors.toList());
@@ -204,15 +223,15 @@ public class TickerService extends Service {
         } else {
             NotificationUtils.showHighPriorityNotification(
                 this,
-                Constants.CHANNEL_WARNING,
-                Constants.NAME_MISSING,
+                CHANNEL_WARNING,
+                NAME_MISSING,
                 String.format(
                     "Previous highest performer %s is not found",
                     savedHighest.getName(true)
                 ),
-                Constants.ID_MISSING
+                ID_MISSING
             );
-            FileUtils.deleteFile(getApplicationContext(), Constants.CACHE_FILE_HIGHEST);
+            FileUtils.deleteFile(getApplicationContext(), CACHE_FILE_HIGHEST);
         }
     }
 
@@ -238,27 +257,27 @@ public class TickerService extends Service {
         String previousState = savedHighest.getPriceState();
 
         if (!previousState.equals(currentState)) {
-            if (isReturnToTradingRange(currentState, previousState)) {
+            if (isReturnToProfitTakingRange(currentState, previousState)) {
                 NotificationUtils.showHighPriorityNotification(
                     this,
-                    Constants.CHANNEL_PRICE_CROSS,
-                    Constants.NAME_PRICE_CROSS,
+                    CHANNEL_PRICE_CROSS,
+                    NAME_PRICE_CROSS,
                     String.format(
-                            "%s price is now within trading range",
-                            highestTicker.getName(true)
+                        "%s price is now within trading range",
+                        highestTicker.getName(true)
                     ),
-                    Constants.ID_PRICE_CROSS
+                    ID_PRICE_CROSS
                 );
-            } else if (currentState.equals(Constants.PRICE_BELOW)) {
+            } else if (currentState.equals(PRICE_BELOW)) {
                 NotificationUtils.showHighPriorityNotification(
                     this,
-                    Constants.CHANNEL_WARNING,
-                    Constants.NAME_WARNING,
+                    CHANNEL_WARNING,
+                    NAME_WARNING,
                     String.format(
                             "%s price has dropped below threshold",
                             highestTicker.getName(true)
                     ),
-                    Constants.ID_WARNING
+                    ID_WARNING
                 );
             }
         }
@@ -266,10 +285,10 @@ public class TickerService extends Service {
         saveHighestTicker(highestTicker, currentState);
     }
 
-    private boolean isReturnToTradingRange(String currentState, String previousState) {
-        return currentState.equals(Constants.PRICE_BETWEEN)
-            && (previousState.equals(Constants.PRICE_ABOVE) 
-                || previousState.equals(Constants.PRICE_BELOW));
+    private boolean isReturnToProfitTakingRange(String currentState, String previousState) {
+        return previousState.equals(PRICE_ABOVE)
+            && (currentState.equals(PRICE_BETWEEN)
+                || currentState.equals(PRICE_BELOW));
     }
 
     private boolean isNewHighestPerformer(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
@@ -281,15 +300,15 @@ public class TickerService extends Service {
     private void notifyAndSaveNewHighestPerformer(TickerInfo highestTicker) {
         NotificationUtils.showHighPriorityNotification(
             this,
-            Constants.CHANNEL_HIGHEST,
-            Constants.NAME_HIGHEST,
+            CHANNEL_HIGHEST,
+            NAME_HIGHEST,
             String.format(
                 Locale.US,
                 "%s: %.2f%% Per Day",
                 highestTicker.getName(true),
                 highestTicker.getPercentageIncreasePerDay()
             ),
-            Constants.ID_HIGHEST
+            ID_HIGHEST
         );
         saveHighestTicker(highestTicker, PriceUtils.getPriceState(highestTicker));
     }
@@ -299,7 +318,7 @@ public class TickerService extends Service {
         try {
             FileUtils.saveObject(
                 getApplicationContext(),
-                Constants.CACHE_FILE_HIGHEST,
+                CACHE_FILE_HIGHEST,
                 new HighestTickerInfo(ticker, priceState)
             );
         } catch (IOException e) {
@@ -309,7 +328,7 @@ public class TickerService extends Service {
 
     private HighestTickerInfo getSavedHighestTicker() {
         try {
-            return (HighestTickerInfo) FileUtils.loadObject(getApplicationContext(), Constants.CACHE_FILE_HIGHEST);
+            return (HighestTickerInfo) FileUtils.loadObject(getApplicationContext(), CACHE_FILE_HIGHEST);
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading highest ticker", e);
             return null;

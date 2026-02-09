@@ -1,5 +1,11 @@
 package com.example.investment;
 
+import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_FILTER_STATUS;
+import static com.example.investment.util.Constants.PREF_FILTER_TYPE;
+
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -39,7 +45,6 @@ import android.net.Uri;
 import com.example.investment.model.adapter.TickerAdapter;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
-import com.example.investment.util.Constants;
 import com.example.investment.util.Logger;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.service.TickerService;
@@ -68,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERMISSION_REQUEST_CODE = 123;
     private ImageView filterStatusImage;
     private boolean filterStatus = false;
-    private long filterMarketCapThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+    private long filterMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
     private ImageView stopProcessingImage;
     private boolean isUpdating = false;
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
@@ -385,10 +390,10 @@ public class MainActivity extends AppCompatActivity {
         filterStatusImage = findViewById(R.id.statusFilterImage);
 
         // Load saved preferences
-        SharedPreferences prefs = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
-        filterStatus = prefs.getBoolean(Constants.PREF_FILTER_STATUS, false);
-        filterMarketCapThreshold = prefs.getLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, Constants.DEFAULT_MARKET_CAP_THRESHOLD);
-        int savedFilterPosition = prefs.getInt(Constants.PREF_FILTER_TYPE, 0);
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
+        filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
 
         // Setup spinner
         ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
@@ -410,8 +415,8 @@ public class MainActivity extends AppCompatActivity {
         typeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
-                editor.putInt(Constants.PREF_FILTER_TYPE, position);
+                SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+                editor.putInt(PREF_FILTER_TYPE, position);
                 editor.apply();
                 
                 adapter.setTypeFilter(parent.getSelectedItem().toString());
@@ -425,8 +430,8 @@ public class MainActivity extends AppCompatActivity {
             filterStatus = !filterStatus;
             filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
                 
-            SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
-            editor.putBoolean(Constants.PREF_FILTER_STATUS, filterStatus);
+            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+            editor.putBoolean(PREF_FILTER_STATUS, filterStatus);
             editor.apply();
             
             adapter.setStatusFilter(filterStatus);
@@ -458,16 +463,20 @@ public class MainActivity extends AppCompatActivity {
                     String input = marketCapThresholdInput.getText().toString().trim();
                     long newMarketCapThreshold;
                     if (input.isEmpty()) {
-                        newMarketCapThreshold = Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+                        newMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
                     } else {
                         newMarketCapThreshold = Long.parseLong(marketCapThresholdInput.getText().toString());
                     }
-                    filterMarketCapThreshold = newMarketCapThreshold;
-                    adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
-                    SharedPreferences.Editor editor = getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE).edit();
-                    editor.putLong(Constants.PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold);
-                    editor.apply();
-                    Toast.makeText(this, "Market Cap Threshold Updated", Toast.LENGTH_SHORT).show();
+                    if (newMarketCapThreshold > 0) {
+                        filterMarketCapThreshold = newMarketCapThreshold;
+                        adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
+                        SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+                        editor.putLong(PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold);
+                        editor.apply();
+                        Toast.makeText(this, "Market Cap Threshold Updated", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Market Cap Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
+                    }
                 } catch (NumberFormatException e) {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
                 }

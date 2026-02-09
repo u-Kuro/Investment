@@ -1,5 +1,7 @@
 package com.example.investment.model.adapter;
 
+import static com.example.investment.util.Constants.PRICE_ABOVE;
+
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,7 +17,6 @@ import com.example.investment.model.adapter.viewholder.TickerViewHolder;
 import com.example.investment.model.adapter.diffcallback.TickerDiffCallback;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
-import com.example.investment.util.Constants;
 import com.example.investment.util.PriceUtils;
 
 import java.util.ArrayList;
@@ -99,7 +100,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                             || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
 
                     boolean statusMatch = !statusFilter
-                            || PriceUtils.getPriceState(ticker).equals(Constants.PRICE_ABOVE);
+                            || PriceUtils.getPriceState(ticker).equals(PRICE_ABOVE);
 
                     boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
 

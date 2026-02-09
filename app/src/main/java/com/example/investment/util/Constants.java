@@ -14,11 +14,13 @@ public class Constants {
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
     public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
     public static final String YAHOO_SCREENER_URL = "https://query2.finance.yahoo.com/v1/finance/screener/predefined/saved";
+    public static final String YAHOO_CHART_URL_ALT = "https://query1.finance.yahoo.com/v8/finance/chart/";
+    public static final String YAHOO_SCREENER_URL_ALT = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved";
     
     // Yahoo Finance Screener Parameters
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
     public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
-    public static final int SCREENER_COUNT = 250;
+    public static final long SCREENER_COUNT = 250;
     public static final long FIRST_TRADE_TIMESTAMP_SECONDS = -11607782632L; // March 1602
 
     // Price States
@@ -47,5 +49,5 @@ public class Constants {
     public static final String NAME_MISSING = "Investment Missing";
 
     // Filter Defaults
-    public static final long DEFAULT_MARKET_CAP_THRESHOLD = 200_000_000_000L;
+    public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L; // $ 10 Billion
 } 

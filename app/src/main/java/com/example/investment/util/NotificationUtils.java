@@ -1,5 +1,9 @@
 package com.example.investment.util;
 
+import static com.example.investment.util.Constants.CHANNEL_SERVICE;
+import static com.example.investment.util.Constants.ID_SERVICE;
+import static com.example.investment.util.Constants.NAME_SERVICE;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -43,8 +47,8 @@ public class NotificationUtils {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static Notification createLowPriorityServiceNotification(Context context, String title) {
         NotificationChannel channel = new NotificationChannel(
-            Constants.CHANNEL_SERVICE,
-            Constants.NAME_SERVICE,
+            CHANNEL_SERVICE,
+            NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         );
         NotificationManager manager = context.getSystemService(NotificationManager.class);
@@ -59,7 +63,7 @@ public class NotificationUtils {
             PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE
         );
 
-        return new NotificationCompat.Builder(context, Constants.CHANNEL_SERVICE)
+        return new NotificationCompat.Builder(context, CHANNEL_SERVICE)
             .setContentTitle(title)
             .setSmallIcon(R.drawable.logo)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -71,7 +75,7 @@ public class NotificationUtils {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static void showLowPriorityServiceNotification(Context context, String message) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        manager.notify(Constants.ID_SERVICE, createLowPriorityServiceNotification(context, message));
+        manager.notify(ID_SERVICE, createLowPriorityServiceNotification(context, message));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)

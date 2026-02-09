@@ -1,16 +1,27 @@
 package com.example.investment.repository;
 
+import static com.example.investment.util.Constants.CACHE_FILE_DATA;
+import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
+import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.SCREENER_COUNT;
+import static com.example.investment.util.Constants.SCREENER_CRYPTO;
+import static com.example.investment.util.Constants.SCREENER_STOCKS;
+import static com.example.investment.util.Constants.YAHOO_CHART_URL;
+import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
+import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
+import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static java.lang.Double.isFinite;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.ticker.TickerInfo;
-import com.example.investment.util.Constants;
 import com.example.investment.util.Logger;
 import com.example.investment.model.CachedTickerData;
 import com.example.investment.model.listener.TickerUpdateListener;
@@ -20,6 +31,7 @@ import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +56,7 @@ public class YahooFinanceRepository {
             listener.onProgress(0, 0);
 
             // Get Ticker Symbols
-            Map<String, Long> symbols = fetchSymbols();
+            Map<String, Long> symbols = fetchSymbols(context);
             int total = symbols.size();
             int current = 0;
 
@@ -54,106 +66,96 @@ public class YahooFinanceRepository {
                 try {
                     JSONObject result = fetchTickerData(symbol);
 
-                    // Extract additional data as needed
+                    // Metadata & Base Arrays
                     JSONObject meta = result.getJSONObject("meta");
-                    String currency = meta.getString("currency");
-                    if (currency.isEmpty()) {
-                        continue;
-                    }
                     String exchange = meta.getString("fullExchangeName");
-                    JSONArray timestamps = result.getJSONArray("timestamp");
+                    JSONArray timestampArr = result.getJSONArray("timestamp");
+
                     JSONObject indicators = result.getJSONObject("indicators");
-                    JSONObject quotes = indicators.getJSONArray("quote").getJSONObject(0);
-                    JSONArray lows = null;
-                    try {
-                        lows = quotes.getJSONArray("low");
-                    } catch (Exception ignored) {}
+                    JSONObject quote = indicators.getJSONArray("quote").getJSONObject(0);
+                    JSONArray highArr = quote.getJSONArray("high");
+                    JSONArray lowArr = quote.getJSONArray("low");
+                    JSONArray volArr = quote.getJSONArray("volume");
+                    JSONArray adjCloses = indicators.getJSONArray("adjclose").getJSONObject(0).getJSONArray("adjclose");
 
-                    // Get Indicators and Prices
-                    JSONArray adjCloses = indicators
-                        .getJSONArray("adjclose")
-                        .getJSONObject(0)
-                        .getJSONArray("adjclose");
-                    final long adjClosesLen = adjCloses.length();
-                    long pricesLen = 0;
-                    long firstTradeDateTimestampSeconds = 0;
-                    Double firstPrice = null;
-                    Double lastPrice = null;
-                    Integer lastPriceIdx = null;
-                    double sumOfPrice = 0;
+                    // States for Adjusted Close
+                    long adjPricesLen = 0;
+                    double sumOfAdjPrice = 0;
                     double sumOfPercentageChangeGrowthFactor = 0;
-                    int currentRecurringNumberOfMissingData = 0;
-                    for (int i = 0; i < adjClosesLen; i++) {
-                        // Get and Include Close Price If Available
-                        double adjClose;
-                        long timestampSeconds;
-                        try {
-                            adjClose = adjCloses.getDouble(i);
-                            // Check Valid Price
-                            if (adjClose <= 0 || !isFinite(adjClose)) {
-                                throw new Exception("Invalid Adjusted Closing Price");
-                            }
-                            // Then Get Valid First Price
-                            if (firstPrice == null) {
-                                timestampSeconds = timestamps.getLong(i);
-                                // Check Valid Timestamp
-                                if (Math.floor(System.currentTimeMillis() / 1000D) <= timestampSeconds || !isFinite(timestampSeconds)) {
-                                    throw new Exception("Invalid Timestamp");
-                                }
-                                firstTradeDateTimestampSeconds = timestampSeconds;
-                                firstPrice = adjClose;
-                            }
-                        } catch (Exception ignored) {
-                            // Count Number of Missing Data
-                            // Set Their Value as the Average of Last Available Price and Next Available Price
-                            // Only If Theres a Previous price Already Set
-                            if (lastPrice != null) {
-                                ++currentRecurringNumberOfMissingData;
-                            }
-                            continue;
-                        }
-                        // Continue the Price Calculations
-                        if (currentRecurringNumberOfMissingData > 0) {
-                            // Add N (Missing Data) Average of Last Available Price and Current Valid Price
-                            sumOfPrice += ((lastPrice + adjClose) / 2) * currentRecurringNumberOfMissingData;
-                            pricesLen += currentRecurringNumberOfMissingData;
-                            // Calculate and Sum N (Missing Data) Percentage Difference of Mean and Price
-                            double densePrice = sumOfPrice / pricesLen;
-                            sumOfPercentageChangeGrowthFactor += (adjClose / densePrice) * currentRecurringNumberOfMissingData; // OR (1 + ((adjClose - densePrice) / densePrice))
-                            // Reset Recurring Number of Missing Data
-                            currentRecurringNumberOfMissingData = 0;
-                        }
-                        // Add Valid Adjusted Close Price
-                        sumOfPrice += adjClose;
-                        ++pricesLen;
-                        // Calculate and Sum Percentage Difference of Mean and Price
-                        double densePrice = sumOfPrice / pricesLen;
-                        sumOfPercentageChangeGrowthFactor += adjClose / densePrice; // OR (1 + ((adjClose - densePrice) / densePrice))
-                        // dif of close and dense /
-                        // Set Last Price Available
-                        lastPrice = adjClose;
-                        lastPriceIdx = i;
-                    }
-                    // Remove Any Ticker with Invalid History
-                    if (firstPrice == null) throw new Exception("Invalid First Price");
-                    if (firstTradeDateTimestampSeconds == 0) throw new Exception("Invalid First Trade Date Timestamp");
-                    if (pricesLen < 2) throw new Exception("Invalid Number of Adjusted Closing Price");
-                    // Calculate Ranking Indicator
-                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstPrice, lastPrice, firstTradeDateTimestampSeconds);
-                    // Calculate Long Indicator
-                    double densePrice = sumOfPrice / pricesLen;
-                    double averagePercentageChangeGrowthFactor = sumOfPercentageChangeGrowthFactor / pricesLen;
-                    double upperPriceBoundary = densePrice * averagePercentageChangeGrowthFactor * 0.7; // 70% Target | 30% Risk | Stop-Loss Based
+                    Double firstAdjPrice = null;
+                    Double lastAdjPrice = null;
+                    Long firstTradeDateTimestampSeconds = null;
 
-                    // Get Last Low Only Used for Boundaries
-                    if (lows != null) {
+                    // States for OHLCV
+                    long ohlcvLen = 0;
+                    double S_num = 0.0;
+                    double S_den = 0.0;
+                    double weightedAveragePctChangeGrowthFactor = 0.0;
+                    Double lastLowPrice = null;
+
+                    for (int i = 0; i < adjCloses.length(); i++) {
+
                         try {
-                            double lastLowPrice = lows.getDouble(lastPriceIdx);
-                            if (lastLowPrice > 0 && isFinite(lastLowPrice)) {
-                                lastPrice = lastLowPrice;
+                            // Check Adjusted Close
+                            double currentAC = adjCloses.getDouble(i);
+                            long currentTs = timestampArr.getLong(i);
+                            if (
+                                currentAC > 0 && isFinite(currentAC)
+                                && currentTs > 0 && isFinite(currentTs) && (System.currentTimeMillis() / 1000L) > currentTs
+                            ) {
+                                // Set first price and timestamp once
+                                if (firstAdjPrice == null) {
+                                    firstAdjPrice = currentAC;
+                                    firstTradeDateTimestampSeconds = currentTs;
+                                }
+
+                                adjPricesLen++;
+                                sumOfAdjPrice += currentAC;
+                                sumOfPercentageChangeGrowthFactor += (currentAC / (sumOfAdjPrice / adjPricesLen));
+                                lastAdjPrice = currentAC;
                             }
                         } catch (Exception ignored) {}
+
+                        try {
+                            // Check OHLCV
+                            double currentHigh = highArr.getDouble(i);
+                            double currentLow = lowArr.getDouble(i);
+                            double currentVol = volArr.getLong(i);
+                            if (
+                                currentHigh > 0 && isFinite(currentHigh)
+                                && currentLow > 0 && isFinite(currentLow)
+                                && currentVol > 0 && isFinite(currentVol)
+                            ) {
+                                ohlcvLen++;
+                                double barRange = currentHigh - currentLow;
+                                double midpoint = (currentHigh + currentLow) / 2.0;
+                                double numInc = barRange > 0 ? (currentVol * barRange * midpoint) : (currentVol * midpoint);
+                                double denInc = barRange > 0 ? (currentVol * barRange) : currentVol;
+
+                                S_num += numInc;
+                                S_den += denInc;
+
+                                if (S_den != 0) {
+                                    double densePrice = S_num / S_den;
+                                    weightedAveragePctChangeGrowthFactor += midpoint / densePrice;
+                                }
+                            }
+                            lastLowPrice = currentLow;
+                        } catch (Exception ignored) {}
                     }
+
+                    // Final Validation
+                    if (
+                        adjPricesLen < 2 || firstAdjPrice == null || lastAdjPrice == null  || firstTradeDateTimestampSeconds == 0
+                        || ohlcvLen < 2 || lastLowPrice == null
+                    ) {
+                        throw new Exception("Invalid History: Insufficient valid data points.");
+                    }
+
+                    // Final Metrics
+                    double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstAdjPrice, lastAdjPrice, firstTradeDateTimestampSeconds);
+                    double densePrice = S_num / S_den;
+                    double stopLossPrice = 0.7 * (weightedAveragePctChangeGrowthFactor / ohlcvLen) * densePrice;
 
                     // Get Name
                     String name = null;
@@ -177,9 +179,9 @@ public class YahooFinanceRepository {
                         exchange,
                         name,
                         type,
-                        lastPrice,
+                        lastLowPrice, // Set Last Low as Current Price To Be Used for Crossing Boundaries
                         densePrice,
-                        upperPriceBoundary,
+                        stopLossPrice,
                         percentageIncreasePerDay,
                         firstTradeDateTimestampSeconds,
                         marketCap
@@ -236,7 +238,7 @@ public class YahooFinanceRepository {
         try {
             long updateTime = System.currentTimeMillis();
             CachedTickerData cache = new CachedTickerData(tickers, updateTime);
-            FileUtils.saveObject(context, Constants.CACHE_FILE_DATA, cache);
+            FileUtils.saveObject(context, CACHE_FILE_DATA, cache);
             listener.onFinish(tickers, updateTime);
         } catch (IOException e) {
             Logger.error("Error saving cache", e);
@@ -245,7 +247,7 @@ public class YahooFinanceRepository {
 
     public List<TickerInfo> loadCache(@NonNull Context context) {
         try {
-            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
+            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, CACHE_FILE_DATA);
             return cache != null ? cache.data() : null;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache", e);
@@ -255,7 +257,7 @@ public class YahooFinanceRepository {
 
     public long getCacheTimestamp(@NonNull Context context) {
         try {
-            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, Constants.CACHE_FILE_DATA);
+            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, CACHE_FILE_DATA);
             return cache != null ? cache.timestamp() : 0;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache timestamp", e);
@@ -265,104 +267,169 @@ public class YahooFinanceRepository {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private @NonNull JSONObject fetchTickerData(String symbol) throws Exception {
-        return fetchTickerData(symbol, "1d");
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private @NonNull JSONObject fetchTickerData(String symbol, String interval) throws Exception {
-        String url = new UrlBuilder(Constants.YAHOO_CHART_URL)
-            .addPath(symbol)
-            .addParam("period1", NumberUtils.toFullNumericString(FIRST_TRADE_TIMESTAMP_SECONDS))
-            // Add a month (31 days) buffer
-            .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
-            .addParam("interval", interval)
-            .addParam("includePrePost", "true")
-            .addParam("events", "div|split|earn")
-            .addParam("lang", "en-US")
-            .addParam("region", "US")
-            .addParam("source", "cosaic")
-            .build();
-
-        Request request = new Request.Builder()
-            .url(url)
-            .build();
-
-        // Add delay between requests
-        Thread.sleep(1000 + random.nextInt(2000));
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new Exception("Unexpected ticker response: " + response);
-
-            ResponseBody body = response.body();
-            if (body == null) throw new Exception("Empty response body");
-
-            return new JSONObject(body.string())
-                .getJSONObject("chart")
-                .getJSONArray("result")
-                .getJSONObject(0);
-
-        } catch (Exception exception) {
-            if ("1d".equals(interval)) {
-                return fetchTickerData(symbol, "1mo");
-            } else if ("1mo".equals(interval)) {
-                return fetchTickerData(symbol, "3mo");
-            } else {
-                throw exception;
+        class Attempt {
+            final String interval;
+            final String baseUrl;
+            Attempt(String interval, String baseUrl){
+                this.interval = interval;
+                this.baseUrl = baseUrl;
             }
+        }
+        List<Attempt> attempts = Arrays.asList(
+            new Attempt("1d", YAHOO_CHART_URL),
+            new Attempt("1d", YAHOO_CHART_URL_ALT),
+            new Attempt("1mo", YAHOO_CHART_URL),
+            new Attempt("1mo", YAHOO_CHART_URL_ALT),
+            new Attempt("3mo", YAHOO_CHART_URL),
+            new Attempt("3mo", YAHOO_CHART_URL_ALT)
+        );
+
+        Exception lastException = null;
+
+        for (int i = 0; i < attempts.size(); i++) {
+            Attempt attempt = attempts.get(i);
+            try {
+                String url = new UrlBuilder(attempt.baseUrl)
+                    .addPath(symbol)
+                    .addParam("period1", NumberUtils.toFullNumericString(FIRST_TRADE_TIMESTAMP_SECONDS))
+                    // Add a month (31 days) buffer
+                    .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
+                    .addParam("interval", attempt.interval)
+                    .addParam("includePrePost", "true")
+                    .addParam("events", "div|split|earn")
+                    .addParam("lang", "en-US")
+                    .addParam("region", "US")
+                    .addParam("source", "cosaic")
+                    .build();
+
+                Request request = new Request.Builder().url(url).build();
+
+                // Add Delay Between Requests
+                //noinspection BusyWait
+                Thread.sleep(1000 + random.nextInt(2000));
+
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new Exception("Unexpected " + symbol + " response: " + response);
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        throw new Exception("Empty response body");
+                    }
+
+                    // Success
+                    return new JSONObject(body.string())
+                        .getJSONObject("chart")
+                        .getJSONArray("result")
+                        .getJSONObject(0);
+                }
+            } catch (Exception exception) {
+                if (i == attempts.size() - 1) {
+                    lastException = exception;
+                }
+            }
+        }
+
+        // Shouldn't reach here, but satisfy compiler
+        if (lastException != null) {
+            throw lastException;
+        } else {
+            throw new Exception("Failed to fetch ticker data (no attempts performed)");
         }
     }
 
-    private Map<String, Long> fetchSymbols() throws Exception {
+
+    private Map<String, Long> fetchSymbols(Context context) throws Exception {
         Map<String, Long> symbols = new HashMap<>();
 
         // Fetch crypto symbols
         String[] screeners = new String[]{
-            Constants.SCREENER_CRYPTO,
-            Constants.SCREENER_STOCKS
+            SCREENER_CRYPTO,
+            SCREENER_STOCKS
         };
 
-        for (String screener : screeners) {
-            String url = new UrlBuilder(Constants.YAHOO_SCREENER_URL)
-                .addParam("count", NumberUtils.toFullNumericString(Constants.SCREENER_COUNT))
-                .addParam("scrIds", screener)
-                .addParam("sortField", "intradaymarketcap")
-                .addParam("sortType", "DESC")
-                .addParam("start", "0")
-                .addParam("lang", "en-US")
-                .addParam("region", "US")
-                .build();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        long minMarketCap = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
 
-            Request request = new Request.Builder()
+        for (String screener : screeners) {
+            int retryCount = 0;
+            long start_index = 0;
+            String prevFirstSymbol = null;
+
+            while (true) {
+                String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
+                    .addParam("count", NumberUtils.toFullNumericString(SCREENER_COUNT))
+                    .addParam("scrIds", screener)
+                    .addParam("sortField", "intradaymarketcap")
+                    .addParam("sortType", "DESC")
+                    .addParam("start", NumberUtils.toFullNumericString(start_index))
+                    .build();
+
+                Request request = new Request.Builder()
                     .url(url)
                     .build();
 
-            // Add delay between requests
-            Thread.sleep(1000 + random.nextInt(2000));
+                // Add Delay Between Requests
+                //noinspection BusyWait
+                Thread.sleep(1000 + random.nextInt(2000));
 
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful()) throw new Exception("Unexpected "+screener+" response: " + response);
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new Exception("Unexpected " + screener + " response: " + response);
+                    }
 
-                ResponseBody body = response.body();
-                if (body == null) throw new Exception("Empty " + screener + " response body");
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        throw new Exception("Empty response body");
+                    }
 
-                JSONArray quotes = new JSONObject(body.string())
-                    .getJSONObject("finance")
-                    .getJSONArray("result")
-                    .getJSONObject(0)
-                    .getJSONArray("quotes");
+                    JSONArray quotes = new JSONObject(body.string())
+                        .getJSONObject("finance")
+                        .getJSONArray("result")
+                        .getJSONObject(0)
+                        .getJSONArray("quotes");
 
-                for (int i = 0; i < quotes.length(); i++) {
-                    try {
-                        JSONObject object = quotes.getJSONObject(i);
-                        long marketCap = object.getLong("marketCap");
-                        if (marketCap >= 0) {
-                            symbols.put(object.getString("symbol"), marketCap);
-                        }
-                    } catch (Exception ignored) {}
+                    // No More Items
+                    int length = quotes.length();
+                    if (length < 1) break;
+
+                    // Check for Repeated Page
+                    String firstSymbol = quotes.getJSONObject(0).getString("symbol");
+                    if (firstSymbol.equals(prevFirstSymbol)) break;
+                    prevFirstSymbol = firstSymbol;
+
+                    // Only Allow Stocks Above Minimum Market Cap Threshold
+                    boolean stopPaging = false;
+                    for (int i = 0; i < length; i++) {
+                        try {
+                            JSONObject object = quotes.getJSONObject(i);
+                            long marketCap = object.getLong("marketCap");
+                            if (marketCap > 0) {
+                                if (marketCap < minMarketCap) {
+                                    stopPaging = true;
+                                    break;
+                                }
+                                symbols.put(object.getString("symbol"), marketCap);
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    if (stopPaging) break;
+
+                    // Successful Page
+                    retryCount = 0;
+                    start_index += length;
+                } catch (Exception exception) {
+                    if (retryCount >= 1) {
+                        break;
+                    } else {
+                        retryCount++;
+                    }
                 }
             }
         }
 
         return symbols;
     }
-} 
+}

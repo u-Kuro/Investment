@@ -10,7 +10,7 @@ public class HighestTickerInfo extends TickerInfo implements Serializable {
     private static final long serialVersionUID = 1L;
     private final @NonNull String priceState;
     public HighestTickerInfo(@NonNull TickerInfo tickerInfo, @NonNull String priceState) {
-        super(tickerInfo.getSymbol(), tickerInfo.getExchange(), tickerInfo.getName(false), tickerInfo.getType(), tickerInfo.getLastPrice(), tickerInfo.getDensePrice(), tickerInfo.getUpperPriceBoundary(), tickerInfo.getPercentageIncreasePerDay(), tickerInfo.getFirstTradeTimestampSeconds(), tickerInfo.getMarketCap());
+        super(tickerInfo.getSymbol(), tickerInfo.getExchange(), tickerInfo.getName(false), tickerInfo.getType(), tickerInfo.getLastPrice(), tickerInfo.getDensePrice(), tickerInfo.getStopLossPrice(), tickerInfo.getPercentageIncreasePerDay(), tickerInfo.getFirstTradeTimestampSeconds(), tickerInfo.getMarketCap());
         this.priceState = priceState;
     }
     @NonNull

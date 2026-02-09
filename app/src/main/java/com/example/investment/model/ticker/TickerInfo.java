@@ -13,7 +13,7 @@ public class TickerInfo implements Serializable {
     private final String type;
     private final double lastPrice;
     private final double densePrice;
-    private final double upperPriceBoundary;
+    private final double stopLossPrice;
     private final double percentageIncreasePerDay;
     private final long firstTradeTimestampSeconds;
     private final long marketCap;
@@ -24,7 +24,7 @@ public class TickerInfo implements Serializable {
         String type,
         double lastPrice,
         double densePrice,
-        double upperPriceBoundary,
+        double stopLossPrice,
         double percentageIncreasePerDay,
         long firstTradeTimestampSeconds,
         long marketCap
@@ -35,7 +35,7 @@ public class TickerInfo implements Serializable {
         this.type = type;
         this.lastPrice = lastPrice;
         this.densePrice = densePrice;
-        this.upperPriceBoundary = upperPriceBoundary;
+        this.stopLossPrice = stopLossPrice;
         this.percentageIncreasePerDay = percentageIncreasePerDay;
         this.firstTradeTimestampSeconds = firstTradeTimestampSeconds;
         this.marketCap = marketCap;
@@ -68,8 +68,8 @@ public class TickerInfo implements Serializable {
         return densePrice;
     }
 
-    public double getUpperPriceBoundary() {
-        return upperPriceBoundary;
+    public double getStopLossPrice() {
+        return stopLossPrice;
     }
 
     public double getPercentageIncreasePerDay() {
@@ -91,7 +91,7 @@ public class TickerInfo implements Serializable {
             && Objects.equals(this.type, tickerInfo.getType())
             && this.lastPrice == tickerInfo.getLastPrice()
             && this.densePrice == tickerInfo.getDensePrice()
-            && this.upperPriceBoundary == tickerInfo.getUpperPriceBoundary()
+            && this.stopLossPrice == tickerInfo.getStopLossPrice()
             && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
             && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
             && this.marketCap == tickerInfo.getMarketCap();

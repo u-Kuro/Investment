@@ -1,17 +1,21 @@
 package com.example.investment.model.adapter.viewholder;
 
+import static com.example.investment.util.Constants.PRICE_ABOVE;
+import static com.example.investment.util.Constants.PRICE_BETWEEN;
+import static com.example.investment.util.PriceUtils.getPriceState;
+
 import android.os.Build;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
-import com.example.investment.util.Constants;
 import com.example.investment.util.NumberUtils;
 import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
@@ -25,24 +29,24 @@ import java.util.Locale;
 
 public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView nameText;
-    private final ImageView typeIcon;
-    private final TextView timeSpan;
-    private final TextView lastPrice;
-    private final TextView percentageIncreasePerDay;
+    private final ImageView typeIconImage;
+    private final TextView timeSpanText;
+    private final TextView lastPriceText;
+    private final TextView percentageIncreasePerDayText;
     private final TextView marketCapText;
-    private final TextView upperPriceBoundaryText;
+    private final TextView stopLossPriceText;
     private final TextView densePriceText;
     private TickerInfo currentTicker;
 
     public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
         super(itemView);
         nameText = itemView.findViewById(R.id.nameText);
-        typeIcon = itemView.findViewById(R.id.typeIcon);
-        timeSpan = itemView.findViewById(R.id.timeSpan);
-        lastPrice = itemView.findViewById(R.id.lastPrice);
-        percentageIncreasePerDay = itemView.findViewById(R.id.percentageIncreasePerDay);
+        typeIconImage = itemView.findViewById(R.id.typeIconImage);
+        timeSpanText = itemView.findViewById(R.id.timeSpanText);
+        lastPriceText = itemView.findViewById(R.id.lastPriceText);
+        percentageIncreasePerDayText = itemView.findViewById(R.id.percentageIncreasePerDayText);
         marketCapText = itemView.findViewById(R.id.marketCapText);
-        upperPriceBoundaryText = itemView.findViewById(R.id.upperPriceBoundaryText);
+        stopLossPriceText = itemView.findViewById(R.id.stopLossPriceText);
         densePriceText = itemView.findViewById(R.id.densePriceText);
 
         if (listener != null) {
@@ -72,18 +76,18 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         }
 
         if ("cryptocurrency".equalsIgnoreCase(ticker.getType())) {
-            typeIcon.setImageResource(R.drawable.crypto);
-            typeIcon.setVisibility(View.VISIBLE);
+            typeIconImage.setImageResource(R.drawable.crypto);
+            typeIconImage.setVisibility(View.VISIBLE);
         } else if ("equity".equalsIgnoreCase(ticker.getType())) {
-            typeIcon.setImageResource(R.drawable.stock);
-            typeIcon.setVisibility(View.VISIBLE);
+            typeIconImage.setImageResource(R.drawable.stock);
+            typeIconImage.setVisibility(View.VISIBLE);
         } else {
-            typeIcon.setVisibility(View.GONE);
+            typeIconImage.setVisibility(View.GONE);
         }
 
-        timeSpan.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
-        lastPrice.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
-        percentageIncreasePerDay.setText(
+        timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
+        lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
+        percentageIncreasePerDayText.setText(
             String.format(
                 Locale.US,
                 "%s%%",
@@ -92,8 +96,20 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         );
 
         marketCapText.setText(NumberUtils.formatNumber(ticker.getMarketCap()));
-        upperPriceBoundaryText.setText(PriceUtils.formatPrice(ticker.getUpperPriceBoundary()));
+        stopLossPriceText.setText(PriceUtils.formatPrice(ticker.getStopLossPrice()));
         densePriceText.setText(PriceUtils.formatPrice(ticker.getDensePrice()));
+
+        if (ticker.getLastPrice() < ticker.getDensePrice()) {
+            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        } else if (getPriceState(ticker).equals(PRICE_BETWEEN)) {
+            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
+        }
+        if (ticker.getPercentageIncreasePerDay() <= 0) {
+            percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        }
+        if (ticker.getStopLossPrice() <= ticker.getDensePrice()) {
+            stopLossPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        }
 
         MaterialCardView cardView = (MaterialCardView) itemView;
         cardView.setStrokeColor(getCardColor(ticker));
@@ -137,10 +153,10 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     private int getCardColor(TickerInfo ticker) {
         int colorResId;
 
-        @NonNull String priceState = PriceUtils.getPriceState(ticker);
-        if (priceState.equals(Constants.PRICE_BETWEEN)) {
+        @NonNull String priceState = getPriceState(ticker);
+        if (priceState.equals(PRICE_BETWEEN)) {
             colorResId = R.color.profit_taking;
-        } else if (priceState.equals(Constants.PRICE_ABOVE)) {
+        } else if (priceState.equals(PRICE_ABOVE)) {
             colorResId = R.color.momentum;
         } else {
             colorResId = R.color.bad;
