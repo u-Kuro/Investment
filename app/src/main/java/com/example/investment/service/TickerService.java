@@ -263,19 +263,20 @@ public class TickerService extends Service {
                     CHANNEL_PRICE_CROSS,
                     NAME_PRICE_CROSS,
                     String.format(
-                        "%s price is now within trading range",
+                        "%s price is now within profit taking range",
                         highestTicker.getName(true)
                     ),
                     ID_PRICE_CROSS
                 );
-            } else if (currentState.equals(PRICE_BELOW)) {
+            }
+            if (currentState.equals(PRICE_BELOW)) {
                 NotificationUtils.showHighPriorityNotification(
                     this,
                     CHANNEL_WARNING,
                     NAME_WARNING,
                     String.format(
-                            "%s price has dropped below threshold",
-                            highestTicker.getName(true)
+                        "%s price has dropped below dense price",
+                        highestTicker.getName(true)
                     ),
                     ID_WARNING
                 );
