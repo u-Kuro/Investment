@@ -404,13 +404,14 @@ public class YahooFinanceRepository {
                     for (int i = 0; i < length; i++) {
                         try {
                             JSONObject object = quotes.getJSONObject(i);
+                            String symbol = object.getString("symbol");
                             long marketCap = object.getLong("marketCap");
-                            if (marketCap > 0) {
+                            if (!symbol.isEmpty() && marketCap > 0 && isFinite(marketCap)) {
                                 if (marketCap < minMarketCap) {
                                     stopPaging = true;
                                     break;
                                 }
-                                symbols.put(object.getString("symbol"), marketCap);
+                                symbols.put(symbol, marketCap);
                             }
                         } catch (Exception ignored) {}
                     }

@@ -103,12 +103,18 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else if (getPriceState(ticker).equals(PRICE_BETWEEN)) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
+        } else {
+            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
         if (ticker.getPercentageIncreasePerDay() <= 0) {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        } else {
+            percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
         if (ticker.getStopLossPrice() <= ticker.getDensePrice()) {
             stopLossPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        } else {
+            stopLossPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
         MaterialCardView cardView = (MaterialCardView) itemView;
