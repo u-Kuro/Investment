@@ -143,7 +143,7 @@ public class YahooFinanceRepository {
                                     // Group Terms:         2(H-L) - 4DP * [ln(H+DP) - ln(L+DP)]
                                     // Area to Average:     [2(H-L) / (H-L)] - [4DP * ln((H+DP)/(L+DP)) / (H-L)]
                                     // Final Logic:         2 - (4DP * ln((H+DP)/(L+DP)) / (H-L))
-                                    double pct_dif = 2 - (4 * densePrice * Math.log((currentHigh + densePrice) / (currentLow + densePrice)) / ohlcvLen);
+                                    double pct_dif = 2 - (4 * densePrice * Math.log((currentHigh + densePrice) / (currentLow + densePrice)) / bar_range);
                                     double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
 
                                     DB_S_num += DB_num_inc;
