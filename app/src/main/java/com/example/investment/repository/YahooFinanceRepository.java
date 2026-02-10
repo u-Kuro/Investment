@@ -13,6 +13,7 @@ import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static java.lang.Double.isFinite;
+import static java.lang.Double.isNaN;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -118,6 +119,7 @@ public class YahooFinanceRepository {
                             double currentHigh = highArr.getDouble(i);
                             double currentLow = lowArr.getDouble(i);
                             double currentVol = volArr.getLong(i);
+
                             if (
                                 currentHigh > 0 && isFinite(currentHigh)
                                 && currentLow > 0 && isFinite(currentLow)
@@ -129,10 +131,12 @@ public class YahooFinanceRepository {
                                 double DP_num_inc = bar_range > 0 ? (currentVol * bar_range * mid_point) : (currentVol * mid_point);
                                 double D_den_inc = bar_range > 0 ? (currentVol * bar_range) : currentVol;
 
-                                DP_S_num += DP_num_inc;
-                                DP_S_den += D_den_inc;
+                                if (!isNaN(DP_num_inc) && !isNaN(D_den_inc)) {
+                                    DP_S_num += DP_num_inc;
+                                    DP_S_den += D_den_inc;
+                                }
 
-                                if (DP_S_den != 0) {
+                                if (DP_S_num != 0 && DP_S_den != 0) {
                                     double densePrice = DP_S_num / DP_S_den;
                                     // Percent Difference:  (P-DP)/((P+DP)/2)
                                     // Initial:             2(P-DP)/(P+DP) => (2P-2DP)/(P+DP)
@@ -146,8 +150,10 @@ public class YahooFinanceRepository {
                                     double pct_dif = 2 - (4 * densePrice * Math.log((currentHigh + densePrice) / (currentLow + densePrice)) / bar_range);
                                     double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
 
-                                    DB_S_num += DB_num_inc;
-                                    DB_S_den += D_den_inc;
+                                    if (!isNaN(DB_num_inc) && !isNaN(D_den_inc)) {
+                                        DB_S_num += DB_num_inc;
+                                        DB_S_den += D_den_inc;
+                                    }
                                 }
                             }
                         } catch (Exception ignored) {}
