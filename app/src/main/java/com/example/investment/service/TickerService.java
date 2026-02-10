@@ -2,25 +2,30 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
-import static com.example.investment.util.Constants.CACHE_FILE_HIGHEST;
-import static com.example.investment.util.Constants.CHANNEL_HIGHEST;
-import static com.example.investment.util.Constants.CHANNEL_PRICE_CROSS;
-import static com.example.investment.util.Constants.CHANNEL_WARNING;
+import static com.example.investment.util.Constants.CACHE_FILE_LEADING_TICKERS;
+import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_IMPROVING;
+import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_RISK;
+import static com.example.investment.util.Constants.CHANNEL_ID_INVESTMENT_OPPORTUNITY;
+import static com.example.investment.util.Constants.CHANNEL_ID_LEADING;
+import static com.example.investment.util.Constants.CHANNEL_ID_PROFIT_TAKING;
+import static com.example.investment.util.Constants.CHANNEL_NAME_ASSET_IMPROVING;
+import static com.example.investment.util.Constants.CHANNEL_NAME_ASSET_RISK;
+import static com.example.investment.util.Constants.CHANNEL_NAME_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
-import static com.example.investment.util.Constants.ID_HIGHEST;
-import static com.example.investment.util.Constants.ID_MISSING;
-import static com.example.investment.util.Constants.ID_PRICE_CROSS;
-import static com.example.investment.util.Constants.ID_SERVICE;
-import static com.example.investment.util.Constants.ID_WARNING;
-import static com.example.investment.util.Constants.NAME_HIGHEST;
-import static com.example.investment.util.Constants.NAME_MISSING;
-import static com.example.investment.util.Constants.NAME_PRICE_CROSS;
-import static com.example.investment.util.Constants.NAME_WARNING;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_ASSET_IMPROVING;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_ASSET_RISK;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_INVESTMENT_OPPORTUNITY;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_PROFIT_TAKING;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
+import static com.example.investment.util.Constants.CHANNEL_NAME_LEADING;
+import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
+import static com.example.investment.util.Constants.SAVED_LEADING_TICKERS_COUNT;
 
 import android.app.Service;
 import android.content.Context;
@@ -35,24 +40,20 @@ import androidx.annotation.RequiresApi;
 
 import com.example.investment.MainActivity;
 import com.example.investment.R;
-import com.example.investment.model.ticker.HighestTickerInfo;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
 import com.example.investment.util.FileUtils;
 import com.example.investment.util.NotificationUtils;
-import com.example.investment.util.PriceUtils;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class TickerService extends Service {
     public static final String STOP_SERVICE_ACTION = "stop_service";
@@ -73,7 +74,7 @@ public class TickerService extends Service {
 
         try {
             startForeground(
-                ID_SERVICE,
+                    NOTIFICATION_ID_SERVICE,
                 NotificationUtils.createLowPriorityServiceNotification(this, "Ticker service running"),
                 FOREGROUND_SERVICE_TYPE_DATA_SYNC
             );
@@ -159,6 +160,7 @@ public class TickerService extends Service {
                 }
             }
             
+            @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             @Override
             public void onFinish(@NonNull List<TickerInfo> tickers, long updateTime) {
                 isFinished.set(true);
@@ -191,147 +193,159 @@ public class TickerService extends Service {
         }));
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void checkAndNotifyTickerChanges(List<TickerInfo> tickers) {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         List<TickerInfo> currentTickers = tickers.stream()
-            .filter(t -> t.getMarketCap() >= filterMarketCapThreshold)
-            .collect(Collectors.toList());
+            .filter(t ->
+                // Market Cap is Above Limit (Default of $10B)
+                t.getMarketCap() >= filterMarketCapThreshold
+                // Asset is Not a Risk
+                && !t.getPriceState().equals(PRICE_BELOW)
+            )
+            .toList();
 
-        TickerInfo highestTicker = currentTickers.get(0);
-        HighestTickerInfo savedHighest = getSavedHighestTicker();
-        
-        if (isPreviousHighestMissing(currentTickers, savedHighest)) {
-            handleMissingTicker(highestTicker, savedHighest);
-        } else if (highestTicker != null) {
-            handleExistingTicker(highestTicker, savedHighest);
-        }
-    }
+        int currentLeadingTickersLen = Math.min(currentTickers.size(), SAVED_LEADING_TICKERS_COUNT);
+        List<TickerInfo> currentLeadingTickers = tickers.subList(0, currentLeadingTickersLen);
+        List<TickerInfo> savedLeadingTickers = getSavedLeadingTickers();
 
-    private boolean isPreviousHighestMissing(List<TickerInfo> currentTickers, HighestTickerInfo savedHighest) {
-        if (savedHighest == null) return false;
-        return currentTickers.stream()
-            .filter(t -> t.getSymbol().equals(savedHighest.getSymbol()))
-            .findFirst().isEmpty();
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void handleMissingTicker(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        if (highestTicker != null) {
-            notifyAndSaveNewHighestPerformer(highestTicker);
-        } else {
-            NotificationUtils.showHighPriorityNotification(
-                this,
-                CHANNEL_WARNING,
-                NAME_MISSING,
-                String.format(
-                    "Previous highest performer %s is not found",
-                    savedHighest.getName(true)
-                ),
-                ID_MISSING
-            );
-            FileUtils.deleteFile(getApplicationContext(), CACHE_FILE_HIGHEST);
-        }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void handleExistingTicker(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        if (isSameSymbol(highestTicker, savedHighest)) {
-            handlePriceStateChanges(highestTicker, savedHighest);
-        } else if (isNewHighestPerformer(highestTicker, savedHighest)) {
-            notifyAndSaveNewHighestPerformer(highestTicker);
-        }
-    }
-
-    private boolean isSameSymbol(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        return savedHighest != null
-            && savedHighest.getSymbol() != null
-            && highestTicker.getSymbol() != null
-            && Objects.equals(highestTicker.getSymbol(), savedHighest.getSymbol());
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void handlePriceStateChanges(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        String currentState = PriceUtils.getPriceState(highestTicker);
-        String previousState = savedHighest.getPriceState();
-
-        if (!previousState.equals(currentState)) {
-            if (isReturnToProfitTakingRange(currentState, previousState)) {
-                NotificationUtils.showHighPriorityNotification(
-                    this,
-                    CHANNEL_PRICE_CROSS,
-                    NAME_PRICE_CROSS,
-                    String.format(
-                        "%s price is now within profit taking range",
-                        highestTicker.getName(true)
-                    ),
-                    ID_PRICE_CROSS
-                );
+        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) {
+            for (TickerInfo currentLeadingTicker : currentLeadingTickers) {
+                notifyNewLeadingTicker(currentLeadingTicker);
             }
-            if (currentState.equals(PRICE_BELOW)) {
-                NotificationUtils.showHighPriorityNotification(
-                    this,
-                    CHANNEL_WARNING,
-                    NAME_WARNING,
-                    String.format(
-                        "%s price has dropped below dense price",
-                        highestTicker.getName(true)
-                    ),
-                    ID_WARNING
-                );
+        }else {
+            for (TickerInfo currentLeadingTicker : currentLeadingTickers) {
+                boolean isNew = true;
+                TickerInfo match = null;
+
+                for (TickerInfo savedLeadingTicker : savedLeadingTickers) {
+                    if (currentLeadingTicker.getSymbol().equals(savedLeadingTicker.getSymbol())) {
+                        isNew = false;
+                        match = savedLeadingTicker;
+                        break;
+                    }
+                }
+
+                if (isNew) {
+                    notifyNewLeadingTicker(currentLeadingTicker);
+                } else {
+                    notifyLeadingTickerChanges(currentLeadingTicker, match);
+                }
             }
         }
 
-        saveHighestTicker(highestTicker, currentState);
-    }
-
-    private boolean isReturnToProfitTakingRange(String currentState, String previousState) {
-        return previousState.equals(PRICE_ABOVE)
-            && (currentState.equals(PRICE_BETWEEN)
-                || currentState.equals(PRICE_BELOW));
-    }
-
-    private boolean isNewHighestPerformer(TickerInfo highestTicker, HighestTickerInfo savedHighest) {
-        return savedHighest == null
-            || highestTicker.getPercentageIncreasePerDay() > savedHighest.getPercentageIncreasePerDay();
+        // Save New Leading Tickers
+        saveLeadingTickers(currentLeadingTickers);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyAndSaveNewHighestPerformer(TickerInfo highestTicker) {
+    private void notifyNewLeadingTicker(TickerInfo newLeadingTicker) {
         NotificationUtils.showHighPriorityNotification(
             this,
-            CHANNEL_HIGHEST,
-            NAME_HIGHEST,
+                CHANNEL_ID_LEADING,
+                CHANNEL_NAME_LEADING,
+                CHANNEL_NAME_LEADING,
             String.format(
                 Locale.US,
                 "%s: %.2f%% Per Day",
-                highestTicker.getName(true),
-                highestTicker.getPercentageIncreasePerDay()
+                newLeadingTicker.getName(true),
+                newLeadingTicker.getPercentageIncreasePerDay()
             ),
-            ID_HIGHEST
+            newLeadingTicker.getSymbol(),
+                NOTIFICATION_ID_LEADING
         );
-        saveHighestTicker(highestTicker, PriceUtils.getPriceState(highestTicker));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveHighestTicker(TickerInfo ticker, @NonNull String priceState) {
-        try {
-            FileUtils.saveObject(
-                getApplicationContext(),
-                CACHE_FILE_HIGHEST,
-                new HighestTickerInfo(ticker, priceState)
-            );
-        } catch (IOException e) {
-            Logger.error("Error saving highest ticker", e);
+    private void notifyLeadingTickerChanges(TickerInfo leadingTicker, TickerInfo savedLeadingTicker) {
+        String currentState = leadingTicker.getPriceState();
+        String previousState = savedLeadingTicker.getPriceState();
+
+        if (!previousState.equals(currentState)) {
+            switch (currentState) {
+                case PRICE_BETWEEN:
+                    if (PRICE_ABOVE.equals(previousState)) {
+                        NotificationUtils.showHighPriorityNotification(
+                            this,
+                            CHANNEL_ID_PROFIT_TAKING,
+                            CHANNEL_NAME_PROFIT_TAKING,
+                            CHANNEL_NAME_PROFIT_TAKING,
+                            String.format(
+                                "You can now take some profits off your \"%s\" investment",
+                                leadingTicker.getName(true)
+                            ),
+                            leadingTicker.getSymbol(),
+                            NOTIFICATION_ID_PROFIT_TAKING
+                        );
+                    } else if (PRICE_BELOW.equals(previousState)) {
+                        NotificationUtils.showHighPriorityNotification(
+                            this,
+                            CHANNEL_ID_ASSET_IMPROVING,
+                            CHANNEL_NAME_ASSET_IMPROVING,
+                            CHANNEL_NAME_ASSET_IMPROVING,
+                            String.format(
+                                "\"%s\" trend is slowly recovering.",
+                                leadingTicker.getName(true)
+                            ),
+                            leadingTicker.getSymbol(),
+                            NOTIFICATION_ID_ASSET_IMPROVING
+                        );
+                    }
+                    break;
+
+                case PRICE_ABOVE:
+                    NotificationUtils.showHighPriorityNotification(
+                        this,
+                        CHANNEL_ID_INVESTMENT_OPPORTUNITY,
+                        CHANNEL_NAME_INVESTMENT_OPPORTUNITY,
+                        CHANNEL_NAME_INVESTMENT_OPPORTUNITY,
+                        String.format(
+                            "Invest/Hold your assets into \"%s\".",
+                            leadingTicker.getName(true)
+                        ),
+                        leadingTicker.getSymbol(),
+                        NOTIFICATION_ID_INVESTMENT_OPPORTUNITY
+                    );
+                    break;
+
+                case PRICE_BELOW:
+                    NotificationUtils.showHighPriorityNotification(
+                        this,
+                        CHANNEL_ID_ASSET_RISK,
+                        CHANNEL_NAME_ASSET_RISK,
+                        CHANNEL_NAME_ASSET_RISK,
+                        String.format(
+                            "Risk Warning: \"%s\" moved below its usual price.",
+                            leadingTicker.getName(true)
+                        ),
+                        leadingTicker.getSymbol(),
+                        NOTIFICATION_ID_ASSET_RISK
+                    );
+                    break;
+            }
         }
     }
 
-    private HighestTickerInfo getSavedHighestTicker() {
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void saveLeadingTickers(List<TickerInfo> leadingTickers) {
         try {
-            return (HighestTickerInfo) FileUtils.loadObject(getApplicationContext(), CACHE_FILE_HIGHEST);
-        } catch (IOException | ClassNotFoundException e) {
-            Logger.error("Error loading highest ticker", e);
+            FileUtils.saveObject(
+                getApplicationContext(),
+                CACHE_FILE_LEADING_TICKERS,
+                leadingTickers
+            );
+        } catch (IOException e) {
+            Logger.error("Error saving leading tickers", e);
+        }
+    }
+
+    private List<TickerInfo> getSavedLeadingTickers() {
+        try {
+            //noinspection unchecked
+            return (List<TickerInfo>) FileUtils.loadObject(getApplicationContext(), CACHE_FILE_LEADING_TICKERS);
+        } catch (Exception e) {
+            Logger.error("Error loading leading tickers", e);
             return null;
         }
     }

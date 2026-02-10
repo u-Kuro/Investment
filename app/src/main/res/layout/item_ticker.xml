@@ -125,10 +125,10 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/stopLossPriceText" />
+                app:layout_constraintRight_toLeftOf="@id/upperBandText" />
 
             <TextView
-                android:id="@+id/stopLossPriceText"
+                android:id="@+id/upperBandText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -139,10 +139,10 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="@id/marketCapText"
-                app:layout_constraintRight_toLeftOf="@id/densePriceText" />
+                app:layout_constraintRight_toLeftOf="@id/lowerBandText" />
 
             <TextView
-                android:id="@+id/densePriceText"
+                android:id="@+id/lowerBandText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -153,7 +153,7 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/stopLossPriceText" />
+                app:layout_constraintLeft_toRightOf="@id/upperBandText" />
 
         </GridLayout>
 

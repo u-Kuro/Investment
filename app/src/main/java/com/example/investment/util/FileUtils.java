@@ -51,9 +51,5 @@ public class FileUtils {
             return ois.readObject();
         }
     }
-    
-    public static void deleteFile(Context context, String fileName) {
-        //noinspection ResultOfMethodCallIgnored
-        getCacheFile(context, fileName).delete();
-    }
-} 
+
+}

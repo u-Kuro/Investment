@@ -61,7 +61,7 @@ public class YahooFinanceRepository {
             int current = 0;
 
             for (Map.Entry<String, Long> ticker : symbols.entrySet()) {
-                String symbol = ticker.getKey();
+                @NonNull String symbol = ticker.getKey();
                 long marketCap = ticker.getValue();
                 try {
                     JSONObject result = fetchTickerData(symbol);
@@ -80,18 +80,16 @@ public class YahooFinanceRepository {
 
                     // States for Adjusted Close
                     long adjPricesLen = 0;
-                    double sumOfAdjPrice = 0;
-                    double sumOfPercentageChangeGrowthFactor = 0;
                     Double firstAdjPrice = null;
                     Double lastAdjPrice = null;
                     Long firstTradeDateTimestampSeconds = null;
 
                     // States for OHLCV
                     long ohlcvLen = 0;
-                    double S_num = 0.0;
-                    double S_den = 0.0;
-                    double weightedAveragePctChangeGrowthFactor = 0.0;
-                    Double lastLowPrice = null;
+                    double DP_S_num = 0.0;
+                    double DP_S_den = 0.0;
+                    double DB_S_num = 0.0;
+                    double DB_S_den = 0.0;
 
                     for (int i = 0; i < adjCloses.length(); i++) {
 
@@ -103,15 +101,14 @@ public class YahooFinanceRepository {
                                 currentAC > 0 && isFinite(currentAC)
                                 && currentTs > 0 && isFinite(currentTs) && (System.currentTimeMillis() / 1000L) > currentTs
                             ) {
+                                adjPricesLen++;
+
                                 // Set first price and timestamp once
                                 if (firstAdjPrice == null) {
                                     firstAdjPrice = currentAC;
                                     firstTradeDateTimestampSeconds = currentTs;
                                 }
 
-                                adjPricesLen++;
-                                sumOfAdjPrice += currentAC;
-                                sumOfPercentageChangeGrowthFactor += (currentAC / (sumOfAdjPrice / adjPricesLen));
                                 lastAdjPrice = currentAC;
                             }
                         } catch (Exception ignored) {}
@@ -127,35 +124,46 @@ public class YahooFinanceRepository {
                                 && currentVol > 0 && isFinite(currentVol)
                             ) {
                                 ohlcvLen++;
-                                double barRange = currentHigh - currentLow;
-                                double midpoint = (currentHigh + currentLow) / 2.0;
-                                double numInc = barRange > 0 ? (currentVol * barRange * midpoint) : (currentVol * midpoint);
-                                double denInc = barRange > 0 ? (currentVol * barRange) : currentVol;
+                                double bar_range = currentHigh - currentLow;
+                                double mid_point = (currentHigh + currentLow) / 2.0;
+                                double DP_num_inc = bar_range > 0 ? (currentVol * bar_range * mid_point) : (currentVol * mid_point);
+                                double D_den_inc = bar_range > 0 ? (currentVol * bar_range) : currentVol;
 
-                                S_num += numInc;
-                                S_den += denInc;
+                                DP_S_num += DP_num_inc;
+                                DP_S_den += D_den_inc;
 
-                                if (S_den != 0) {
-                                    double densePrice = S_num / S_den;
-                                    weightedAveragePctChangeGrowthFactor += midpoint / densePrice;
+                                if (DP_S_den != 0) {
+                                    double densePrice = DP_S_num / DP_S_den;
+                                    // Percent Difference:  (P-DP)/((P+DP)/2)
+                                    // Initial:             2(P-DP)/(P+DP) => (2P-2DP)/(P+DP)
+                                    // Add Zero (±2DP):     (2P+2DP-2DP-2DP)/(P+DP) => (2P+2DP-4DP)/(P+DP)
+                                    // Split & Cancel:      [2(P+DP)/(P+DP)] - [4DP/(P+DP)] => 2 - [4DP/(P+DP)]
+                                    // Integral (Area):     ∫(L..H) [2 - 4DP*(1/(P+DP))] ΔP => [2P - 4DP*ln(P+DP)]
+                                    // Evaluate P (L..H):   [2H - 4DP*ln(H+DP)] - [2L - 4DP*ln(L+DP)]
+                                    // Group Terms:         2(H-L) - 4DP * [ln(H+DP) - ln(L+DP)]
+                                    // Area to Average:     [2(H-L) / (H-L)] - [4DP * ln((H+DP)/(L+DP)) / (H-L)]
+                                    // Final Logic:         2 - (4DP * ln((H+DP)/(L+DP)) / (H-L))
+                                    double pct_dif = 2 - (4 * densePrice * Math.log((currentHigh + densePrice) / (currentLow + densePrice)) / ohlcvLen);
+                                    double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
+
+                                    DB_S_num += DB_num_inc;
+                                    DB_S_den += D_den_inc;
                                 }
                             }
-                            lastLowPrice = currentLow;
                         } catch (Exception ignored) {}
                     }
 
                     // Final Validation
-                    if (
-                        adjPricesLen < 2 || firstAdjPrice == null || lastAdjPrice == null  || firstTradeDateTimestampSeconds == 0
-                        || ohlcvLen < 2 || lastLowPrice == null
-                    ) {
+                    if (adjPricesLen < 2 || ohlcvLen < 2 || DP_S_num == 0 || DP_S_den == 0 || DB_S_num == 0 || DB_S_den == 0) {
                         throw new Exception("Invalid History: Insufficient valid data points.");
                     }
 
                     // Final Metrics
                     double percentageIncreasePerDay = calculatePercentageIncreasePerDay(firstAdjPrice, lastAdjPrice, firstTradeDateTimestampSeconds);
-                    double densePrice = S_num / S_den;
-                    double stopLossPrice = 0.7 * (weightedAveragePctChangeGrowthFactor / ohlcvLen) * densePrice;
+                    double densePrice = DP_S_num / DP_S_den;
+                    double densePctDif = Math.abs(DB_S_num / DB_S_den);
+                    double upperBand = densePrice * (1 + densePctDif);
+                    double lowerBand = densePrice / (1 + densePctDif);
 
                     // Get Name
                     String name = null;
@@ -179,9 +187,10 @@ public class YahooFinanceRepository {
                         exchange,
                         name,
                         type,
-                        lastLowPrice, // Set Last Low as Current Price To Be Used for Crossing Boundaries
+                        lastAdjPrice,
                         densePrice,
-                        stopLossPrice,
+                        upperBand,
+                        lowerBand,
                         percentageIncreasePerDay,
                         firstTradeDateTimestampSeconds,
                         marketCap

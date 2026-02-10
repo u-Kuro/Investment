@@ -357,7 +357,7 @@ public class MainActivity extends AppCompatActivity {
         adapter.setOnTickerClickListener(ticker -> {
             try {
                 String symbol = ticker.getSymbol();
-                if (symbol == null || symbol.isEmpty()) throw new Exception("Empty Symbol");
+                if (symbol.isEmpty()) throw new Exception("Empty Symbol");
                 String url = "https://finance.yahoo.com/quote/" + symbol;
                 customTabsUtils.launchUrl(
                     this,

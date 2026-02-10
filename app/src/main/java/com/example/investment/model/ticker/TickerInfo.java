@@ -1,5 +1,11 @@
 package com.example.investment.model.ticker;
 
+import static com.example.investment.util.Constants.PRICE_ABOVE;
+import static com.example.investment.util.Constants.PRICE_BELOW;
+import static com.example.investment.util.Constants.PRICE_BETWEEN;
+
+import androidx.annotation.NonNull;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
@@ -7,24 +13,26 @@ import java.util.Objects;
 public class TickerInfo implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
-    private final String symbol;
+    @NonNull private final String symbol;
     private final String exchange;
     private final String name;
     private final String type;
     private final double lastPrice;
     private final double densePrice;
-    private final double stopLossPrice;
+    private final double upperBand;
+    private final double lowerBand;
     private final double percentageIncreasePerDay;
     private final long firstTradeTimestampSeconds;
     private final long marketCap;
     public TickerInfo(
-        String symbol,
+        @NonNull String symbol,
         String exchange,
         String name,
         String type,
         double lastPrice,
         double densePrice,
-        double stopLossPrice,
+        double upperBand,
+        double lowerBand,
         double percentageIncreasePerDay,
         long firstTradeTimestampSeconds,
         long marketCap
@@ -35,13 +43,14 @@ public class TickerInfo implements Serializable {
         this.type = type;
         this.lastPrice = lastPrice;
         this.densePrice = densePrice;
-        this.stopLossPrice = stopLossPrice;
+        this.upperBand = upperBand;
+        this.lowerBand = lowerBand;
         this.percentageIncreasePerDay = percentageIncreasePerDay;
         this.firstTradeTimestampSeconds = firstTradeTimestampSeconds;
         this.marketCap = marketCap;
     }
 
-    public String getSymbol() {
+    public @NonNull String getSymbol() {
         return symbol;
     }
 
@@ -68,8 +77,12 @@ public class TickerInfo implements Serializable {
         return densePrice;
     }
 
-    public double getStopLossPrice() {
-        return stopLossPrice;
+    public double getUpperBand() {
+        return upperBand;
+    }
+
+    public double getLowerBand() {
+        return lowerBand;
     }
 
     public double getPercentageIncreasePerDay() {
@@ -84,6 +97,16 @@ public class TickerInfo implements Serializable {
         return marketCap;
     }
 
+    public @NonNull String getPriceState() {
+        if (
+            this.percentageIncreasePerDay <= 0
+            || this.lastPrice < this.lowerBand
+            || this.upperBand < this.lowerBand
+        ) return PRICE_BELOW;
+        if (this.lastPrice <= this.upperBand) return PRICE_BETWEEN;
+        return PRICE_ABOVE;
+    }
+
     public boolean equals(TickerInfo tickerInfo) {
         return Objects.equals(this.symbol, tickerInfo.getSymbol())
             && Objects.equals(this.exchange, tickerInfo.getExchange())
@@ -91,7 +114,8 @@ public class TickerInfo implements Serializable {
             && Objects.equals(this.type, tickerInfo.getType())
             && this.lastPrice == tickerInfo.getLastPrice()
             && this.densePrice == tickerInfo.getDensePrice()
-            && this.stopLossPrice == tickerInfo.getStopLossPrice()
+            && this.upperBand == tickerInfo.getUpperBand()
+            && this.lowerBand == tickerInfo.getLowerBand()
             && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
             && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
             && this.marketCap == tickerInfo.getMarketCap();
