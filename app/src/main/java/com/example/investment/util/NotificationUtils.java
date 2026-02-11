@@ -1,7 +1,10 @@
 package com.example.investment.util;
 
 import static com.example.investment.util.Constants.APP_NOTIFICATION_GROUP_KEY;
+import static com.example.investment.util.Constants.CHANNEL_ID_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.CHANNEL_ID_SERVICE;
+import static com.example.investment.util.Constants.CHANNEL_NAME_GROUP_SUMMARY;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
 import static com.example.investment.util.Constants.CHANNEL_NAME_SERVICE;
 
@@ -100,10 +103,29 @@ public class NotificationUtils {
         .setContentText(content)
         .setContentIntent(createActivityIntent(context, MainActivity.class))
         .setGroup(APP_NOTIFICATION_GROUP_KEY)
-        .setGroupSummary(true)
+        .setGroupSummary(false)
+        .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         .setAutoCancel(true);
         
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.notify(notificationTag, notificationId, builder.build());
+    }
+
+    public static void showGroupSummary(Context context) {
+        NotificationCompat.Builder builder = createNotification(
+            context,
+            CHANNEL_ID_GROUP_SUMMARY,
+            CHANNEL_NAME_GROUP_SUMMARY,
+            NotificationManager.IMPORTANCE_HIGH,
+            true
+        )
+        .setSubText("Updates")
+        .setGroup(APP_NOTIFICATION_GROUP_KEY)
+        .setGroupSummary(true)
+        .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
+        .setAutoCancel(false);
+
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        manager.notify(NOTIFICATION_ID_GROUP_SUMMARY, builder.build());
     }
 } 

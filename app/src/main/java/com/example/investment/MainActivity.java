@@ -181,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
-                Logger.error("Failed to retrieve tickers.", e);
+                Logger.error("Failed to retrieve data.", e);
             }
         }).start();
     }

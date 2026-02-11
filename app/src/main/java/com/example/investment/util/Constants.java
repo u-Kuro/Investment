@@ -30,6 +30,7 @@ public class Constants {
 
     // Notification Channel IDs
     public static final String CHANNEL_ID_SERVICE = "ticker_updates";
+    public static final String CHANNEL_ID_GROUP_SUMMARY = "group_summary";
     public static final String CHANNEL_ID_LEADING = "leading_ticker";
     public static final String CHANNEL_ID_PROFIT_TAKING = "price_cross";
     public static final String CHANNEL_ID_ASSET_IMPROVING = "asset_improving";
@@ -39,6 +40,7 @@ public class Constants {
 
     // Notification Channel Names
     public static final String CHANNEL_NAME_SERVICE = "Ticker Updates";
+    public static final String CHANNEL_NAME_GROUP_SUMMARY = "Group Summary";
     public static final String CHANNEL_NAME_LEADING = "New Leading Performer";
     public static final String CHANNEL_NAME_PROFIT_TAKING = "Profit Taking";
     public static final String CHANNEL_NAME_ASSET_IMPROVING = "Improving Asset";
@@ -47,11 +49,12 @@ public class Constants {
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
-    public static final int NOTIFICATION_ID_LEADING = 2;
-    public static final int NOTIFICATION_ID_PROFIT_TAKING = 3;
-    public static final int NOTIFICATION_ID_ASSET_IMPROVING = 4;
-    public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 5;
-    public static final int NOTIFICATION_ID_ASSET_RISK = 6;
+    public static final int NOTIFICATION_ID_GROUP_SUMMARY = 2;
+    public static final int NOTIFICATION_ID_LEADING = 3;
+    public static final int NOTIFICATION_ID_PROFIT_TAKING = 4;
+    public static final int NOTIFICATION_ID_ASSET_IMPROVING = 5;
+    public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 6;
+    public static final int NOTIFICATION_ID_ASSET_RISK = 7;
 
     // Notification Group Keys
     public static final String APP_NOTIFICATION_GROUP_KEY = "Investment";

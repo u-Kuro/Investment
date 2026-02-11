@@ -12,6 +12,8 @@ import static com.example.investment.util.Constants.YAHOO_CHART_URL;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
+import static com.example.investment.util.FileUtils.loadObject;
+import static com.example.investment.util.FileUtils.saveObject;
 import static java.lang.Double.isFinite;
 import static java.lang.Double.isNaN;
 
@@ -26,7 +28,6 @@ import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.util.Logger;
 import com.example.investment.model.CachedTickerData;
 import com.example.investment.model.listener.TickerUpdateListener;
-import com.example.investment.util.FileUtils;
 import com.example.investment.util.NumberUtils;
 import com.example.investment.util.UrlBuilder;
 
@@ -252,8 +253,8 @@ public class YahooFinanceRepository {
     private void saveCache(@NonNull Context context, @NonNull List<TickerInfo> tickers, TickerUpdateListener listener) {
         try {
             long updateTime = System.currentTimeMillis();
-            CachedTickerData cache = new CachedTickerData(tickers, updateTime);
-            FileUtils.saveObject(context, CACHE_FILE_DATA, cache);
+            CachedTickerData cache = new CachedTickerData(new ArrayList<>(tickers), updateTime);
+            saveObject(context, CACHE_FILE_DATA, cache);
             listener.onFinish(tickers, updateTime);
         } catch (IOException e) {
             Logger.error("Error saving cache", e);
@@ -262,8 +263,8 @@ public class YahooFinanceRepository {
 
     public List<TickerInfo> loadCache(@NonNull Context context) {
         try {
-            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, CACHE_FILE_DATA);
-            return cache != null ? cache.data() : null;
+            CachedTickerData cache = (CachedTickerData) loadObject(context, CACHE_FILE_DATA);
+            return cache != null ? cache.tickers() : null;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache", e);
             return null;
@@ -272,7 +273,7 @@ public class YahooFinanceRepository {
 
     public long getCacheTimestamp(@NonNull Context context) {
         try {
-            CachedTickerData cache = (CachedTickerData) FileUtils.loadObject(context, CACHE_FILE_DATA);
+            CachedTickerData cache = (CachedTickerData) loadObject(context, CACHE_FILE_DATA);
             return cache != null ? cache.timestamp() : 0;
         } catch (IOException | ClassNotFoundException e) {
             Logger.error("Error loading cache timestamp", e);

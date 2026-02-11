@@ -26,6 +26,12 @@ import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.SAVED_LEADING_TICKERS_COUNT;
+import static com.example.investment.util.FileUtils.loadObject;
+import static com.example.investment.util.FileUtils.saveObject;
+import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
+import static com.example.investment.util.NotificationUtils.showGroupSummary;
+import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
+import static com.example.investment.util.NotificationUtils.showLowPriorityServiceNotification;
 
 import android.app.Service;
 import android.content.Context;
@@ -44,10 +50,9 @@ import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
-import com.example.investment.util.FileUtils;
-import com.example.investment.util.NotificationUtils;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -74,8 +79,8 @@ public class TickerService extends Service {
 
         try {
             startForeground(
-                    NOTIFICATION_ID_SERVICE,
-                NotificationUtils.createLowPriorityServiceNotification(this, "Ticker service running"),
+                NOTIFICATION_ID_SERVICE,
+                createLowPriorityServiceNotification(this, "Ticker service running"),
                 FOREGROUND_SERVICE_TYPE_DATA_SYNC
             );
         } catch (Exception e) {
@@ -125,7 +130,7 @@ public class TickerService extends Service {
                 if (total > 0) {
                     double progress = ((double) current / total) * 100;
                     if (current < total) {
-                        NotificationUtils.showLowPriorityServiceNotification(
+                        showLowPriorityServiceNotification(
                             TickerService.this,
                             String.format(
                                 Locale.US,
@@ -133,13 +138,13 @@ public class TickerService extends Service {
                             )
                         );
                     } else {
-                        NotificationUtils.showLowPriorityServiceNotification(
+                        showLowPriorityServiceNotification(
                             TickerService.this,
                             getString(R.string.successful_ticker_progress)
                         );
                     }
                 } else {
-                    NotificationUtils.showLowPriorityServiceNotification(
+                    showLowPriorityServiceNotification(
                         TickerService.this,
                         getString(R.string.fetching_tickers)
                     );
@@ -214,7 +219,7 @@ public class TickerService extends Service {
             for (TickerInfo currentLeadingTicker : currentLeadingTickers) {
                 notifyNewLeadingTicker(currentLeadingTicker);
             }
-        }else {
+        } else {
             for (TickerInfo currentLeadingTicker : currentLeadingTickers) {
                 boolean isNew = true;
                 TickerInfo match = null;
@@ -241,7 +246,7 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void notifyNewLeadingTicker(TickerInfo newLeadingTicker) {
-        NotificationUtils.showHighPriorityNotification(
+        showHighPriorityNotification(
             this,
                 CHANNEL_ID_LEADING,
                 CHANNEL_NAME_LEADING,
@@ -255,6 +260,7 @@ public class TickerService extends Service {
             newLeadingTicker.getSymbol(),
                 NOTIFICATION_ID_LEADING
         );
+        showGroupSummary(this);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -266,7 +272,7 @@ public class TickerService extends Service {
             switch (currentState) {
                 case PRICE_BETWEEN:
                     if (PRICE_ABOVE.equals(previousState)) {
-                        NotificationUtils.showHighPriorityNotification(
+                        showHighPriorityNotification(
                             this,
                             CHANNEL_ID_PROFIT_TAKING,
                             CHANNEL_NAME_PROFIT_TAKING,
@@ -279,7 +285,7 @@ public class TickerService extends Service {
                             NOTIFICATION_ID_PROFIT_TAKING
                         );
                     } else if (PRICE_BELOW.equals(previousState)) {
-                        NotificationUtils.showHighPriorityNotification(
+                        showHighPriorityNotification(
                             this,
                             CHANNEL_ID_ASSET_IMPROVING,
                             CHANNEL_NAME_ASSET_IMPROVING,
@@ -295,7 +301,7 @@ public class TickerService extends Service {
                     break;
 
                 case PRICE_ABOVE:
-                    NotificationUtils.showHighPriorityNotification(
+                    showHighPriorityNotification(
                         this,
                         CHANNEL_ID_INVESTMENT_OPPORTUNITY,
                         CHANNEL_NAME_INVESTMENT_OPPORTUNITY,
@@ -310,7 +316,7 @@ public class TickerService extends Service {
                     break;
 
                 case PRICE_BELOW:
-                    NotificationUtils.showHighPriorityNotification(
+                    showHighPriorityNotification(
                         this,
                         CHANNEL_ID_ASSET_RISK,
                         CHANNEL_NAME_ASSET_RISK,
@@ -324,16 +330,17 @@ public class TickerService extends Service {
                     );
                     break;
             }
+            showGroupSummary(this);
         }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void saveLeadingTickers(List<TickerInfo> leadingTickers) {
         try {
-            FileUtils.saveObject(
+            saveObject(
                 getApplicationContext(),
                 CACHE_FILE_LEADING_TICKERS,
-                leadingTickers
+                new ArrayList<>(leadingTickers)
             );
         } catch (IOException e) {
             Logger.error("Error saving leading tickers", e);
@@ -343,7 +350,7 @@ public class TickerService extends Service {
     private List<TickerInfo> getSavedLeadingTickers() {
         try {
             //noinspection unchecked
-            return (List<TickerInfo>) FileUtils.loadObject(getApplicationContext(), CACHE_FILE_LEADING_TICKERS);
+            return (List<TickerInfo>) loadObject(getApplicationContext(), CACHE_FILE_LEADING_TICKERS);
         } catch (Exception e) {
             Logger.error("Error loading leading tickers", e);
             return null;
