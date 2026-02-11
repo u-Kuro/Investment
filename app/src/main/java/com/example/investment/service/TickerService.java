@@ -248,9 +248,9 @@ public class TickerService extends Service {
     private void notifyNewLeadingTicker(TickerInfo newLeadingTicker) {
         showHighPriorityNotification(
             this,
-                CHANNEL_ID_LEADING,
-                CHANNEL_NAME_LEADING,
-                CHANNEL_NAME_LEADING,
+            CHANNEL_ID_LEADING,
+            CHANNEL_NAME_LEADING,
+            CHANNEL_NAME_LEADING,
             String.format(
                 Locale.US,
                 "%s: %.2f%% Per Day",
@@ -258,7 +258,7 @@ public class TickerService extends Service {
                 newLeadingTicker.getPercentageIncreasePerDay()
             ),
             newLeadingTicker.getSymbol(),
-                NOTIFICATION_ID_LEADING
+            NOTIFICATION_ID_LEADING
         );
         showGroupSummary(this);
     }

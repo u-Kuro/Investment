@@ -48,9 +48,9 @@ public class CustomTabsUtils {
                 // Add finance.yahoo.com as the origin
                 Uri originUri = Uri.parse("https://finance.yahoo.com/");
                 Uri origin = new Uri.Builder()
-                        .scheme(originUri.getScheme())
-                        .authority(originUri.getAuthority())
-                        .build();
+                    .scheme(originUri.getScheme())
+                    .authority(originUri.getAuthority())
+                    .build();
                 
                 List<Bundle> otherLikelyBundles = new ArrayList<>();
                 List<String> paths = new ArrayList<>();
@@ -82,15 +82,15 @@ public class CustomTabsUtils {
         if (colorId != null) {
             customTabsIntentBuilder.setDefaultColorSchemeParams(
                 new CustomTabColorSchemeParams.Builder()
-                    .setToolbarColor(colorId)
-                    .build()
+                .setToolbarColor(colorId)
+                .build()
             );
         }
         
         if (setAnimations) {
             customTabsIntentBuilder
-                .setStartAnimations(context, R.anim.fade_in, R.anim.remove)
-                .setExitAnimations(context, R.anim.fade_out, R.anim.remove);
+            .setStartAnimations(context, R.anim.fade_in, R.anim.remove)
+            .setExitAnimations(context, R.anim.fade_out, R.anim.remove);
         }
         
         CustomTabsIntent customTabsIntent = customTabsIntentBuilder.build();

@@ -95,11 +95,11 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         List<TickerInfo> filteredList = originalTickers.stream()
                 .filter(ticker -> {
                     boolean typeMatch = typeFilter.equals("All")
-                            || typeFilter.equals("Crypto") && "cryptocurrency".equalsIgnoreCase(ticker.getType())
-                            || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
+                        || typeFilter.equals("Crypto") && "cryptocurrency".equalsIgnoreCase(ticker.getType())
+                        || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
 
                     boolean statusMatch = !statusFilter
-                            || ticker.getPriceState().equals(PRICE_ABOVE);
+                        || ticker.getPriceState().equals(PRICE_ABOVE);
 
                     boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
 

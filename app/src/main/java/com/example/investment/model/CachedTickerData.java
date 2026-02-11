@@ -4,9 +4,9 @@ import com.example.investment.model.ticker.TickerInfo;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.ArrayList;
+import java.util.List;
 
-public record CachedTickerData(ArrayList<TickerInfo> tickers, long timestamp) implements Serializable {
+public record CachedTickerData(List<TickerInfo> tickers, long timestamp) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 }

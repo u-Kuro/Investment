@@ -63,6 +63,11 @@ public class YahooFinanceRepository {
             int current = 0;
 
             for (Map.Entry<String, Long> ticker : symbols.entrySet()) {
+                // Check for interruption before processing each ticker
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Thread interrupted in main ticker loop");
+                }
+
                 @NonNull String symbol = ticker.getKey();
                 long marketCap = ticker.getValue();
                 try {
@@ -253,7 +258,7 @@ public class YahooFinanceRepository {
     private void saveCache(@NonNull Context context, @NonNull List<TickerInfo> tickers, TickerUpdateListener listener) {
         try {
             long updateTime = System.currentTimeMillis();
-            CachedTickerData cache = new CachedTickerData(new ArrayList<>(tickers), updateTime);
+            CachedTickerData cache = new CachedTickerData(tickers, updateTime);
             saveObject(context, CACHE_FILE_DATA, cache);
             listener.onFinish(tickers, updateTime);
         } catch (IOException e) {
@@ -303,6 +308,11 @@ public class YahooFinanceRepository {
         Exception lastException = null;
 
         for (int i = 0; i < attempts.size(); i++) {
+            // Check for interruption before each attempt
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Thread interrupted during fetchTickerData");
+            }
+
             Attempt attempt = attempts.get(i);
             try {
                 String url = new UrlBuilder(attempt.baseUrl)
@@ -320,9 +330,14 @@ public class YahooFinanceRepository {
 
                 Request request = new Request.Builder().url(url).build();
 
-                // Add Delay Between Requests
-                //noinspection BusyWait
-                Thread.sleep(1000 + random.nextInt(2000));
+                // Add Delay Between Requests with interruption support
+                try {
+                    //noinspection BusyWait
+                    Thread.sleep(1000 + random.nextInt(2000));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
 
                 try (Response response = client.newCall(request).execute()) {
                     if (!response.isSuccessful()) {
@@ -340,6 +355,9 @@ public class YahooFinanceRepository {
                         .getJSONArray("result")
                         .getJSONObject(0);
                 }
+            } catch (InterruptedException e) {
+                // Propagate interruption immediately
+                throw e;
             } catch (Exception exception) {
                 if (i == attempts.size() - 1) {
                     lastException = exception;
@@ -369,11 +387,21 @@ public class YahooFinanceRepository {
         long minMarketCap = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
 
         for (String screener : screeners) {
+            // Check for interruption before processing each screener
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Thread interrupted while fetching symbols");
+            }
+
             int retryCount = 0;
             long start_index = 0;
             String prevFirstSymbol = null;
 
             while (true) {
+                // Check for interruption at the start of each pagination loop
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Thread interrupted during symbol pagination");
+                }
+
                 String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
                     .addParam("count", NumberUtils.toFullNumericString(SCREENER_COUNT))
                     .addParam("scrIds", screener)
@@ -382,13 +410,16 @@ public class YahooFinanceRepository {
                     .addParam("start", NumberUtils.toFullNumericString(start_index))
                     .build();
 
-                Request request = new Request.Builder()
-                    .url(url)
-                    .build();
+                Request request = new Request.Builder().url(url).build();
 
-                // Add Delay Between Requests
-                //noinspection BusyWait
-                Thread.sleep(1000 + random.nextInt(2000));
+                // Add Delay Between Requests with interruption support
+                try {
+                    //noinspection BusyWait
+                    Thread.sleep(1000 + random.nextInt(2000));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
 
                 try (Response response = client.newCall(request).execute()) {
                     if (!response.isSuccessful()) {
@@ -437,6 +468,9 @@ public class YahooFinanceRepository {
                     // Successful Page
                     retryCount = 0;
                     start_index += length;
+                } catch (InterruptedException e) {
+                    // Propagate interruption immediately
+                    throw e;
                 } catch (Exception exception) {
                     if (retryCount >= 1) {
                         break;

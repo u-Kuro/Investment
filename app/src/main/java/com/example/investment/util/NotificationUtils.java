@@ -38,8 +38,7 @@ public class NotificationUtils {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(channel);
         
-        return new NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.logo);
+        return new NotificationCompat.Builder(context, channelId).setSmallIcon(R.drawable.logo);
     }
     
     public static PendingIntent createActivityIntent(Context context, Class<?> activityClass) {
@@ -51,8 +50,8 @@ public class NotificationUtils {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static Notification createLowPriorityServiceNotification(Context context, String title) {
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID_SERVICE,
-                CHANNEL_NAME_SERVICE,
+            CHANNEL_ID_SERVICE,
+            CHANNEL_NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         );
         NotificationManager manager = context.getSystemService(NotificationManager.class);

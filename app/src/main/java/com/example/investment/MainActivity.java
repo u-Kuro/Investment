@@ -346,8 +346,9 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 // Permission denied, show a message to the user
                 Toast.makeText(this, 
-                    "Notification permission denied. You won't receive ticker updates.", 
-                    Toast.LENGTH_LONG).show();
+                    "Notification permission denied. You won't receive ticker updates.",
+                    Toast.LENGTH_LONG
+                ).show();
             }
         }
     }

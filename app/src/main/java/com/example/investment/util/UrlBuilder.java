@@ -46,8 +46,9 @@ public class UrlBuilder {
 
     public String build() {
         if (!params.isEmpty()) {
-            urlBuilder.append(hasParams ? "&" : "?")
-                     .append(String.join("&", params));
+            urlBuilder
+            .append(hasParams ? "&" : "?")
+            .append(String.join("&", params));
         }
         return urlBuilder.toString();
     }

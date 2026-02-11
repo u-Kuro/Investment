@@ -35,9 +35,9 @@ public class NumberUtils {
 
         String valueStr;
         if (
-            numberAbbrev % 1 == 0 ||
-            toFullNumericString(numberAbbrev)
-                .contains("." + "0".repeat(MAX_NUMBER_OF_DIGITS - wholeNumberAbbrevStr.length()))
+            numberAbbrev % 1 == 0
+            || toFullNumericString(numberAbbrev)
+               .contains("." + "0".repeat(MAX_NUMBER_OF_DIGITS - wholeNumberAbbrevStr.length()))
         ) {
             valueStr = wholeNumberAbbrevStr;
         } else {
