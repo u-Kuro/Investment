@@ -152,7 +152,7 @@ public class TickerService extends Service {
                                 TickerService.this,
                                 String.format(
                                     Locale.US,
-                                    "%.2f%% Processing Tickers (%s Load)",
+                                    "%.2f%% Processing Tickers (%s)",
                                     progress,
                                     dataRefreshType
                                 )
