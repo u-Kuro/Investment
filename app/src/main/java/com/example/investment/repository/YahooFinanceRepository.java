@@ -108,12 +108,12 @@ public class YahooFinanceRepository {
 
                     // Fetch and process data
                     TickerInfo newTicker = processTickerData(
-                        symbol,
-                        marketCap,
-                        oldestDataTimestamp,
-                        currentUpdateTimestamp,
-                        existingTicker,
-                        isFullRefresh
+                            symbol,
+                            marketCap,
+                            oldestDataTimestamp,
+                            currentUpdateTimestamp,
+                            existingTicker,
+                            isFullRefresh
                     );
 
                     // Remove existing ticker from map immediately to free memory
@@ -177,12 +177,12 @@ public class YahooFinanceRepository {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private TickerInfo processTickerData(
-        String symbol,
-        long marketCap,
-        long oldestDataTimestamp,
-        long currentUpdateTimestamp,
-        TickerInfo existingTicker,
-        boolean isFullRefresh
+            String symbol,
+            long marketCap,
+            long oldestDataTimestamp,
+            long currentUpdateTimestamp,
+            TickerInfo existingTicker,
+            boolean isFullRefresh
     ) throws Exception {
 
         JSONObject result = fetchTickerData(symbol, oldestDataTimestamp);
@@ -217,61 +217,7 @@ public class YahooFinanceRepository {
         JSONArray apiLows = quote.getJSONArray("low");
         JSONArray apiVolumes = quote.getJSONArray("volume");
 
-        // Prepare final arrays (either merged or new)
-        JSONArray finalTimestamps;
-        JSONArray finalAdjCloses;
-        JSONArray finalHighs;
-        JSONArray finalLows;
-        JSONArray finalVolumes;
-
-        if (!isFullRefresh && existingTicker != null) {
-            // For incremental: merge old + new (removing first new item as it's duplicate)
-            JSONArray oldTimestamps = existingTicker.getTimestampArray();
-            JSONArray oldAdjCloses = existingTicker.getAdjCloseArray();
-            JSONArray oldHighs = existingTicker.getHighArray();
-            JSONArray oldLows = existingTicker.getLowArray();
-            JSONArray oldVolumes = existingTicker.getVolumeArray();
-
-            // Remove first item from new data (duplicate of last old item)
-            if (apiTimestamps.length() > 0) apiTimestamps.remove(0);
-            if (apiAdjCloses.length() > 0) apiAdjCloses.remove(0);
-            if (apiHighs.length() > 0) apiHighs.remove(0);
-            if (apiLows.length() > 0) apiLows.remove(0);
-            if (apiVolumes.length() > 0) apiVolumes.remove(0);
-
-            // Merge arrays in-place (old array + new items)
-            finalTimestamps = oldTimestamps;
-            finalAdjCloses = oldAdjCloses;
-            finalHighs = oldHighs;
-            finalLows = oldLows;
-            finalVolumes = oldVolumes;
-
-            // Append new items to old arrays
-            for (int i = 0; i < apiTimestamps.length(); i++) {
-                finalTimestamps.put(apiTimestamps.get(i));
-            }
-            for (int i = 0; i < apiAdjCloses.length(); i++) {
-                finalAdjCloses.put(apiAdjCloses.get(i));
-            }
-            for (int i = 0; i < apiHighs.length(); i++) {
-                finalHighs.put(apiHighs.get(i));
-            }
-            for (int i = 0; i < apiLows.length(); i++) {
-                finalLows.put(apiLows.get(i));
-            }
-            for (int i = 0; i < apiVolumes.length(); i++) {
-                finalVolumes.put(apiVolumes.get(i));
-            }
-        } else {
-            // For full refresh: use new data directly
-            finalTimestamps = apiTimestamps;
-            finalAdjCloses = apiAdjCloses;
-            finalHighs = apiHighs;
-            finalLows = apiLows;
-            finalVolumes = apiVolumes;
-        }
-
-        // Calculate metrics using final arrays
+        // Initialize summed metrics
         long adjPricesLen = 0;
         Double firstAdjPrice = null;
         Double lastAdjPrice = null;
@@ -284,10 +230,27 @@ public class YahooFinanceRepository {
         double DB_S_num = 0.0;
         double DB_S_den = 0.0;
 
-        for (int i = 0; i < finalAdjCloses.length(); i++) {
+        // If incremental refresh, start with existing sums
+        if (!isFullRefresh && existingTicker != null) {
+            adjPricesLen = existingTicker.getAdjPricesCount();
+            firstAdjPrice = existingTicker.getFirstAdjPrice();
+            firstTradeDateTimestampSeconds = existingTicker.getFirstTradeTimestampSeconds();
+
+            ohlcvLen = existingTicker.getOhlcvCount();
+            DP_S_num = existingTicker.getDpSumNum();
+            DP_S_den = existingTicker.getDpSumDen();
+            DB_S_num = existingTicker.getDbSumNum();
+            DB_S_den = existingTicker.getDbSumDen();
+        }
+
+        // Determine starting index (skip first element for incremental to avoid duplicate)
+        int startIndex = (!isFullRefresh && existingTicker != null) ? 1 : 0;
+
+        // Process new data points
+        for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
-                double currentAC = finalAdjCloses.getDouble(i);
-                long currentTs = finalTimestamps.getLong(i);
+                double currentAC = apiAdjCloses.getDouble(i);
+                long currentTs = apiTimestamps.getLong(i);
                 if (currentAC > 0 && isFinite(currentAC)
                         && currentTs > 0 && isFinite(currentTs) && (System.currentTimeMillis() / 1000L) > currentTs) {
                     adjPricesLen++;
@@ -306,10 +269,10 @@ public class YahooFinanceRepository {
             } catch (Exception ignored) {}
 
             try {
-                double currentHigh = finalHighs.getDouble(i);
-                double currentLow = finalLows.getDouble(i);
-                double currentVol = finalVolumes.getLong(i);
-                long currentTs = finalTimestamps.getLong(i);
+                double currentHigh = apiHighs.getDouble(i);
+                double currentLow = apiLows.getDouble(i);
+                double currentVol = apiVolumes.getLong(i);
+                long currentTs = apiTimestamps.getLong(i);
 
                 if (currentHigh > 0 && isFinite(currentHigh)
                         && currentLow > 0 && isFinite(currentLow)
@@ -345,9 +308,9 @@ public class YahooFinanceRepository {
 
         // Final Validation
         if (
-            adjPricesLen < 2 || ohlcvLen < 2
-            || firstTradeDateTimestampSeconds == null || lastValidTimestampSeconds == null
-            || DP_S_num == 0 || DP_S_den == 0 || DB_S_num == 0 || DB_S_den == 0
+                adjPricesLen < 2 || ohlcvLen < 2 || lastAdjPrice == null
+                        || firstTradeDateTimestampSeconds == null || lastValidTimestampSeconds == null
+                        || DP_S_num == 0 || DP_S_den == 0 || DB_S_num == 0 || DB_S_den == 0
         ) {
             throw new Exception("Invalid History: Insufficient valid data points.");
         }
@@ -359,26 +322,28 @@ public class YahooFinanceRepository {
         double upperBand = densePrice * (1 + densePctDif);
         double lowerBand = densePrice / (1 + densePctDif);
 
-        // Create and return TickerInfo
+        // Create and return TickerInfo with summed metrics
         return new TickerInfo(
-            symbol,
-            exchange,
-            name,
-            type,
-            lastAdjPrice,
-            densePrice,
-            upperBand,
-            lowerBand,
-            percentageIncreasePerDay,
-            firstTradeDateTimestampSeconds,
-            marketCap,
-            currentUpdateTimestamp,
-            lastValidTimestampSeconds,
-            finalTimestamps,
-            finalAdjCloses,
-            finalHighs,
-            finalLows,
-            finalVolumes
+                symbol,
+                exchange,
+                name,
+                type,
+                lastAdjPrice,
+                densePrice,
+                upperBand,
+                lowerBand,
+                percentageIncreasePerDay,
+                firstTradeDateTimestampSeconds,
+                marketCap,
+                currentUpdateTimestamp,
+                lastValidTimestampSeconds,
+                adjPricesLen,
+                firstAdjPrice,
+                ohlcvLen,
+                DP_S_num,
+                DP_S_den,
+                DB_S_num,
+                DB_S_den
         );
     }
 
@@ -394,9 +359,9 @@ public class YahooFinanceRepository {
     }
 
     private double calculatePercentageIncreasePerDay(
-        double firstPrice,
-        double lastPrice,
-        long firstTradeDateTimestampSeconds
+            double firstPrice,
+            double lastPrice,
+            long firstTradeDateTimestampSeconds
     ) throws Exception {
         double numberOfDays = (System.currentTimeMillis() - (firstTradeDateTimestampSeconds * 1000)) / 86400000D;
         double percentageIncreasePerDay = (((lastPrice - firstPrice) / firstPrice) * 100) / numberOfDays;
@@ -444,12 +409,12 @@ public class YahooFinanceRepository {
             }
         }
         List<Attempt> attempts = Arrays.asList(
-            new Attempt("1d", YAHOO_CHART_URL),
-            new Attempt("1d", YAHOO_CHART_URL_ALT),
-            new Attempt("1mo", YAHOO_CHART_URL),
-            new Attempt("1mo", YAHOO_CHART_URL_ALT),
-            new Attempt("3mo", YAHOO_CHART_URL),
-            new Attempt("3mo", YAHOO_CHART_URL_ALT)
+                new Attempt("1d", YAHOO_CHART_URL),
+                new Attempt("1d", YAHOO_CHART_URL_ALT),
+                new Attempt("1mo", YAHOO_CHART_URL),
+                new Attempt("1mo", YAHOO_CHART_URL_ALT),
+                new Attempt("3mo", YAHOO_CHART_URL),
+                new Attempt("3mo", YAHOO_CHART_URL_ALT)
         );
 
         for (int i = 0; i < attempts.size(); i++) {
@@ -459,16 +424,16 @@ public class YahooFinanceRepository {
 
             Attempt attempt = attempts.get(i);
             String url = new UrlBuilder(attempt.baseUrl)
-                .addPath(symbol)
-                .addParam("period1", NumberUtils.toFullNumericString(startTimestampSeconds))
-                .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
-                .addParam("interval", attempt.interval)
-                .addParam("includePrePost", "true")
-                .addParam("events", "div|split|earn")
-                .addParam("lang", "en-US")
-                .addParam("region", "US")
-                .addParam("source", "cosaic")
-                .build();
+                    .addPath(symbol)
+                    .addParam("period1", NumberUtils.toFullNumericString(startTimestampSeconds))
+                    .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
+                    .addParam("interval", attempt.interval)
+                    .addParam("includePrePost", "true")
+                    .addParam("events", "div|split|earn")
+                    .addParam("lang", "en-US")
+                    .addParam("region", "US")
+                    .addParam("source", "cosaic")
+                    .build();
 
             Request request = new Request.Builder().url(url).build();
 
@@ -493,9 +458,9 @@ public class YahooFinanceRepository {
 
                 // Read and parse response
                 return new JSONObject(body.string())
-                    .getJSONObject("chart")
-                    .getJSONArray("result")
-                    .getJSONObject(0);
+                        .getJSONObject("chart")
+                        .getJSONArray("result")
+                        .getJSONObject(0);
 
             } catch (InterruptedException e) {
                 throw e;
@@ -513,8 +478,8 @@ public class YahooFinanceRepository {
         Map<String, Long> symbols = new HashMap<>();
 
         String[] screeners = new String[]{
-            SCREENER_CRYPTO,
-            SCREENER_STOCKS
+                SCREENER_CRYPTO,
+                SCREENER_STOCKS
         };
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -535,12 +500,12 @@ public class YahooFinanceRepository {
                 }
 
                 String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
-                    .addParam("count", NumberUtils.toFullNumericString(SCREENER_COUNT))
-                    .addParam("scrIds", screener)
-                    .addParam("sortField", "intradaymarketcap")
-                    .addParam("sortType", "DESC")
-                    .addParam("start", NumberUtils.toFullNumericString(start_index))
-                    .build();
+                        .addParam("count", NumberUtils.toFullNumericString(SCREENER_COUNT))
+                        .addParam("scrIds", screener)
+                        .addParam("sortField", "intradaymarketcap")
+                        .addParam("sortType", "DESC")
+                        .addParam("start", NumberUtils.toFullNumericString(start_index))
+                        .build();
 
                 Request request = new Request.Builder().url(url).build();
 
@@ -563,10 +528,10 @@ public class YahooFinanceRepository {
                     }
 
                     JSONArray quotes = new JSONObject(body.string())
-                        .getJSONObject("finance")
-                        .getJSONArray("result")
-                        .getJSONObject(0)
-                        .getJSONArray("quotes");
+                            .getJSONObject("finance")
+                            .getJSONArray("result")
+                            .getJSONObject(0)
+                            .getJSONArray("quotes");
 
                     int length = quotes.length();
                     if (length < 1) break;

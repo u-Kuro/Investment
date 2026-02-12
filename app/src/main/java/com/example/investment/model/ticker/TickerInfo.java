@@ -6,9 +6,6 @@ import static com.example.investment.util.Constants.PRICE_BETWEEN;
 
 import androidx.annotation.NonNull;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
@@ -16,7 +13,8 @@ import java.util.concurrent.TimeUnit;
 
 public class TickerInfo implements Serializable {
     @Serial
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L; // Incremented due to structural change
+
     @NonNull private final String symbol;
     private final String exchange;
     private final String name;
@@ -30,31 +28,37 @@ public class TickerInfo implements Serializable {
     private final long marketCap;
     private final long lastUpdateTimestamp;
     private final long oldestDataTimestampSeconds;
-    private final String timestampArrayJson;
-    private final String adjCloseArrayJson;
-    private final String highArrayJson;
-    private final String lowArrayJson;
-    private final String volumeArrayJson;
+
+    // Summed metrics instead of arrays
+    private final long adjPricesCount;
+    private final Double firstAdjPrice;
+    private final long ohlcvCount;
+    private final double dpSumNum;
+    private final double dpSumDen;
+    private final double dbSumNum;
+    private final double dbSumDen;
 
     public TickerInfo(
-        @NonNull String symbol,
-        String exchange,
-        String name,
-        String type,
-        double lastPrice,
-        double densePrice,
-        double upperBand,
-        double lowerBand,
-        double percentageIncreasePerDay,
-        long firstTradeTimestampSeconds,
-        long marketCap,
-        long lastUpdateTimestamp,
-        long oldestDataTimestampSeconds,
-        JSONArray timestampArray,
-        JSONArray adjCloseArray,
-        JSONArray highArray,
-        JSONArray lowArray,
-        JSONArray volumeArray
+            @NonNull String symbol,
+            String exchange,
+            String name,
+            String type,
+            double lastPrice,
+            double densePrice,
+            double upperBand,
+            double lowerBand,
+            double percentageIncreasePerDay,
+            long firstTradeTimestampSeconds,
+            long marketCap,
+            long lastUpdateTimestamp,
+            long oldestDataTimestampSeconds,
+            long adjPricesCount,
+            Double firstAdjPrice,
+            long ohlcvCount,
+            double dpSumNum,
+            double dpSumDen,
+            double dbSumNum,
+            double dbSumDen
     ) {
         this.symbol = symbol;
         this.exchange = exchange;
@@ -69,11 +73,13 @@ public class TickerInfo implements Serializable {
         this.marketCap = marketCap;
         this.lastUpdateTimestamp = lastUpdateTimestamp;
         this.oldestDataTimestampSeconds = oldestDataTimestampSeconds;
-        this.timestampArrayJson = timestampArray != null ? timestampArray.toString() : "[]";
-        this.adjCloseArrayJson = adjCloseArray != null ? adjCloseArray.toString() : "[]";
-        this.highArrayJson = highArray != null ? highArray.toString() : "[]";
-        this.lowArrayJson = lowArray != null ? lowArray.toString() : "[]";
-        this.volumeArrayJson = volumeArray != null ? volumeArray.toString() : "[]";
+        this.adjPricesCount = adjPricesCount;
+        this.firstAdjPrice = firstAdjPrice;
+        this.ohlcvCount = ohlcvCount;
+        this.dpSumNum = dpSumNum;
+        this.dpSumDen = dpSumDen;
+        this.dbSumNum = dbSumNum;
+        this.dbSumDen = dbSumDen;
     }
 
     public @NonNull String getSymbol() { return symbol; }
@@ -94,41 +100,15 @@ public class TickerInfo implements Serializable {
     public long getMarketCap() { return marketCap; }
     public long getLastUpdateTimestamp() { return lastUpdateTimestamp; }
     public long getOldestDataTimestampSeconds() { return oldestDataTimestampSeconds; }
-    public JSONArray getTimestampArray() {
-        try { return new JSONArray(timestampArrayJson); }
-        catch (JSONException e) { return new JSONArray(); }
-    }
-    public JSONArray getAdjCloseArray() {
-        try { return new JSONArray(adjCloseArrayJson); }
-        catch (JSONException e) { return new JSONArray(); }
-    }
-    public JSONArray getHighArray() {
-        try { return new JSONArray(highArrayJson); }
-        catch (JSONException e) { return new JSONArray(); }
-    }
-    public JSONArray getLowArray() {
-        try { return new JSONArray(lowArrayJson); }
-        catch (JSONException e) { return new JSONArray(); }
-    }
-    public JSONArray getVolumeArray() {
-        try { return new JSONArray(volumeArrayJson); }
-        catch (JSONException e) { return new JSONArray(); }
-    }
-    public String getTimestampArrayJson() {
-        return timestampArrayJson;
-    }
-    public String getAdjCloseArrayJson() {
-        return adjCloseArrayJson;
-    }
-    public String getHighArrayJson() {
-        return highArrayJson;
-    }
-    public String getLowArrayJson() {
-        return lowArrayJson;
-    }
-    public String getVolumeArrayJson() {
-        return volumeArrayJson;
-    }
+
+    // Getters for summed metrics
+    public long getAdjPricesCount() { return adjPricesCount; }
+    public Double getFirstAdjPrice() { return firstAdjPrice; }
+    public long getOhlcvCount() { return ohlcvCount; }
+    public double getDpSumNum() { return dpSumNum; }
+    public double getDpSumDen() { return dpSumDen; }
+    public double getDbSumNum() { return dbSumNum; }
+    public double getDbSumDen() { return dbSumDen; }
 
     public @NonNull String getPriceState() {
         if (this.percentageIncreasePerDay <= 0 || this.lastPrice < this.lowerBand || this.upperBand < this.lowerBand) {
@@ -146,22 +126,24 @@ public class TickerInfo implements Serializable {
 
     public boolean equals(TickerInfo tickerInfo) {
         return Objects.equals(this.symbol, tickerInfo.getSymbol())
-            && Objects.equals(this.exchange, tickerInfo.getExchange())
-            && Objects.equals(this.name, tickerInfo.getName(false))
-            && Objects.equals(this.type, tickerInfo.getType())
-            && this.lastPrice == tickerInfo.getLastPrice()
-            && this.densePrice == tickerInfo.getDensePrice()
-            && this.upperBand == tickerInfo.getUpperBand()
-            && this.lowerBand == tickerInfo.getLowerBand()
-            && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
-            && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
-            && this.marketCap == tickerInfo.getMarketCap()
-            && this.lastUpdateTimestamp == tickerInfo.getLastUpdateTimestamp()
-            && this.oldestDataTimestampSeconds == tickerInfo.getOldestDataTimestampSeconds()
-            && Objects.equals(this.timestampArrayJson, tickerInfo.getTimestampArrayJson())
-            && Objects.equals(this.adjCloseArrayJson, tickerInfo.getAdjCloseArrayJson())
-            && Objects.equals(this.highArrayJson, tickerInfo.getHighArrayJson())
-            && Objects.equals(this.lowArrayJson, tickerInfo.getLowArrayJson())
-            && Objects.equals(this.volumeArrayJson, tickerInfo.getVolumeArrayJson());
+                && Objects.equals(this.exchange, tickerInfo.getExchange())
+                && Objects.equals(this.name, tickerInfo.getName(false))
+                && Objects.equals(this.type, tickerInfo.getType())
+                && this.lastPrice == tickerInfo.getLastPrice()
+                && this.densePrice == tickerInfo.getDensePrice()
+                && this.upperBand == tickerInfo.getUpperBand()
+                && this.lowerBand == tickerInfo.getLowerBand()
+                && this.percentageIncreasePerDay == tickerInfo.getPercentageIncreasePerDay()
+                && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
+                && this.marketCap == tickerInfo.getMarketCap()
+                && this.lastUpdateTimestamp == tickerInfo.getLastUpdateTimestamp()
+                && this.oldestDataTimestampSeconds == tickerInfo.getOldestDataTimestampSeconds()
+                && this.adjPricesCount == tickerInfo.getAdjPricesCount()
+                && Objects.equals(this.firstAdjPrice, tickerInfo.getFirstAdjPrice())
+                && this.ohlcvCount == tickerInfo.getOhlcvCount()
+                && this.dpSumNum == tickerInfo.getDpSumNum()
+                && this.dpSumDen == tickerInfo.getDpSumDen()
+                && this.dbSumNum == tickerInfo.getDbSumNum()
+                && this.dbSumDen == tickerInfo.getDbSumDen();
     }
 }
