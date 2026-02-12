@@ -104,11 +104,11 @@ public class YahooFinanceRepository {
                     if (isFullRefresh || existingTicker == null) {
                         oldestDataTimestamp = FIRST_TRADE_TIMESTAMP_SECONDS;
                     } else {
-                        oldestDataTimestamp = existingTicker.getOldestDataTimestamp();
+                        oldestDataTimestamp = existingTicker.getOldestDataTimestampSeconds();
                     }
 
                     // Get current time before fetch
-                    long currentUpdateTime = System.currentTimeMillis();
+                    long currentUpdateTimestamp = System.currentTimeMillis();
 
                     JSONObject result = fetchTickerData(symbol, oldestDataTimestamp);
 
@@ -177,7 +177,7 @@ public class YahooFinanceRepository {
                     Double firstAdjPrice = null;
                     Double lastAdjPrice = null;
                     Long firstTradeDateTimestampSeconds = null;
-                    Long oldestValidTimestamp = null;
+                    Long lastValidTimestampSeconds = null;
 
                     // States for OHLCV
                     long ohlcvLen = 0;
@@ -206,8 +206,8 @@ public class YahooFinanceRepository {
                                 lastAdjPrice = currentAC;
 
                                 // Track oldest valid timestamp
-                                if (oldestValidTimestamp == null || currentTs < oldestValidTimestamp) {
-                                    oldestValidTimestamp = currentTs;
+                                if (lastValidTimestampSeconds == null || currentTs < lastValidTimestampSeconds) {
+                                    lastValidTimestampSeconds = currentTs;
                                 }
                             }
                         } catch (Exception ignored) {}
@@ -247,15 +247,19 @@ public class YahooFinanceRepository {
                                 }
 
                                 // Track oldest valid timestamp for OHLCV
-                                if (oldestValidTimestamp == null || currentTs < oldestValidTimestamp) {
-                                    oldestValidTimestamp = currentTs;
+                                if (lastValidTimestampSeconds == null || currentTs < lastValidTimestampSeconds) {
+                                    lastValidTimestampSeconds = currentTs;
                                 }
                             }
                         } catch (Exception ignored) {}
                     }
 
                     // Final Validation
-                    if (adjPricesLen < 2 || ohlcvLen < 2 || DP_S_num == 0 || DP_S_den == 0 || DB_S_num == 0 || DB_S_den == 0) {
+                    if (
+                        adjPricesLen < 2 || ohlcvLen < 2
+                        || firstTradeDateTimestampSeconds == null || lastValidTimestampSeconds == null
+                        || DP_S_num == 0 || DP_S_den == 0 || DB_S_num == 0 || DB_S_den == 0
+                    ) {
                         throw new Exception("Invalid History: Insufficient valid data points.");
                     }
 
@@ -296,8 +300,8 @@ public class YahooFinanceRepository {
                         percentageIncreasePerDay,
                         firstTradeDateTimestampSeconds,
                         marketCap,
-                        currentUpdateTime,
-                        oldestValidTimestamp != null ? oldestValidTimestamp : firstTradeDateTimestampSeconds,
+                        currentUpdateTimestamp,
+                        lastValidTimestampSeconds,
                         mergedTimestampArr,
                         mergedAdjCloses,
                         mergedHighArr,

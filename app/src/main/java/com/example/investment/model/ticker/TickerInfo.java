@@ -29,7 +29,7 @@ public class TickerInfo implements Serializable {
     private final long firstTradeTimestampSeconds;
     private final long marketCap;
     private final long lastUpdateTimestamp;
-    private final long oldestDataTimestamp;
+    private final long oldestDataTimestampSeconds;
     private final String timestampArrayJson;
     private final String adjCloseArrayJson;
     private final String highArrayJson;
@@ -49,7 +49,7 @@ public class TickerInfo implements Serializable {
         long firstTradeTimestampSeconds,
         long marketCap,
         long lastUpdateTimestamp,
-        long oldestDataTimestamp,
+        long oldestDataTimestampSeconds,
         JSONArray timestampArray,
         JSONArray adjCloseArray,
         JSONArray highArray,
@@ -68,7 +68,7 @@ public class TickerInfo implements Serializable {
         this.firstTradeTimestampSeconds = firstTradeTimestampSeconds;
         this.marketCap = marketCap;
         this.lastUpdateTimestamp = lastUpdateTimestamp;
-        this.oldestDataTimestamp = oldestDataTimestamp;
+        this.oldestDataTimestampSeconds = oldestDataTimestampSeconds;
         this.timestampArrayJson = timestampArray != null ? timestampArray.toString() : "[]";
         this.adjCloseArrayJson = adjCloseArray != null ? adjCloseArray.toString() : "[]";
         this.highArrayJson = highArray != null ? highArray.toString() : "[]";
@@ -93,7 +93,7 @@ public class TickerInfo implements Serializable {
     public long getFirstTradeTimestampSeconds() { return firstTradeTimestampSeconds; }
     public long getMarketCap() { return marketCap; }
     public long getLastUpdateTimestamp() { return lastUpdateTimestamp; }
-    public long getOldestDataTimestamp() { return oldestDataTimestamp; }
+    public long getOldestDataTimestampSeconds() { return oldestDataTimestampSeconds; }
     public JSONArray getTimestampArray() {
         try { return new JSONArray(timestampArrayJson); }
         catch (JSONException e) { return new JSONArray(); }
@@ -157,7 +157,7 @@ public class TickerInfo implements Serializable {
             && this.firstTradeTimestampSeconds == tickerInfo.getFirstTradeTimestampSeconds()
             && this.marketCap == tickerInfo.getMarketCap()
             && this.lastUpdateTimestamp == tickerInfo.getLastUpdateTimestamp()
-            && this.oldestDataTimestamp == tickerInfo.getOldestDataTimestamp()
+            && this.oldestDataTimestampSeconds == tickerInfo.getOldestDataTimestampSeconds()
             && Objects.equals(this.timestampArrayJson, tickerInfo.getTimestampArrayJson())
             && Objects.equals(this.adjCloseArrayJson, tickerInfo.getAdjCloseArrayJson())
             && Objects.equals(this.highArrayJson, tickerInfo.getHighArrayJson())
