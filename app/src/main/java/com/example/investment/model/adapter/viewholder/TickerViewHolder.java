@@ -60,6 +60,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void bind(TickerInfo ticker) {
         this.currentTicker = ticker;
+        boolean isDataStale = ticker.isDataStale();
         String symbol = ticker.getSymbol();
         String name = ticker.getName(false);
         if (name == null || name.isEmpty()) {
@@ -98,6 +99,12 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         upperBandText.setText(PriceUtils.formatPrice(ticker.getUpperBand()));
         lowerBandText.setText(PriceUtils.formatPrice(ticker.getLowerBand()));
 
+        if (isDataStale) {
+            nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.slate_grey));
+        } else {
+            nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
+        }
+
         if (ticker.getLastPrice() < ticker.getLowerBand()) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else if (ticker.getPriceState().equals(PRICE_BETWEEN)) {
@@ -110,6 +117,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         } else {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
+
         if (ticker.getUpperBand() < ticker.getLowerBand()) {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
             lowerBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));

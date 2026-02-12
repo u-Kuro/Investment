@@ -3,28 +3,23 @@ package com.example.investment.task;
 import android.content.Context;
 import android.os.Build;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
+import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.model.ticker.TickerInfo;
 import com.example.investment.repository.YahooFinanceRepository;
-import com.example.investment.model.listener.TickerUpdateListener;
-import com.example.investment.util.Logger;
 
 import java.util.List;
 
 public class TickerDataLoader {
-    private static volatile TickerDataLoader instance;
+    private static TickerDataLoader instance;
     private final YahooFinanceRepository repository;
 
     private TickerDataLoader() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
-        }
-        this.repository = new YahooFinanceRepository();
+        repository = new YahooFinanceRepository();
     }
 
-    public static TickerDataLoader getInstance() {
+    public static synchronized TickerDataLoader getInstance() {
         if (instance == null) {
             instance = new TickerDataLoader();
         }
@@ -32,15 +27,15 @@ public class TickerDataLoader {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void loadTickers(@NonNull Context context, TickerUpdateListener listener) {
-        repository.loadTickerScores(context, listener);
+    public void loadTickers(Context context, boolean isFullRefresh, TickerUpdateListener listener) {
+        repository.loadTickerScores(context, isFullRefresh, listener);
     }
 
-    public List<TickerInfo> loadCachedTickers(@NonNull Context context) {
+    public List<TickerInfo> loadCachedTickers(Context context) {
         return repository.loadCache(context);
     }
 
-    public long getLastUpdateTime(@NonNull Context context) {
+    public long getLastUpdateTime(Context context) {
         return repository.getCacheTimestamp(context);
     }
-} 
+}

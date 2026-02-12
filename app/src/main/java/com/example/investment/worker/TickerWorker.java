@@ -1,5 +1,7 @@
 package com.example.investment.worker;
 
+import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
+
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -24,8 +26,16 @@ public class TickerWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Intent serviceIntent = new Intent(getApplicationContext(), TickerService.class);
-        getApplicationContext().startService(serviceIntent);
-        return Result.success();
+        Context context = getApplicationContext();
+
+        try {
+            Intent serviceIntent = new Intent(context, TickerService.class);
+            serviceIntent.setAction(INCREMENTAL_DATA_REFRESH_ACTION);
+            context.startForegroundService(serviceIntent);
+
+            return Result.success();
+        } catch (Exception e) {
+            return Result.failure();
+        }
     }
-} 
+}

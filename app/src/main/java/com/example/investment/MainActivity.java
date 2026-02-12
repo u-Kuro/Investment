@@ -1,5 +1,8 @@
 package com.example.investment;
 
+import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
+import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
+import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
@@ -59,6 +62,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import android.content.SharedPreferences;
 import androidx.activity.OnBackPressedCallback;
@@ -75,7 +79,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean filterStatus = false;
     private long filterMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
     private ImageView stopProcessingImage;
-    private boolean isUpdating = false;
+    private String dataRefreshType;
+    private boolean isManuallyUpdated = false;
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
     private RecyclerView recyclerView;
 
@@ -86,7 +91,6 @@ public class MainActivity extends AppCompatActivity {
             Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
         }
 
-        // Create WebView App Instance
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         splashScreen.setKeepOnScreenCondition(() -> false);
 
@@ -104,16 +108,26 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         updateText = findViewById(R.id.updateText);
         progressBar = findViewById(R.id.progressBar);
-        
+
         adapter = new TickerAdapter();
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        swipeRefreshLayout.setOnRefreshListener(() -> this.loadTickers(true));
+        swipeRefreshLayout.setOnRefreshListener(() -> {
+            if (isManuallyUpdated) {
+                if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+                    Toast.makeText(this, "Full data refresh initiated", Toast.LENGTH_SHORT).show();
+                }
+                loadCachedData(true, true, true);
+            } else {
+                isManuallyUpdated = true;
+                loadCachedData(true, true);
+            }
+        });
 
         dataLoader = TickerDataLoader.getInstance();
 
-        loadCachedData(true);
+        loadCachedData(true, false);
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
@@ -131,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("Do you want to cancel the update?")
                 .setPositiveButton("YES", (dialog, which) -> {
                     Intent stopIntent = new Intent(this, TickerService.class);
-                    stopIntent.setAction(TickerService.STOP_SERVICE_ACTION);
+                    stopIntent.setAction(STOP_SERVICE_ACTION);
                     startService(stopIntent);
                 })
                 .create();
@@ -147,7 +161,6 @@ public class MainActivity extends AppCompatActivity {
 
         customTabsUtils.warmup(MainActivity.this);
 
-        // Add back press handling
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -161,7 +174,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadCachedData(boolean checkUpdate) {
+    private void loadCachedData(boolean checkUpdate, boolean fromSwipeRefresh) {
+        loadCachedData(checkUpdate, fromSwipeRefresh, null);
+    }
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void loadCachedData(boolean checkUpdate, boolean fromSwipeRefresh, Boolean fullDataRefresh) {
         new Thread(() -> {
             try {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
@@ -172,11 +189,16 @@ public class MainActivity extends AppCompatActivity {
                         updateTickerList(cachedTickers);
                     }
                     if (checkUpdate) {
-                        LocalDateTime lastUpdate = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(lastUpdateTime),
-                            ZoneId.systemDefault());
-                        if (lastUpdateTime == 0 || lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
-                            loadTickers(false);
+                        if (lastUpdateTime == 0 || cachedTickers == null || cachedTickers.isEmpty()) {
+                            loadTickers(fromSwipeRefresh, true);
+                        } else {
+                            LocalDateTime lastUpdate = LocalDateTime.ofInstant(
+                                Instant.ofEpochMilli(lastUpdateTime),
+                                ZoneId.systemDefault()
+                            );
+                            if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
+                                loadTickers(fromSwipeRefresh, Objects.requireNonNullElse(fullDataRefresh, false));
+                            }
                         }
                     }
                 });
@@ -186,14 +208,22 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    private void loadTickers(boolean showRefresh) {
-        if (showRefresh) {
+    private void loadTickers(boolean fromSwipeRefresh, boolean fullDataRefresh) {
+        Intent serviceIntent;
+        // Only restart if it's not a full data refresh
+        if (INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+            serviceIntent = new Intent(this, TickerService.class);
+            stopService(serviceIntent);
+        }
+
+        serviceIntent = new Intent(this, TickerService.class);
+        serviceIntent.setAction(fullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
+
+        if (fromSwipeRefresh) {
             swipeRefreshLayout.setRefreshing(true);
-            Intent serviceIntent = new Intent(this, TickerService.class);
             startService(serviceIntent);
             swipeRefreshLayout.setRefreshing(false);
         } else {
-            Intent serviceIntent = new Intent(this, TickerService.class);
             startService(serviceIntent);
         }
     }
@@ -233,7 +263,6 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         timeAgo = daysDifference + " days ago";
                     }
-                    // Add day of week
                     DateTimeFormatter dayFormatter = DateTimeFormatter.ofPattern("EEEE", Locale.getDefault());
                     timeAgo += ", " + updateTime.format(dayFormatter);
                 }
@@ -241,24 +270,26 @@ public class MainActivity extends AppCompatActivity {
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MMMM d yyyy", Locale.getDefault());
                 timeAgo = updateTime.format(dateFormatter);
             }
-            
+
             updateText.setText(getString(R.string.last_updated_format, timeAgo));
         } else {
-            updateText.setText(R.string.last_updated_never);
+            updateText.setText(R.string.last_updated_na);
         }
     }
 
-    public void updateProgress(int current, int total) {
+    public void updateProgress(int current, int total, final String dataRefreshType) {
         runOnUiThread(() -> {
-            isUpdating = true;
+            if (this.dataRefreshType == null) {
+                this.dataRefreshType = dataRefreshType;
+            }
             if (total > 0) {
                 progressBar.setMax(total);
                 progressBar.setProgress(current);
                 progressBar.setIndeterminate(false);
-                
+
                 if (current < total) {
                     stopProcessingImage.setVisibility(View.VISIBLE);
-                    updateText.setText(getString(R.string.processing_ticker_progress, current, total, (double)current/total * 100));
+                    updateText.setText(getString(R.string.processing_ticker_progress, dataRefreshType, current, total, (double) current/total * 100));
                     progressBar.setVisibility(View.VISIBLE);
                     progressBar.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
                 } else {
@@ -269,13 +300,13 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else {
                 stopProcessingImage.setVisibility(View.VISIBLE);
-                updateText.setText(getString(R.string.fetching_tickers));
+                updateText.setText(getString(R.string.fetching_tickers, dataRefreshType));
                 progressBar.setIndeterminate(true);
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
             }
             progressBar.requestLayout();
-            ((View)progressBar.getParent()).requestLayout();
+            ((View) progressBar.getParent()).requestLayout();
         });
     }
 
@@ -293,7 +324,8 @@ public class MainActivity extends AppCompatActivity {
             Intent serviceIntent = new Intent(this, TickerService.class);
             stopService(serviceIntent);
 
-            isUpdating = false;
+            dataRefreshType = null;
+            isManuallyUpdated = false;
         });
     }
 
@@ -306,12 +338,13 @@ public class MainActivity extends AppCompatActivity {
             progressBar.requestLayout();
             ((View) progressBar.getParent()).requestLayout();
 
-            loadCachedData(false);
+            loadCachedData(false, false);
 
             Intent serviceIntent = new Intent(this, TickerService.class);
             stopService(serviceIntent);
 
-            isUpdating = false;
+            dataRefreshType = null;
+            isManuallyUpdated = false;
         });
     }
 
@@ -341,20 +374,17 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, start the worker
                 WorkerManager.scheduleTickerWork(this);
             } else {
-                // Permission denied, show a message to the user
-                Toast.makeText(this, 
-                    "Notification permission denied. You won't receive ticker updates.",
-                    Toast.LENGTH_LONG
+                Toast.makeText(this,
+                        "Notification permission denied. You won't receive ticker updates.",
+                        Toast.LENGTH_LONG
                 ).show();
             }
         }
     }
 
     private void setupRecyclerView() {
-        // Regular click - open Yahoo Finance
         adapter.setOnTickerClickListener(ticker -> {
             try {
                 String symbol = ticker.getSymbol();
@@ -371,7 +401,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Long click - copy symbol
         adapter.setOnTickerLongClickListener(ticker -> {
             String name = ticker.getName(true);
             if (name != null && !name.isEmpty()) {
@@ -390,13 +419,11 @@ public class MainActivity extends AppCompatActivity {
         Spinner typeFilterSpinner = findViewById(R.id.typeFilterSpinner);
         filterStatusImage = findViewById(R.id.statusFilterImage);
 
-        // Load saved preferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
         filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
 
-        // Setup spinner
         ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
             R.layout.spinner_item,
             new String[]{"All", "Crypto", "Stock"}
@@ -405,12 +432,10 @@ public class MainActivity extends AppCompatActivity {
         typeFilterSpinner.setAdapter(filterAdapter);
         typeFilterSpinner.setSelection(savedFilterPosition);
 
-        // Set initial filter states
         adapter.setStatusFilter(filterStatus);
         adapter.setTypeFilter(typeFilterSpinner.getSelectedItem().toString());
         adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
 
-        // Update UI to reflect saved state
         filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
 
         typeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -419,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
                 SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
                 editor.putInt(PREF_FILTER_TYPE, position);
                 editor.apply();
-                
+
                 adapter.setTypeFilter(parent.getSelectedItem().toString());
             }
 
@@ -430,11 +455,11 @@ public class MainActivity extends AppCompatActivity {
         filterStatusImage.setOnClickListener(v -> {
             filterStatus = !filterStatus;
             filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
-                
+
             SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
             editor.putBoolean(PREF_FILTER_STATUS, filterStatus);
             editor.apply();
-            
+
             adapter.setStatusFilter(filterStatus);
         });
     }
@@ -443,7 +468,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && !isUpdating) {
+        if (hasFocus && dataRefreshType == null) {
             new Thread(() -> {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
                 runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));

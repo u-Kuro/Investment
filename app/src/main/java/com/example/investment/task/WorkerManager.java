@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 
 public class WorkerManager {
     private static final String TICKER_WORK_TAG = "ticker_work";
-    
     public static void scheduleTickerWork(Context context) {
         PeriodicWorkRequest workRequest = new PeriodicWorkRequest.Builder(
             TickerWorker.class,
@@ -26,10 +25,10 @@ public class WorkerManager {
         .build();
 
         androidx.work.WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(
-                TICKER_WORK_TAG,
-                ExistingPeriodicWorkPolicy.KEEP,
-                workRequest
-            );
+        .enqueueUniquePeriodicWork(
+            TICKER_WORK_TAG,
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        );
     }
-} 
+}

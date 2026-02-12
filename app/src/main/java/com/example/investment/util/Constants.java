@@ -23,6 +23,9 @@ public class Constants {
     public static final long SCREENER_COUNT = 250;
     public static final long FIRST_TRADE_TIMESTAMP_SECONDS = -11607782632L; // March 1602
 
+    // Yahoo Finance Request Limit
+    public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
+
     // Price States
     public static final String PRICE_ABOVE = "above_upper";
     public static final String PRICE_BELOW = "below_lower";
@@ -36,6 +39,7 @@ public class Constants {
     public static final String CHANNEL_ID_ASSET_IMPROVING = "asset_improving";
     public static final String CHANNEL_ID_INVESTMENT_OPPORTUNITY = "investment_opportunity";
     public static final String CHANNEL_ID_ASSET_RISK = "asset_risk";
+    public static final String CHANNEL_ID_LEADING_ASSET_REMOVAL = "leading_asset_removal";
 
 
     // Notification Channel Names
@@ -46,6 +50,7 @@ public class Constants {
     public static final String CHANNEL_NAME_ASSET_IMPROVING = "Improving Asset";
     public static final String CHANNEL_NAME_INVESTMENT_OPPORTUNITY = "Investment Opportunity";
     public static final String CHANNEL_NAME_ASSET_RISK = "Asset Risk Warning";
+    public static final String CHANNEL_NAME_LEADING_ASSET_REMOVAL = "Leading Asset Removal";
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
@@ -55,6 +60,7 @@ public class Constants {
     public static final int NOTIFICATION_ID_ASSET_IMPROVING = 5;
     public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 6;
     public static final int NOTIFICATION_ID_ASSET_RISK = 7;
+    public static final int NOTIFICATION_ID_LEADING_ASSET_REMOVAL = 8;
 
     // Notification Group Keys
     public static final String APP_NOTIFICATION_GROUP_KEY = "Investment";
@@ -64,4 +70,7 @@ public class Constants {
 
     // Filter Defaults
     public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L; // $ 10 Billion
+
+    // Request Defaults
+    public static final int MAX_FETCH_RETRY_COUNT = 3;
 } 

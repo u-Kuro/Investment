@@ -1,5 +1,6 @@
 package com.example.investment.util;
 
+import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
 import static com.example.investment.util.Constants.APP_NOTIFICATION_GROUP_KEY;
 import static com.example.investment.util.Constants.CHANNEL_ID_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.CHANNEL_ID_SERVICE;
@@ -58,7 +59,7 @@ public class NotificationUtils {
         manager.createNotificationChannel(channel);
 
         Intent stopIntent = new Intent(context, TickerService.class);
-        stopIntent.setAction(TickerService.STOP_SERVICE_ACTION);
+        stopIntent.setAction(STOP_SERVICE_ACTION);
         PendingIntent stopPendingIntent = PendingIntent.getService(
             context, 
             0, 

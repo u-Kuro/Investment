@@ -1,9 +1,9 @@
 <resources>
     <string name="app_name">Investment</string>
     <string name="last_updated_format">Last Updated: %s</string>
-    <string name="last_updated_never">Last Update: Never</string>
-    <string name="fetching_tickers">Fetching Tickers from Yahoo Finance…</string>
-    <string name="processing_ticker_progress">Processing Tickers | %d of %d | %.2f%%</string>
+    <string name="last_updated_na">Last Update: N/A</string>
+    <string name="fetching_tickers">Fetching Tickers from YFinance (%s)…</string>
+    <string name="processing_ticker_progress">Processing Tickers (%s) | %d of %d | %.2f%%</string>
     <string name="successful_ticker_progress">Successfully Processed Tickers</string>
     <string name="crypto">crypto</string>
     <string name="filter_status">Filter Status</string>
