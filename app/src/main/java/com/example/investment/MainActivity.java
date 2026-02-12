@@ -209,22 +209,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadTickers(boolean fromSwipeRefresh, boolean fullDataRefresh) {
-        Intent serviceIntent;
         // Only restart if it's not a full data refresh
-        if (INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-            serviceIntent = new Intent(this, TickerService.class);
-            stopService(serviceIntent);
+        if (fullDataRefresh && INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+            Intent intent = new Intent(this, TickerService.class);
+            stopService(intent);
         }
 
-        serviceIntent = new Intent(this, TickerService.class);
-        serviceIntent.setAction(fullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
+        Intent intent = new Intent(this, TickerService.class);
+        intent.setAction(fullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
 
         if (fromSwipeRefresh) {
             swipeRefreshLayout.setRefreshing(true);
-            startService(serviceIntent);
+            startService(intent);
             swipeRefreshLayout.setRefreshing(false);
         } else {
-            startService(serviceIntent);
+            startService(intent);
         }
     }
 

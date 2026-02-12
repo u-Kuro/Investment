@@ -17,7 +17,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Investment"
-        android:launchMode="singleInstance">
+        android:launchMode="singleInstance"
+        android:largeHeap="true">
         <activity
             android:theme="@style/Theme.Investment.SplashScreen"
             android:name=".MainActivity"
