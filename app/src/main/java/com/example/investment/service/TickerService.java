@@ -72,6 +72,7 @@ public class TickerService extends Service {
     private TickerDataLoader dataLoader;
     private final ExecutorService executorService = Executors.newFixedThreadPool(1);
     private Future<?> future;
+    private String dataRefreshType = null;
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
@@ -100,14 +101,26 @@ public class TickerService extends Service {
             if (STOP_SERVICE_ACTION.equals(action)) {
                 stopForeground(true);
                 stopSelf();
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) {
+                    activity.updateError();
+                }
                 return START_NOT_STICKY;
-            } else if (FULL_DATA_REFRESH_ACTION.equals(action)) {
-                updateTickers(FULL_DATA_REFRESH_ACTION);
-            } else if (INCREMENTAL_DATA_REFRESH_ACTION.equals(action)) {
-                updateTickers(INCREMENTAL_DATA_REFRESH_ACTION);
             } else {
-                // Default to partial refresh
-                updateTickers(INCREMENTAL_DATA_REFRESH_ACTION);
+                if (FULL_DATA_REFRESH_ACTION.equals(action)) {
+                    if (INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+                        if (future != null && !future.isDone()) {
+                            future.cancel(true);
+                        }
+                    }
+                    dataRefreshType = FULL_DATA_REFRESH_ACTION;
+                    updateTickers(FULL_DATA_REFRESH_ACTION);
+                } else if (INCREMENTAL_DATA_REFRESH_ACTION.equals(action)) {
+                    if (future == null || future.isDone() || !FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+                        dataRefreshType = INCREMENTAL_DATA_REFRESH_ACTION;
+                        updateTickers(INCREMENTAL_DATA_REFRESH_ACTION);
+                    }
+                }
             }
         }
         return START_NOT_STICKY;
@@ -130,7 +143,6 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers(@NonNull final String dataRefreshType) {
-        if (future != null) return; // Update is already running
         future = executorService.submit(() -> dataLoader.updateTickers(
             getApplicationContext(),
             dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
@@ -359,7 +371,7 @@ public class TickerService extends Service {
         try {
             saveObject(
                 getApplicationContext(),
-                    FILE_RECORD_LEADING_TICKERS,
+                FILE_RECORD_LEADING_TICKERS,
                 new ArrayList<>(leadingTickers)
             );
         } catch (IOException e) {

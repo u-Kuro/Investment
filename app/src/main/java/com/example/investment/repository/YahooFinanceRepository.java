@@ -118,7 +118,6 @@ public class YahooFinanceRepository {
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
-                    listener.onError();
                     return;
                 } catch (Exception e) {
                     listener.onProgress(++current, total);
@@ -128,7 +127,6 @@ public class YahooFinanceRepository {
         } catch (InterruptedException e) {
             Logger.error("InterruptedException fetching ticker data", e);
             Thread.currentThread().interrupt();
-            listener.onError();
             return;
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);

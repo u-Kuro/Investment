@@ -62,7 +62,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 
 import android.content.SharedPreferences;
 import androidx.activity.OnBackPressedCallback;
@@ -114,16 +113,16 @@ public class MainActivity extends AppCompatActivity {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     Toast.makeText(this, "Full data refresh initiated", Toast.LENGTH_SHORT).show();
                 }
-                loadTickerDataRecord(true, true, true);
+                manualUpdateTickerDataRecord(true);
             } else {
                 isManuallyUpdated = true;
-                loadTickerDataRecord(true, true);
+                manualUpdateTickerDataRecord(false);
             }
         });
 
         dataLoader = TickerDataLoader.getInstance();
 
-        loadTickerDataRecord(true, false);
+        autoLoadTickerDataRecord(true);
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
@@ -140,9 +139,23 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("Confirmation")
                 .setMessage("Do you want to cancel the update?")
                 .setPositiveButton("YES", (dialog, which) -> {
+                    Intent serviceIntent = new Intent(this, TickerService.class);
+                    stopService(serviceIntent);
+
                     Intent stopIntent = new Intent(this, TickerService.class);
                     stopIntent.setAction(STOP_SERVICE_ACTION);
                     startService(stopIntent);
+
+                    stopProcessingImage.setVisibility(View.GONE);
+                    progressBar.setVisibility(View.GONE);
+                    progressBar.getLayoutParams().height = 0;
+                    progressBar.requestLayout();
+                    ((View) progressBar.getParent()).requestLayout();
+
+                    autoLoadTickerDataRecord(false);
+
+                    dataRefreshType = null;
+                    isManuallyUpdated = false;
                 })
                 .create();
             Window dialogWindow = alertDialog.getWindow();
@@ -170,11 +183,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadTickerDataRecord(boolean shouldCheckUpdate, boolean isManual) {
-        loadTickerDataRecord(shouldCheckUpdate, isManual, null);
-    }
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadTickerDataRecord(boolean shouldCheckUpdate, boolean isManual, Boolean isFullDataRefresh) {
+    private void autoLoadTickerDataRecord(boolean shouldCheckUpdate) {
         new Thread(() -> {
             try {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
@@ -186,14 +195,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (shouldCheckUpdate) {
                         if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
-                            loadTickers(isManual, true);
+                            updateTickers(false, true);
                         } else {
                             LocalDateTime lastUpdate = LocalDateTime.ofInstant(
                                 Instant.ofEpochMilli(lastUpdateTime),
                                 ZoneId.systemDefault()
                             );
-                            if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1)) || isManual) {
-                                loadTickers(isManual, Objects.requireNonNullElse(isFullDataRefresh, false));
+                            if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
+                                updateTickers(false, false);
                             }
                         }
                     }
@@ -204,13 +213,26 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    private void loadTickers(boolean isManual, boolean isFullDataRefresh) {
-        // Only restart if it's not a full data refresh
-        if (isFullDataRefresh && INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-            Intent intent = new Intent(this, TickerService.class);
-            stopService(intent);
-        }
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void manualUpdateTickerDataRecord(boolean isFullDataRefresh) {
+        new Thread(() -> {
+            try {
+                long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
+                List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
+                runOnUiThread(() -> {
+                    if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
+                        updateTickers(true, true);
+                    } else {
+                        updateTickers(true, isFullDataRefresh);
+                    }
+                });
+            } catch (Exception e) {
+                Logger.error("Failed to retrieve data.", e);
+            }
+        }).start();
+    }
 
+    private void updateTickers(boolean isManual, boolean isFullDataRefresh) {
         Intent intent = new Intent(this, TickerService.class);
         intent.setAction(isFullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
 
@@ -274,9 +296,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void updateProgress(int current, int total, final String dataRefreshType) {
         runOnUiThread(() -> {
-            if (this.dataRefreshType == null) {
-                this.dataRefreshType = dataRefreshType;
-            }
+            this.dataRefreshType = dataRefreshType;
             if (total > 0) {
                 progressBar.setMax(total);
                 progressBar.setProgress(current);
@@ -333,7 +353,7 @@ public class MainActivity extends AppCompatActivity {
             progressBar.requestLayout();
             ((View) progressBar.getParent()).requestLayout();
 
-            loadTickerDataRecord(false, false);
+            autoLoadTickerDataRecord(false);
 
             Intent serviceIntent = new Intent(this, TickerService.class);
             stopService(serviceIntent);

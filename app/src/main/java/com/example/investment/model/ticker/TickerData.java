@@ -72,7 +72,7 @@ public class TickerData implements Serializable {
     public double getLastPrice() { return lastPrice; }
     public @NonNull Map<String, FixedHistoricalData> getFixedHistoricalDataMap() { return new HashMap<>(fixedHistoricalDataMap); }
     public FixedHistoricalData getFixedHistoricalData(@NonNull String interval) {
-        return fixedHistoricalDataMap.getOrDefault(interval, null);
+        return getFixedHistoricalDataMap().getOrDefault(interval, null);
     }
 
     public FixedHistoricalData getMostGranularNonStaleData() {
@@ -88,7 +88,7 @@ public class TickerData implements Serializable {
         long currentTimeMillis = System.currentTimeMillis();
 
         for (int i = 0; i < timeframes.length; i++) {
-            FixedHistoricalData data = fixedHistoricalDataMap.get(timeframes[i]);
+            FixedHistoricalData data = getFixedHistoricalDataMap().get(timeframes[i]);
             if (data != null) {
                 long dataAgeMillis = currentTimeMillis - (data.updatedAtTimestampSeconds() * 1000);
                 if (dataAgeMillis <= staleThresholds[i]) {
