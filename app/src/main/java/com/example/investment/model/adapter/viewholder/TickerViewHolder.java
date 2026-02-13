@@ -1,7 +1,9 @@
 package com.example.investment.model.adapter.viewholder;
 
+import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
+import static com.example.investment.util.Constants.STOCK_TYPE;
 
 import android.os.Build;
 import android.view.View;
@@ -12,12 +14,14 @@ import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
 import com.example.investment.util.NumberUtils;
 import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
+
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -35,7 +39,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView marketCapText;
     private final TextView upperBandText;
     private final TextView lowerBandText;
-    private TickerInfo currentTicker;
+    private TickerData currentTicker;
 
     public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
         super(itemView);
@@ -58,7 +62,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void bind(TickerInfo ticker) {
+    public void bind(TickerData ticker) {
         this.currentTicker = ticker;
         boolean isDataStale = ticker.isDataStale();
         String symbol = ticker.getSymbol();
@@ -75,10 +79,10 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             nameText.setText(String.format("%s | %s ", name, exchange));
         }
 
-        if ("cryptocurrency".equalsIgnoreCase(ticker.getType())) {
+        if (CRYPTOCURRENCY_TYPE.equals(ticker.getType())) {
             typeIconImage.setImageResource(R.drawable.crypto);
             typeIconImage.setVisibility(View.VISIBLE);
-        } else if ("equity".equalsIgnoreCase(ticker.getType())) {
+        } else if (STOCK_TYPE.equals(ticker.getType())) {
             typeIconImage.setImageResource(R.drawable.stock);
             typeIconImage.setVisibility(View.VISIBLE);
         } else {
@@ -105,7 +109,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getLastPrice() < ticker.getLowerBand()) {
+        if (BigDecimal.valueOf(ticker.getLastPrice()).compareTo(ticker.getLowerBand()) < 0) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else if (ticker.getPriceState().equals(PRICE_BETWEEN)) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
@@ -118,7 +122,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getUpperBand() < ticker.getLowerBand()) {
+        if (ticker.getUpperBand().compareTo(ticker.getLowerBand()) < 0) {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
             lowerBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
@@ -165,7 +169,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         return seconds + (seconds == 1 ? " second" : " seconds");
     }
 
-    private int getCardColor(TickerInfo ticker) {
+    private int getCardColor(TickerData ticker) {
         int colorResId;
 
         @NonNull String priceState = ticker.getPriceState();

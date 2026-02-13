@@ -46,7 +46,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.net.Uri;
 
 import com.example.investment.model.adapter.TickerAdapter;
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.util.Logger;
 import com.example.investment.task.WorkerManager;
@@ -87,10 +87,6 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        if (savedInstanceState == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
-        }
-
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         splashScreen.setKeepOnScreenCondition(() -> false);
 
@@ -118,16 +114,16 @@ public class MainActivity extends AppCompatActivity {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     Toast.makeText(this, "Full data refresh initiated", Toast.LENGTH_SHORT).show();
                 }
-                loadCachedData(true, true, true);
+                loadTickerDataRecord(true, true, true);
             } else {
                 isManuallyUpdated = true;
-                loadCachedData(true, true);
+                loadTickerDataRecord(true, true);
             }
         });
 
         dataLoader = TickerDataLoader.getInstance();
 
-        loadCachedData(true, false);
+        loadTickerDataRecord(true, false);
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
@@ -174,30 +170,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadCachedData(boolean checkUpdate, boolean fromSwipeRefresh) {
-        loadCachedData(checkUpdate, fromSwipeRefresh, null);
+    private void loadTickerDataRecord(boolean shouldCheckUpdate, boolean isManual) {
+        loadTickerDataRecord(shouldCheckUpdate, isManual, null);
     }
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void loadCachedData(boolean checkUpdate, boolean fromSwipeRefresh, Boolean fullDataRefresh) {
+    private void loadTickerDataRecord(boolean shouldCheckUpdate, boolean isManual, Boolean isFullDataRefresh) {
         new Thread(() -> {
             try {
                 long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
                 runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));
-                List<TickerInfo> cachedTickers = dataLoader.loadCachedTickers(MainActivity.this.getApplicationContext());
+                List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
                 runOnUiThread(() -> {
-                    if (cachedTickers != null && !cachedTickers.isEmpty()) {
-                        updateTickerList(cachedTickers);
+                    if (tickers != null && !tickers.isEmpty()) {
+                        updateTickerList(tickers);
                     }
-                    if (checkUpdate) {
-                        if (lastUpdateTime == 0 || cachedTickers == null || cachedTickers.isEmpty()) {
-                            loadTickers(fromSwipeRefresh, true);
+                    if (shouldCheckUpdate) {
+                        if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
+                            loadTickers(isManual, true);
                         } else {
                             LocalDateTime lastUpdate = LocalDateTime.ofInstant(
                                 Instant.ofEpochMilli(lastUpdateTime),
                                 ZoneId.systemDefault()
                             );
-                            if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
-                                loadTickers(fromSwipeRefresh, Objects.requireNonNullElse(fullDataRefresh, false));
+                            if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1)) || isManual) {
+                                loadTickers(isManual, Objects.requireNonNullElse(isFullDataRefresh, false));
                             }
                         }
                     }
@@ -208,17 +204,17 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    private void loadTickers(boolean fromSwipeRefresh, boolean fullDataRefresh) {
+    private void loadTickers(boolean isManual, boolean isFullDataRefresh) {
         // Only restart if it's not a full data refresh
-        if (fullDataRefresh && INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+        if (isFullDataRefresh && INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
             Intent intent = new Intent(this, TickerService.class);
             stopService(intent);
         }
 
         Intent intent = new Intent(this, TickerService.class);
-        intent.setAction(fullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
+        intent.setAction(isFullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
 
-        if (fromSwipeRefresh) {
+        if (isManual) {
             swipeRefreshLayout.setRefreshing(true);
             startService(intent);
             swipeRefreshLayout.setRefreshing(false);
@@ -228,7 +224,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void updateTickerList(List<TickerInfo> tickers) {
+    public void updateTickerList(List<TickerData> tickers) {
         adapter.setTickers(tickers);
     }
 
@@ -337,7 +333,7 @@ public class MainActivity extends AppCompatActivity {
             progressBar.requestLayout();
             ((View) progressBar.getParent()).requestLayout();
 
-            loadCachedData(false, false);
+            loadTickerDataRecord(false, false);
 
             Intent serviceIntent = new Intent(this, TickerService.class);
             stopService(serviceIntent);

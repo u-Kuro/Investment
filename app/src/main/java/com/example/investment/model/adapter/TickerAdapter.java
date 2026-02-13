@@ -1,6 +1,8 @@
 package com.example.investment.model.adapter;
 
+import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
+import static com.example.investment.util.Constants.STOCK_TYPE;
 
 import android.os.Build;
 import android.os.Handler;
@@ -12,7 +14,7 @@ import androidx.annotation.RequiresApi;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.model.adapter.viewholder.TickerViewHolder;
 import com.example.investment.model.adapter.diffcallback.TickerDiffCallback;
 import com.example.investment.model.listener.OnTickerClickListener;
@@ -24,8 +26,8 @@ import java.util.stream.Collectors;
 
 public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final List<TickerInfo> tickers = new ArrayList<>();
-    private final List<TickerInfo> originalTickers = new ArrayList<>();
+    private final List<TickerData> tickers = new ArrayList<>();
+    private final List<TickerData> originalTickers = new ArrayList<>();
     private String typeFilter = "All";
     private boolean statusFilter = false;
     private long marketCapThresholdFilter;
@@ -53,7 +55,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void onBindViewHolder(@NonNull TickerViewHolder holder, int position) {
-        TickerInfo ticker = tickers.get(position);
+        TickerData ticker = tickers.get(position);
         holder.bind(ticker);
     }
 
@@ -62,7 +64,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         return tickers.size();
     }
 
-    public void setTickers(List<TickerInfo> newOriginalTickers) {
+    public void setTickers(List<TickerData> newOriginalTickers) {
         mainHandler.post(() -> {
             originalTickers.clear();
             originalTickers.addAll(newOriginalTickers);
@@ -92,11 +94,11 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     }
 
     private void applyFilters() {
-        List<TickerInfo> filteredList = originalTickers.stream()
+        List<TickerData> filteredList = originalTickers.stream()
                 .filter(ticker -> {
                     boolean typeMatch = typeFilter.equals("All")
-                        || typeFilter.equals("Crypto") && "cryptocurrency".equalsIgnoreCase(ticker.getType())
-                        || typeFilter.equals("Stock") && "equity".equalsIgnoreCase(ticker.getType());
+                        || typeFilter.equals("Crypto") && CRYPTOCURRENCY_TYPE.equals(ticker.getType())
+                        || typeFilter.equals("Stock") && STOCK_TYPE.equals(ticker.getType());
 
                     boolean statusMatch = !statusFilter
                         || ticker.getPriceState().equals(PRICE_ABOVE);
@@ -110,7 +112,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         setFilteredTickers(filteredList);
     }
 
-    private void setFilteredTickers(List<TickerInfo> filteredTickers) {
+    private void setFilteredTickers(List<TickerData> filteredTickers) {
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
             new TickerDiffCallback(tickers, filteredTickers),
             true

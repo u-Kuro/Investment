@@ -18,14 +18,14 @@ import java.nio.file.StandardCopyOption;
 public class FileUtils {
     private static final Object fileLock = new Object();
     
-    public static File getCacheFile(@NonNull Context context, String fileName) {
+    public static File getFileDataRecord(@NonNull Context context, String fileName) {
         return new File(context.getApplicationContext().getCacheDir(), fileName);
     }
     
     /** @noinspection ResultOfMethodCallIgnored*/
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static void saveObject(Context context, String fileName, Object object) throws IOException {
-        File file = getCacheFile(context, fileName);
+        File file = getFileDataRecord(context, fileName);
         File tempFile = new File(file.getPath() + ".tmp");
 
         synchronized (fileLock) {
@@ -44,7 +44,7 @@ public class FileUtils {
     }
     
     public static Object loadObject(Context context, String fileName) throws IOException, ClassNotFoundException {
-        File file = getCacheFile(context, fileName);
+        File file = getFileDataRecord(context, fileName);
         if (!file.exists()) return null;
         
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {

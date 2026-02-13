@@ -1,9 +1,9 @@
 package com.example.investment.util;
 
 public class Constants {
-    // Cache
-    public static final String CACHE_FILE_LEADING_TICKERS = "leading_tickers.ser";
-    public static final String CACHE_FILE_DATA = "ticker_cache.ser";
+    // File Data Records
+    public static final String FILE_RECORD_TICKERS = "tickers.ser";
+    public static final String FILE_RECORD_LEADING_TICKERS = "leading_tickers.ser";
 
     // Preferences
     public static final String PREFS_NAME = "TickerFilterPrefs";
@@ -26,7 +26,17 @@ public class Constants {
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
-    // Price States
+    // Asset Types
+    public static final String CRYPTOCURRENCY_TYPE = "cryptocurrency";
+    public static final String STOCK_TYPE = "stock";
+
+    // Asset Intervals
+    public static final String ONE_DAY_INTERVAL = "1d";
+    public static final String ONE_WEEK_INTERVAL = "1wk";
+    public static final String ONE_MONTH_INTERVAL = "1mo";
+    public static final String THREE_MONTHS_INTERVAL = "3mo";
+
+    // Asset Price States
     public static final String PRICE_ABOVE = "above_upper";
     public static final String PRICE_BELOW = "below_lower";
     public static final String PRICE_BETWEEN = "between";

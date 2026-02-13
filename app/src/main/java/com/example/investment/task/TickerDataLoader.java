@@ -6,7 +6,7 @@ import android.os.Build;
 import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.listener.TickerUpdateListener;
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.repository.YahooFinanceRepository;
 
 import java.util.List;
@@ -27,15 +27,15 @@ public class TickerDataLoader {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void loadTickers(Context context, boolean isFullRefresh, TickerUpdateListener listener) {
-        repository.loadTickerScores(context, isFullRefresh, listener);
+    public void updateTickers(Context context, boolean isFullRefresh, TickerUpdateListener listener) {
+        repository.updateTickers(context, isFullRefresh, listener);
     }
 
-    public List<TickerInfo> loadCachedTickers(Context context) {
-        return repository.loadCache(context);
+    public List<TickerData> getTickers(Context context) {
+        return repository.getTickersData(context);
     }
 
     public long getLastUpdateTime(Context context) {
-        return repository.getCacheTimestamp(context);
+        return repository.getLastUpdateTime(context);
     }
 }

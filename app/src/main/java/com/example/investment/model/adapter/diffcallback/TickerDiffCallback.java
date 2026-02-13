@@ -2,14 +2,16 @@ package com.example.investment.model.adapter.diffcallback;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
-import com.example.investment.model.ticker.TickerInfo;
+
+import com.example.investment.model.ticker.TickerData;
+
 import java.util.List;
 
 public class TickerDiffCallback extends DiffUtil.Callback {
-    private final @NonNull List<TickerInfo> oldTickers;
-    private final @NonNull List<TickerInfo> newTickers;
+    private final @NonNull List<TickerData> oldTickers;
+    private final @NonNull List<TickerData> newTickers;
 
-    public TickerDiffCallback(@NonNull List<TickerInfo> oldTickers, @NonNull List<TickerInfo> newTickers) {
+    public TickerDiffCallback(@NonNull List<TickerData> oldTickers, @NonNull List<TickerData> newTickers) {
         this.oldTickers = oldTickers;
         this.newTickers = newTickers;
     }
@@ -26,8 +28,8 @@ public class TickerDiffCallback extends DiffUtil.Callback {
 
     @Override
     public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-        TickerInfo oldTicker = oldTickers.get(oldItemPosition);
-        TickerInfo newTicker = newTickers.get(newItemPosition);
+        TickerData oldTicker = oldTickers.get(oldItemPosition);
+        TickerData newTicker = newTickers.get(newItemPosition);
         
         if (oldTicker == null || newTicker == null) {
             return false;
@@ -37,8 +39,8 @@ public class TickerDiffCallback extends DiffUtil.Callback {
 
     @Override
     public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-        TickerInfo oldTicker = oldTickers.get(oldItemPosition);
-        TickerInfo newTicker = newTickers.get(newItemPosition);
+        TickerData oldTicker = oldTickers.get(oldItemPosition);
+        TickerData newTicker = newTickers.get(newItemPosition);
         
         if (oldTicker == null || newTicker == null) {
             return false;

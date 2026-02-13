@@ -2,7 +2,7 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
-import static com.example.investment.util.Constants.CACHE_FILE_LEADING_TICKERS;
+import static com.example.investment.util.Constants.FILE_RECORD_LEADING_TICKERS;
 import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_IMPROVING;
 import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_RISK;
 import static com.example.investment.util.Constants.CHANNEL_ID_INVESTMENT_OPPORTUNITY;
@@ -48,7 +48,7 @@ import androidx.annotation.RequiresApi;
 
 import com.example.investment.MainActivity;
 import com.example.investment.R;
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
@@ -76,11 +76,6 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     public void onCreate() {
-        // Log Errors
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Thread.setDefaultUncaughtExceptionHandler((thread, e) -> Logger.error("Uncaught Exception", e));
-        }
-
         super.onCreate();
         dataLoader = TickerDataLoader.getInstance();
 
@@ -136,7 +131,7 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers(@NonNull final String dataRefreshType) {
         if (future != null) return; // Update is already running
-        future = executorService.submit(() -> dataLoader.loadTickers(
+        future = executorService.submit(() -> dataLoader.updateTickers(
             getApplicationContext(),
             dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
             new TickerUpdateListener() {
@@ -180,7 +175,7 @@ public class TickerService extends Service {
                 }
 
                 @Override
-                public void onTickerUpdate(@NonNull List<TickerInfo> tickers) {
+                public void onTickerUpdate(@NonNull List<TickerData> tickers) {
                     if (isFinished.get()) return;
 
                     MainActivity activity = MainActivity.getInstanceActivity();
@@ -191,7 +186,7 @@ public class TickerService extends Service {
 
                 @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
                 @Override
-                public void onFinish(@NonNull List<TickerInfo> tickers, long updateTime) {
+                public void onFinish(@NonNull List<TickerData> tickers, long updateTime) {
                     isFinished.set(true);
 
                     if (!tickers.isEmpty()) {
@@ -224,16 +219,16 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void checkAndNotifyTickerChanges(List<TickerInfo> tickers) {
+    private void checkAndNotifyTickerChanges(List<TickerData> tickers) {
         // Get saved leading tickers
-        List<TickerInfo> savedLeadingTickers = getSavedLeadingTickers();
+        List<TickerData> savedLeadingTickers = getSavedLeadingTickers();
 
         // Notify about deleted leading tickers
         notifyDeletedLeadingTickers(tickers, savedLeadingTickers);
 
         // Get new leading tickers
         long filterMarketCapThreshold = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        List<TickerInfo> validNewLeadingTickers = tickers.stream()
+        List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t ->
                 // Market Cap is Above Limit (Default of $10B)
                 t.getMarketCap() >= filterMarketCapThreshold
@@ -243,7 +238,7 @@ public class TickerService extends Service {
                 && !t.isDataStale()
             )
             .toList();
-        List<TickerInfo> newLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
+        List<TickerData> newLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
 
         // Notify about updated leading tickers
         notifyUpdatedLeadingTickers(newLeadingTickers, savedLeadingTickers);
@@ -253,7 +248,7 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyNewLeadingTicker(TickerInfo newLeadingTicker) {
+    private void notifyNewLeadingTicker(TickerData newLeadingTicker) {
         showHighPriorityNotification(
                 this,
                 CHANNEL_ID_LEADING,
@@ -272,7 +267,7 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyDeletedLeadingTicker(TickerInfo deletedTicker) {
+    private void notifyDeletedLeadingTicker(TickerData deletedTicker) {
         showHighPriorityNotification(
             this,
             CHANNEL_ID_LEADING_ASSET_REMOVAL,
@@ -289,7 +284,7 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyLeadingTickerChanges(TickerInfo leadingTicker, TickerInfo savedLeadingTicker) {
+    private void notifyLeadingTickerChanges(TickerData leadingTicker, TickerData savedLeadingTicker) {
         String currentState = leadingTicker.getPriceState();
         String previousState = savedLeadingTicker.getPriceState();
 
@@ -360,11 +355,11 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveLeadingTickers(List<TickerInfo> leadingTickers) {
+    private void saveLeadingTickers(List<TickerData> leadingTickers) {
         try {
             saveObject(
                 getApplicationContext(),
-                CACHE_FILE_LEADING_TICKERS,
+                    FILE_RECORD_LEADING_TICKERS,
                 new ArrayList<>(leadingTickers)
             );
         } catch (IOException e) {
@@ -372,10 +367,10 @@ public class TickerService extends Service {
         }
     }
 
-    private List<TickerInfo> getSavedLeadingTickers() {
+    private List<TickerData> getSavedLeadingTickers() {
         try {
             //noinspection unchecked
-            return (List<TickerInfo>) loadObject(getApplicationContext(), CACHE_FILE_LEADING_TICKERS);
+            return (List<TickerData>) loadObject(getApplicationContext(), FILE_RECORD_LEADING_TICKERS);
         } catch (Exception e) {
             Logger.error("Error loading leading tickers", e);
             return null;
@@ -383,14 +378,14 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyDeletedLeadingTickers(@NonNull List<TickerInfo> tickers, List<TickerInfo> savedLeadingTickers) {
+    private void notifyDeletedLeadingTickers(@NonNull List<TickerData> tickers, List<TickerData> savedLeadingTickers) {
         if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) return;
 
         Set<String> newTickersSymbols = tickers.stream()
-            .map(TickerInfo::getSymbol)
+            .map(TickerData::getSymbol)
             .collect(Collectors.toSet());
 
-        for (TickerInfo savedLeadingTicker : savedLeadingTickers) {
+        for (TickerData savedLeadingTicker : savedLeadingTickers) {
             if (!newTickersSymbols.contains(savedLeadingTicker.getSymbol())) {
                 notifyDeletedLeadingTicker(savedLeadingTicker);
             }
@@ -398,18 +393,18 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyUpdatedLeadingTickers(@NonNull List<TickerInfo> newLeadingTickers, List<TickerInfo> savedLeadingTickers) {
+    private void notifyUpdatedLeadingTickers(@NonNull List<TickerData> newLeadingTickers, List<TickerData> savedLeadingTickers) {
         if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) {
-            for (TickerInfo newLeadingTicker : newLeadingTickers) {
+            for (TickerData newLeadingTicker : newLeadingTickers) {
                 notifyNewLeadingTicker(newLeadingTicker);
             }
         } else {
             // Check for new or changed tickers
-            for (TickerInfo newLeadingTicker : newLeadingTickers) {
+            for (TickerData newLeadingTicker : newLeadingTickers) {
                 boolean isNew = true;
-                TickerInfo match = null;
+                TickerData match = null;
 
-                for (TickerInfo savedLeadingTicker : savedLeadingTickers) {
+                for (TickerData savedLeadingTicker : savedLeadingTickers) {
                     if (newLeadingTicker.getSymbol().equals(savedLeadingTicker.getSymbol())) {
                         isNew = false;
                         match = savedLeadingTicker;

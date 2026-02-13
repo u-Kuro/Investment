@@ -1,7 +1,7 @@
 package com.example.investment.model.listener;
 
-import com.example.investment.model.ticker.TickerInfo;
+import com.example.investment.model.ticker.TickerData;
 
 public interface OnTickerClickListener {
-    void onTickerClick(TickerInfo ticker);
+    void onTickerClick(TickerData ticker);
 } 
