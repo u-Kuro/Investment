@@ -102,14 +102,16 @@ public class YahooFinanceRepository {
                 }
 
                 @NonNull String symbol = newSymbolEntry.getKey();
+                TickerData oldTicker = oldTickersMap.get(symbol);
                 try {
                     // Fetch and process data
                     TickerData ticker = processTickerData(
                         newSymbolEntry,
-                        oldTickersMap.get(symbol),
+                        oldTicker,
                         isFullRefresh
                     );
 
+                    // If ticker update succeeded, put its new data in the list
                     tickersList.add(ticker);
                     tickersList.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickersList);
@@ -120,8 +122,15 @@ public class YahooFinanceRepository {
                     Thread.currentThread().interrupt();
                     return;
                 } catch (Exception e) {
-                    listener.onProgress(++current, total);
                     Logger.error("Error processing " + symbol, e);
+
+                    // If ticker update failed, put back its old data in the list
+                    if (oldTicker != null) {
+                        tickersList.add(oldTicker);
+                        tickersList.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
+                        listener.onTickerUpdate(tickersList);
+                    }
+                    listener.onProgress(++current, total);
                 }
             }
         } catch (InterruptedException e) {
