@@ -64,7 +64,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void bind(TickerData ticker) {
         this.currentTicker = ticker;
-        boolean isDataStale = ticker.isDataStale();
+        boolean isDataStale = ticker.areAllFixedHistoricalDataStale();
         String symbol = ticker.getSymbol();
         String name = ticker.getName(false);
         if (name == null || name.isEmpty()) {

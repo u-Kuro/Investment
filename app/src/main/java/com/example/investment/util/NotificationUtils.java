@@ -89,6 +89,8 @@ public class NotificationUtils {
         String channelName,
         String title,
         String content,
+        String subtext,
+        Long when,
         String notificationTag,
         int notificationId
     ) {
@@ -101,11 +103,16 @@ public class NotificationUtils {
         )
         .setContentTitle(title)
         .setContentText(content)
+        .setSubText(subtext)
         .setContentIntent(createActivityIntent(context, MainActivity.class))
         .setGroup(APP_NOTIFICATION_GROUP_KEY)
         .setGroupSummary(false)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         .setAutoCancel(true);
+
+        if (when != null) {
+            builder.setShowWhen(true).setWhen(when);
+        }
         
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.notify(notificationTag, notificationId, builder.build());

@@ -251,44 +251,47 @@ public class YahooFinanceRepository {
         // For fixed historical data only use non changing data (before last bar || length - 1)
         for (int i = startIndex; i < apiHighs.length() - 1; i++) {
             try {
-                double currentHigh = apiHighs.getDouble(i);
-                double currentLow = apiLows.getDouble(i);
-                long currentVol = apiVolumes.getLong(i);
                 long currentTs = apiTimestamps.getLong(i);
 
-                if (
-                    currentHigh > 0 && isFinite(currentHigh)
-                    && currentLow > 0 && isFinite(currentLow)
-                    && currentVol > 0 && isFinite(currentVol)
-                    && currentTs > 0 && isFinite(currentTs) && (updatedAtTimestampSeconds == null || currentTs > updatedAtTimestampSeconds)
-                ) {
+                // If timestamp is valid then its assumed to be updated even if other data are null
+                if (currentTs > 0 && isFinite(currentTs) && (updatedAtTimestampSeconds == null || currentTs > updatedAtTimestampSeconds)) {
                     updatedAtTimestampSeconds = currentTs;
 
-                    double bar_range = currentHigh - currentLow;
-                    double mid_point = (currentHigh + currentLow) / 2.0;
+                    // Still, only add historical summed values if its valid (it's a skipped bar if either one is null)
+                    double currentHigh = apiHighs.getDouble(i);
+                    double currentLow = apiLows.getDouble(i);
+                    long currentVol = apiVolumes.getLong(i);
+                    if (
+                        currentHigh > 0 && isFinite(currentHigh)
+                        && currentLow > 0 && isFinite(currentLow)
+                        && currentVol > 0 && isFinite(currentVol)
+                    ) {
+                        double bar_range = currentHigh - currentLow;
+                        double mid_point = (currentHigh + currentLow) / 2.0;
 
-                    // Calculate DP increments
-                    double DP_num_inc = bar_range > 0 ? (currentVol * bar_range * mid_point) : (currentVol * mid_point);
-                    double D_den_inc = bar_range > 0 ? (currentVol * bar_range) : currentVol;
+                        // Calculate DP increments
+                        double DP_num_inc = bar_range > 0 ? (currentVol * bar_range * mid_point) : (currentVol * mid_point);
+                        double D_den_inc = bar_range > 0 ? (currentVol * bar_range) : currentVol;
 
-                    if (!isNaN(DP_num_inc) && !isNaN(D_den_inc)) {
-                        DP_S_num = DP_S_num.add(BigDecimal.valueOf(DP_num_inc), MathContext.DECIMAL128);
-                        DP_S_den = DP_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
-                    }
+                        if (!isNaN(DP_num_inc) && !isNaN(D_den_inc)) {
+                            DP_S_num = DP_S_num.add(BigDecimal.valueOf(DP_num_inc), MathContext.DECIMAL128);
+                            DP_S_den = DP_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
+                        }
 
-                    // Calculate DB increments
-                    if (DP_S_num.compareTo(BigDecimal.ZERO) != 0 && DP_S_den.compareTo(BigDecimal.ZERO) != 0) {
+                        // Calculate DB increments
+                        if (DP_S_num.compareTo(BigDecimal.ZERO) != 0 && DP_S_den.compareTo(BigDecimal.ZERO) != 0) {
 
-                        @NonNull BigDecimal densePrice = DP_S_num.divide(DP_S_den, MathContext.DECIMAL128);
-                        double densePriceDouble = densePrice.doubleValue();
+                            @NonNull BigDecimal densePrice = DP_S_num.divide(DP_S_den, MathContext.DECIMAL128);
+                            double densePriceDouble = densePrice.doubleValue();
 
-                        double pct_dif = 2 - (4 * densePriceDouble * Math.log((currentHigh + densePriceDouble) / (currentLow + densePriceDouble)) / bar_range);
+                            double pct_dif = 2 - (4 * densePriceDouble * Math.log((currentHigh + densePriceDouble) / (currentLow + densePriceDouble)) / bar_range);
 
-                        double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
+                            double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
 
-                        if (!isNaN(DB_num_inc) && !isNaN(D_den_inc)) {
-                            DB_S_num = DB_S_num.add(BigDecimal.valueOf(DB_num_inc), MathContext.DECIMAL128);
-                            DB_S_den = DB_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
+                            if (!isNaN(DB_num_inc) && !isNaN(D_den_inc)) {
+                                DB_S_num = DB_S_num.add(BigDecimal.valueOf(DB_num_inc), MathContext.DECIMAL128);
+                                DB_S_den = DB_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
+                            }
                         }
                     }
                 }

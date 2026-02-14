@@ -75,7 +75,43 @@ public class TickerData implements Serializable {
         return getFixedHistoricalDataMap().getOrDefault(interval, null);
     }
 
-    public FixedHistoricalData getMostGranularNonStaleData() {
+    public FixedHistoricalData getNewestFixedHistoricalData() {
+        String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
+
+        Long newestTimestampSeconds = null;
+        FixedHistoricalData newestFixedHistoricalData = null;
+
+        for (String timeframe : timeframes) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframe);
+            if (fixedHistoricalData != null) {
+                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                    newestTimestampSeconds = updatedAtTimestampSeconds;
+                    newestFixedHistoricalData = fixedHistoricalData;
+                }
+            }
+        }
+
+        return newestFixedHistoricalData;
+    }
+    public Long getNewestFixedHistoricalDataTimestampSeconds() {
+        String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
+
+        Long newestTimestampSeconds = null;
+
+        for (String timeframe : timeframes) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframe);
+            if (fixedHistoricalData != null) {
+                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                    newestTimestampSeconds = updatedAtTimestampSeconds;
+                }
+            }
+        }
+
+        return newestTimestampSeconds;
+    }
+    public boolean areAllFixedHistoricalDataStale() {
         String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
         long[] staleThresholds = {
             // Add 1 day for delayed periodic update
@@ -84,27 +120,22 @@ public class TickerData implements Serializable {
             TimeUnit.DAYS.toMillis(32),     // 1mo data stale after ~32 days
             TimeUnit.DAYS.toMillis(93)      // 3mo data stale after ~93 days
         };
-
         long currentTimeMillis = System.currentTimeMillis();
-
         for (int i = 0; i < timeframes.length; i++) {
-            FixedHistoricalData data = getFixedHistoricalDataMap().get(timeframes[i]);
-            if (data != null) {
-                long dataAgeMillis = currentTimeMillis - (data.updatedAtTimestampSeconds() * 1000);
-                if (dataAgeMillis <= staleThresholds[i]) {
-                    return data;
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframes[i]);
+            if (fixedHistoricalData != null) {
+                long fixedHistoricalDataAgeMillis = currentTimeMillis - (fixedHistoricalData.updatedAtTimestampSeconds() * 1000);
+                if (fixedHistoricalDataAgeMillis < staleThresholds[i]) {
+                    return false;
                 }
             }
         }
 
-        return null;
-    }
-    public boolean isDataStale() {
-        return getMostGranularNonStaleData() == null;
+        return true;
     }
 
     public @NonNull BigDecimal getDensePrice() {
-        FixedHistoricalData data = getMostGranularNonStaleData();
+        FixedHistoricalData data = getNewestFixedHistoricalData();
         if (data == null) return BigDecimal.ZERO;
 
         @NonNull BigDecimal dpSumDen = data.dpSumDen();
@@ -113,7 +144,7 @@ public class TickerData implements Serializable {
         return data.dpSumNum().divide(dpSumDen, MathContext.DECIMAL128);
     }
     public @NonNull BigDecimal getUpperBand() {
-        FixedHistoricalData data = getMostGranularNonStaleData();
+        FixedHistoricalData data = getNewestFixedHistoricalData();
         if (data == null) return BigDecimal.ZERO;
 
         @NonNull BigDecimal dense = getDensePrice();
@@ -127,7 +158,7 @@ public class TickerData implements Serializable {
         return dense.multiply(multiplier, MathContext.DECIMAL128);
     }
     public @NonNull BigDecimal getLowerBand() {
-        FixedHistoricalData data = getMostGranularNonStaleData();
+        FixedHistoricalData data = getNewestFixedHistoricalData();
         if (data == null) return BigDecimal.ZERO;
 
         @NonNull BigDecimal dense = getDensePrice();

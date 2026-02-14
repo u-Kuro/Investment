@@ -2,6 +2,8 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
+import static com.example.investment.util.Constants.CHANNEL_ID_OUTDATED_LEADING_ASSET;
+import static com.example.investment.util.Constants.CHANNEL_NAME_OUTDATED_LEADING_ASSET;
 import static com.example.investment.util.Constants.FILE_RECORD_LEADING_TICKERS;
 import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_IMPROVING;
 import static com.example.investment.util.Constants.CHANNEL_ID_ASSET_RISK;
@@ -19,10 +21,12 @@ import static com.example.investment.util.Constants.NOTIFICATION_ID_ASSET_RISK;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING_ASSET_REMOVAL;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_OUTDATED_LEADING_ASSET;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_PROFIT_TAKING;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
 import static com.example.investment.util.Constants.CHANNEL_NAME_LEADING;
 import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
+import static com.example.investment.util.Constants.OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
@@ -246,59 +250,116 @@ public class TickerService extends Service {
                 t.getMarketCap() >= filterMarketCapThreshold
                 // Asset is Not a Risk
                 && !t.getPriceState().equals(PRICE_BELOW)
-                // Data is not stale
-                && !t.isDataStale()
             )
             .toList();
-        List<TickerData> newLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
+        List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
 
         // Notify about updated leading tickers
-        notifyUpdatedLeadingTickers(newLeadingTickers, savedLeadingTickers);
+        notifyUpdatedLeadingTickers(currentLeadingTickers, savedLeadingTickers);
 
         // Save New Leading Tickers
-        saveLeadingTickers(newLeadingTickers);
+        saveLeadingTickers(currentLeadingTickers);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void notifyUpdatedLeadingTickers(@NonNull List<TickerData> currentLeadingTickers, List<TickerData> savedLeadingTickers) {
+        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) {
+            for (TickerData currentLeadingTicker : currentLeadingTickers) {
+                String subtext = currentLeadingTicker.getSymbol();
+                Long when = null;
+                if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
+                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds();
+                    notifyOutdatedLeadingTicker(currentLeadingTicker, subtext, when);
+                    // Below outdated data notification to avoid redundant info
+                    subtext = String.format(
+                        "%s | %s",
+                        OUTDATED_TICKER_NOTIFICATION_SUBTEXT,
+                        subtext
+                    );
+                }
+
+                notifyNewLeadingTicker(currentLeadingTicker, subtext, when);
+            }
+        } else {
+            // Check for new or changed tickers
+            for (TickerData currentLeadingTicker : currentLeadingTickers) {
+                String subtext = currentLeadingTicker.getSymbol();
+                Long when = null;
+                if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
+                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds();
+                    notifyOutdatedLeadingTicker(currentLeadingTicker, subtext, when);
+                    // Below outdated data notification to avoid redundant info
+                    subtext = String.format(
+                        "%s | %s",
+                        OUTDATED_TICKER_NOTIFICATION_SUBTEXT,
+                        subtext
+                    );
+                }
+
+                boolean isCurrentLeadingTickerNew = true;
+                TickerData matchedSavedLeadingTicker = null;
+
+                for (TickerData savedLeadingTicker : savedLeadingTickers) {
+                    if (currentLeadingTicker.getSymbol().equals(savedLeadingTicker.getSymbol())) {
+                        isCurrentLeadingTickerNew = false;
+                        matchedSavedLeadingTicker = savedLeadingTicker;
+                        break;
+                    }
+                }
+
+                if (isCurrentLeadingTickerNew) {
+                    notifyNewLeadingTicker(currentLeadingTicker, subtext, when);
+                } else {
+                    notifyLeadingTickerChanges(currentLeadingTicker, matchedSavedLeadingTicker, subtext, when);
+                }
+            }
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyNewLeadingTicker(TickerData newLeadingTicker) {
-        showHighPriorityNotification(
-                this,
-                CHANNEL_ID_LEADING,
-                CHANNEL_NAME_LEADING,
-                CHANNEL_NAME_LEADING,
-                String.format(
-                    Locale.US,
-                    "%s: %.2f%% Per Day",
-                    newLeadingTicker.getName(true),
-                    newLeadingTicker.getPercentageIncreasePerDay()
-                ),
-                newLeadingTicker.getSymbol(),
-                NOTIFICATION_ID_LEADING
-        );
-        showGroupSummary(this);
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyDeletedLeadingTicker(TickerData deletedTicker) {
+    private void notifyOutdatedLeadingTicker(TickerData leadingTicker, String subtext, Long when) {
         showHighPriorityNotification(
             this,
-            CHANNEL_ID_LEADING_ASSET_REMOVAL,
-            CHANNEL_NAME_LEADING_ASSET_REMOVAL,
-            "Investment Asset Removed",
+            CHANNEL_ID_OUTDATED_LEADING_ASSET,
+            CHANNEL_NAME_OUTDATED_LEADING_ASSET,
+            CHANNEL_NAME_OUTDATED_LEADING_ASSET,
             String.format(
-                "\"%s\" has been removed. Check your investments.",
-                deletedTicker.getName(true)
+                "Outdated-Warning: \"%s\" historical data is out of date. Check now.",
+                leadingTicker.getName(true)
             ),
-            deletedTicker.getSymbol(),
-            NOTIFICATION_ID_LEADING_ASSET_REMOVAL
+            subtext,
+            when,
+            leadingTicker.getSymbol(),
+            NOTIFICATION_ID_OUTDATED_LEADING_ASSET
         );
         showGroupSummary(this);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void notifyLeadingTickerChanges(TickerData leadingTicker, TickerData savedLeadingTicker) {
-        String currentState = leadingTicker.getPriceState();
-        String previousState = savedLeadingTicker.getPriceState();
+    private void notifyNewLeadingTicker(TickerData newLeadingTicker, String subtext, Long when) {
+        showHighPriorityNotification(
+            this,
+            CHANNEL_ID_LEADING,
+            CHANNEL_NAME_LEADING,
+            CHANNEL_NAME_LEADING,
+            String.format(
+                Locale.US,
+                "Invest-Now: \"%s\" moves +%.2f%% per day (historically)",
+                newLeadingTicker.getName(true),
+                newLeadingTicker.getPercentageIncreasePerDay()
+            ),
+            subtext,
+            when,
+            newLeadingTicker.getSymbol(),
+            NOTIFICATION_ID_LEADING
+        );
+        showGroupSummary(this);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void notifyLeadingTickerChanges(TickerData leadingTicker, TickerData savedLeadingTicker, String subtext, Long when) {
+        @NonNull String currentState = leadingTicker.getPriceState();
+        @NonNull String previousState = savedLeadingTicker.getPriceState();
 
         if (!previousState.equals(currentState)) {
             switch (currentState) {
@@ -310,9 +371,11 @@ public class TickerService extends Service {
                             CHANNEL_NAME_PROFIT_TAKING,
                             CHANNEL_NAME_PROFIT_TAKING,
                             String.format(
-                                "You can now take some profits off your \"%s\" investment",
+                                "Profit-Taking: \"%s\" trend slowed down. Good time to take some profits.",
                                 leadingTicker.getName(true)
                             ),
+                            subtext,
+                            when,
                             leadingTicker.getSymbol(),
                             NOTIFICATION_ID_PROFIT_TAKING
                         );
@@ -323,9 +386,11 @@ public class TickerService extends Service {
                             CHANNEL_NAME_ASSET_IMPROVING,
                             CHANNEL_NAME_ASSET_IMPROVING,
                             String.format(
-                                "\"%s\" trend is slowly recovering.",
+                                "Mild-Recovery: \"%s\" trend is slowly moving up.",
                                 leadingTicker.getName(true)
                             ),
+                            subtext,
+                            when,
                             leadingTicker.getSymbol(),
                             NOTIFICATION_ID_ASSET_IMPROVING
                         );
@@ -339,9 +404,11 @@ public class TickerService extends Service {
                         CHANNEL_NAME_INVESTMENT_OPPORTUNITY,
                         CHANNEL_NAME_INVESTMENT_OPPORTUNITY,
                         String.format(
-                            "Invest/Hold your assets into \"%s\".",
+                            "Invest/Hold: \"%s\" is trending. Check now.",
                             leadingTicker.getName(true)
                         ),
+                        subtext,
+                        when,
                         leadingTicker.getSymbol(),
                         NOTIFICATION_ID_INVESTMENT_OPPORTUNITY
                     );
@@ -354,9 +421,11 @@ public class TickerService extends Service {
                         CHANNEL_NAME_ASSET_RISK,
                         CHANNEL_NAME_ASSET_RISK,
                         String.format(
-                            "Risk Warning: \"%s\" moved below its usual price.",
+                            "Risk-Warning: \"%s\" moved below its usual price. Check now.",
                             leadingTicker.getName(true)
                         ),
+                        subtext,
+                        when,
                         leadingTicker.getSymbol(),
                         NOTIFICATION_ID_ASSET_RISK
                     );
@@ -364,6 +433,40 @@ public class TickerService extends Service {
             }
             showGroupSummary(this);
         }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void notifyDeletedLeadingTickers(@NonNull List<TickerData> tickers, List<TickerData> savedLeadingTickers) {
+        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) return;
+
+        Set<String> newTickersSymbols = tickers.stream()
+            .map(TickerData::getSymbol)
+            .collect(Collectors.toSet());
+
+        for (TickerData savedLeadingTicker : savedLeadingTickers) {
+            if (!newTickersSymbols.contains(savedLeadingTicker.getSymbol())) {
+                notifyDeletedLeadingTicker(savedLeadingTicker);
+            }
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void notifyDeletedLeadingTicker(TickerData deletedTicker) {
+        showHighPriorityNotification(
+            this,
+            CHANNEL_ID_LEADING_ASSET_REMOVAL,
+            CHANNEL_NAME_LEADING_ASSET_REMOVAL,
+            CHANNEL_NAME_LEADING_ASSET_REMOVAL,
+            String.format(
+                "Removal-Warning: \"%s\" is missing. Check now.",
+                deletedTicker.getName(true)
+            ),
+            deletedTicker.getSymbol(),
+            null,
+            deletedTicker.getSymbol(),
+            NOTIFICATION_ID_LEADING_ASSET_REMOVAL
+        );
+        showGroupSummary(this);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -386,50 +489,6 @@ public class TickerService extends Service {
         } catch (Exception e) {
             Logger.error("Error loading leading tickers", e);
             return null;
-        }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyDeletedLeadingTickers(@NonNull List<TickerData> tickers, List<TickerData> savedLeadingTickers) {
-        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) return;
-
-        Set<String> newTickersSymbols = tickers.stream()
-            .map(TickerData::getSymbol)
-            .collect(Collectors.toSet());
-
-        for (TickerData savedLeadingTicker : savedLeadingTickers) {
-            if (!newTickersSymbols.contains(savedLeadingTicker.getSymbol())) {
-                notifyDeletedLeadingTicker(savedLeadingTicker);
-            }
-        }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyUpdatedLeadingTickers(@NonNull List<TickerData> newLeadingTickers, List<TickerData> savedLeadingTickers) {
-        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) {
-            for (TickerData newLeadingTicker : newLeadingTickers) {
-                notifyNewLeadingTicker(newLeadingTicker);
-            }
-        } else {
-            // Check for new or changed tickers
-            for (TickerData newLeadingTicker : newLeadingTickers) {
-                boolean isNew = true;
-                TickerData match = null;
-
-                for (TickerData savedLeadingTicker : savedLeadingTickers) {
-                    if (newLeadingTicker.getSymbol().equals(savedLeadingTicker.getSymbol())) {
-                        isNew = false;
-                        match = savedLeadingTicker;
-                        break;
-                    }
-                }
-
-                if (isNew) {
-                    notifyNewLeadingTicker(newLeadingTicker);
-                } else {
-                    notifyLeadingTickerChanges(newLeadingTicker, match);
-                }
-            }
         }
     }
 }

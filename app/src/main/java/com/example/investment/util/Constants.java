@@ -50,6 +50,7 @@ public class Constants {
     public static final String CHANNEL_ID_INVESTMENT_OPPORTUNITY = "investment_opportunity";
     public static final String CHANNEL_ID_ASSET_RISK = "asset_risk";
     public static final String CHANNEL_ID_LEADING_ASSET_REMOVAL = "leading_asset_removal";
+    public static final String CHANNEL_ID_OUTDATED_LEADING_ASSET = "outdated_leading_asset";
 
 
     // Notification Channel Names
@@ -61,6 +62,7 @@ public class Constants {
     public static final String CHANNEL_NAME_INVESTMENT_OPPORTUNITY = "Investment Opportunity";
     public static final String CHANNEL_NAME_ASSET_RISK = "Asset Risk Warning";
     public static final String CHANNEL_NAME_LEADING_ASSET_REMOVAL = "Leading Asset Removal";
+    public static final String CHANNEL_NAME_OUTDATED_LEADING_ASSET = "Outdated Leading Asset";
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
@@ -71,9 +73,13 @@ public class Constants {
     public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 6;
     public static final int NOTIFICATION_ID_ASSET_RISK = 7;
     public static final int NOTIFICATION_ID_LEADING_ASSET_REMOVAL = 8;
+    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET = 9;
 
     // Notification Group Keys
     public static final String APP_NOTIFICATION_GROUP_KEY = "Investment";
+
+    // Notification Messages
+    public static final String OUTDATED_TICKER_NOTIFICATION_SUBTEXT = "OUTDATED";
 
     // Ticker Defaults
     public static final int SAVED_LEADING_TICKERS_COUNT = 4;
