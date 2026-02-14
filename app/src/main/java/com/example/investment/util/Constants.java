@@ -42,38 +42,37 @@ public class Constants {
     public static final String PRICE_BETWEEN = "between";
 
     // Notification Channel IDs
-    public static final String CHANNEL_ID_SERVICE = "ticker_updates";
+    public static final String CHANNEL_ID_SERVICE = "investment_updates";
     public static final String CHANNEL_ID_GROUP_SUMMARY = "group_summary";
-    public static final String CHANNEL_ID_LEADING = "leading_ticker";
-    public static final String CHANNEL_ID_PROFIT_TAKING = "price_cross";
-    public static final String CHANNEL_ID_ASSET_IMPROVING = "asset_improving";
+    public static final String CHANNEL_ID_NEW_LEADING_ASSET = "new_leading_asset";
+    public static final String CHANNEL_ID_PROFIT_TAKING = "profit_taking";
+    public static final String CHANNEL_ID_LEADING_ASSET_RECOVERY = "leading_asset_recovery";
     public static final String CHANNEL_ID_INVESTMENT_OPPORTUNITY = "investment_opportunity";
-    public static final String CHANNEL_ID_ASSET_RISK = "asset_risk";
-    public static final String CHANNEL_ID_LEADING_ASSET_REMOVAL = "leading_asset_removal";
-    public static final String CHANNEL_ID_OUTDATED_LEADING_ASSET = "outdated_leading_asset";
-
+    public static final String CHANNEL_ID_LEADING_ASSET_RISK = "asset_risk";
+    public static final String CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET = "missing_removed_leading_asset";
+    public static final String CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA = "outdated_leading_asset_data";
 
     // Notification Channel Names
-    public static final String CHANNEL_NAME_SERVICE = "Ticker Updates";
+    public static final String CHANNEL_NAME_SERVICE = "Investment Updates";
     public static final String CHANNEL_NAME_GROUP_SUMMARY = "Group Summary";
-    public static final String CHANNEL_NAME_LEADING = "New Leading Performer";
+    public static final String CHANNEL_NAME_NEW_LEADING_ASSET = "New Leading Asset";
     public static final String CHANNEL_NAME_PROFIT_TAKING = "Profit Taking";
-    public static final String CHANNEL_NAME_ASSET_IMPROVING = "Improving Asset";
+    public static final String CHANNEL_NAME_LEADING_ASSET_RECOVERY = "Leading Asset Recovery";
     public static final String CHANNEL_NAME_INVESTMENT_OPPORTUNITY = "Investment Opportunity";
-    public static final String CHANNEL_NAME_ASSET_RISK = "Asset Risk Warning";
-    public static final String CHANNEL_NAME_LEADING_ASSET_REMOVAL = "Leading Asset Removal";
-    public static final String CHANNEL_NAME_OUTDATED_LEADING_ASSET = "Outdated Leading Asset";
+    public static final String CHANNEL_NAME_LEADING_ASSET_RISK = "Leading Asset Risk";
+    public static final String CHANNEL_NAME_MISSING_REMOVED_LEADING_ASSET = "Missing/Removed Leading Asset";
+    public static final String CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA = "Outdated Leading Asset Data";
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
     public static final int NOTIFICATION_ID_GROUP_SUMMARY = 2;
-    public static final int NOTIFICATION_ID_LEADING = 3;
+    public static final int NOTIFICATION_ID_NEW_LEADING_ASSET = 3;
     public static final int NOTIFICATION_ID_PROFIT_TAKING = 4;
-    public static final int NOTIFICATION_ID_ASSET_IMPROVING = 5;
+    public static final int NOTIFICATION_ID_LEADING_ASSET_RECOVERY = 5;
     public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 6;
-    public static final int NOTIFICATION_ID_ASSET_RISK = 7;
-    public static final int NOTIFICATION_ID_LEADING_ASSET_REMOVAL = 8;
-    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET = 9;
+    public static final int NOTIFICATION_ID_LEADING_ASSET_RISK = 7;
+    public static final int NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET = 8;
+    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA = 9;
 
     // Notification Group Keys
     public static final String APP_NOTIFICATION_GROUP_KEY = "Investment";
@@ -89,4 +88,4 @@ public class Constants {
 
     // Request Defaults
     public static final int MAX_FETCH_RETRY_COUNT = 3;
-} 
+}

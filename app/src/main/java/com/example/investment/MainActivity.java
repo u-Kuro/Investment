@@ -111,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(() -> {
             if (isManuallyUpdated) {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-                    Toast.makeText(this, "Full data refresh initiated", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Full data update started", Toast.LENGTH_SHORT).show();
                 }
                 manualUpdateTickerDataRecord(true);
             } else {

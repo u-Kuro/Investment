@@ -126,7 +126,6 @@ public class NotificationUtils {
             NotificationManager.IMPORTANCE_HIGH,
             true
         )
-        .setSubText("Updates")
         .setGroup(APP_NOTIFICATION_GROUP_KEY)
         .setGroupSummary(true)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
