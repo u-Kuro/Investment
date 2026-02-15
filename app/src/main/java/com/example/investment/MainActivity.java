@@ -246,11 +246,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void updateTickerList(List<TickerData> tickers) {
-        adapter.setTickers(tickers);
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateLastUpdateTime(long timestamp) {
         if (timestamp > 0) {
             LocalDateTime updateTime = LocalDateTime.ofInstant(
@@ -292,6 +287,11 @@ public class MainActivity extends AppCompatActivity {
         } else {
             updateText.setText(R.string.last_updated_na);
         }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void updateTickerList(List<TickerData> tickers) {
+        runOnUiThread(() -> adapter.setTickers(tickers));
     }
 
     public void updateProgress(int current, int total, final String dataRefreshType) {
@@ -392,8 +392,8 @@ public class MainActivity extends AppCompatActivity {
                 WorkerManager.scheduleTickerWork(this);
             } else {
                 Toast.makeText(this,
-                        "Notification permission denied. You won't receive ticker updates.",
-                        Toast.LENGTH_LONG
+                    "Notification permission denied. You won't receive ticker updates.",
+                    Toast.LENGTH_LONG
                 ).show();
             }
         }

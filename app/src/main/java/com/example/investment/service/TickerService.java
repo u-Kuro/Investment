@@ -109,9 +109,8 @@ public class TickerService extends Service {
                 if (activity != null) {
                     activity.updateError();
                 }
-                return START_NOT_STICKY;
-            } else {
-                if (FULL_DATA_REFRESH_ACTION.equals(action)) {
+            } else if (FULL_DATA_REFRESH_ACTION.equals(action)) {
+                if (dataRefreshType == null || INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     if (INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                         if (future != null && !future.isDone()) {
                             future.cancel(true);
@@ -119,11 +118,11 @@ public class TickerService extends Service {
                     }
                     dataRefreshType = FULL_DATA_REFRESH_ACTION;
                     updateTickers(FULL_DATA_REFRESH_ACTION);
-                } else if (INCREMENTAL_DATA_REFRESH_ACTION.equals(action)) {
-                    if (future == null || future.isDone() || !FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-                        dataRefreshType = INCREMENTAL_DATA_REFRESH_ACTION;
-                        updateTickers(INCREMENTAL_DATA_REFRESH_ACTION);
-                    }
+                }
+            } else if (INCREMENTAL_DATA_REFRESH_ACTION.equals(action)) {
+                if (dataRefreshType == null) {
+                    dataRefreshType = INCREMENTAL_DATA_REFRESH_ACTION;
+                    updateTickers(INCREMENTAL_DATA_REFRESH_ACTION);
                 }
             }
         }
