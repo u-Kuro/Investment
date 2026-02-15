@@ -1,21 +1,18 @@
 package com.example.investment.repository;
 
+import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.ONE_DAY_INTERVAL;
-import static com.example.investment.util.Constants.ONE_MONTH_INTERVAL;
-import static com.example.investment.util.Constants.ONE_WEEK_INTERVAL;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.SCREENER_COUNT;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
-import static com.example.investment.util.Constants.THREE_MONTHS_INTERVAL;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
@@ -45,7 +42,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -384,16 +380,11 @@ public class YahooFinanceRepository {
     @RequiresApi(api = Build.VERSION_CODES.O)
     private FetchTickerResult fetchTickerDataWithInterval(String symbol, TickerData oldTicker, boolean isFullRefresh) throws Exception {
 
-        List<FetchTickerAttempt> fetchTickerAttempts = Arrays.asList(
-            new FetchTickerAttempt(ONE_DAY_INTERVAL, YAHOO_CHART_URL),
-            new FetchTickerAttempt(ONE_DAY_INTERVAL, YAHOO_CHART_URL_ALT),
-            new FetchTickerAttempt(ONE_WEEK_INTERVAL, YAHOO_CHART_URL),
-            new FetchTickerAttempt(ONE_WEEK_INTERVAL, YAHOO_CHART_URL_ALT),
-            new FetchTickerAttempt(ONE_MONTH_INTERVAL, YAHOO_CHART_URL),
-            new FetchTickerAttempt(ONE_MONTH_INTERVAL, YAHOO_CHART_URL_ALT),
-            new FetchTickerAttempt(THREE_MONTHS_INTERVAL, YAHOO_CHART_URL),
-            new FetchTickerAttempt(THREE_MONTHS_INTERVAL, YAHOO_CHART_URL_ALT)
-        );
+        List<FetchTickerAttempt> fetchTickerAttempts = new ArrayList<>();
+        for (String interval : ASSET_INTERVALS) {
+            fetchTickerAttempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL));
+            fetchTickerAttempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL_ALT));
+        }
 
         for (int i = 0; i < fetchTickerAttempts.size(); i++) {
             if (Thread.currentThread().isInterrupted()) {

@@ -16,7 +16,7 @@ public class WorkerManager {
     public static void scheduleTickerWork(Context context) {
         PeriodicWorkRequest workRequest = new PeriodicWorkRequest.Builder(
             TickerWorker.class,
-            24, TimeUnit.HOURS
+            1, TimeUnit.DAYS
         )
         .addTag(TICKER_WORK_TAG)
         .setConstraints(new Constraints.Builder()

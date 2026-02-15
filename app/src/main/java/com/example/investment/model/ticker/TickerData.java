@@ -1,8 +1,12 @@
 package com.example.investment.model.ticker;
 
+import static com.example.investment.util.Constants.ASSET_BASE_EXPIRY_DURATIONS_MS;
+import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
+import static com.example.investment.util.Constants.STOCK_TYPE;
+import static com.example.investment.util.DateUtils.calculateMarketClosedDuration;
 
 import androidx.annotation.NonNull;
 
@@ -13,7 +17,6 @@ import java.math.MathContext;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 public class TickerData implements Serializable {
     @Serial
@@ -76,13 +79,11 @@ public class TickerData implements Serializable {
     }
 
     public FixedHistoricalData getNewestFixedHistoricalData() {
-        String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
-
         Long newestTimestampSeconds = null;
         FixedHistoricalData newestFixedHistoricalData = null;
 
-        for (String timeframe : timeframes) {
-            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframe);
+        for (String interval : ASSET_INTERVALS) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
             if (fixedHistoricalData != null) {
                 long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
                 if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
@@ -95,12 +96,10 @@ public class TickerData implements Serializable {
         return newestFixedHistoricalData;
     }
     public Long getNewestFixedHistoricalDataTimestampSeconds() {
-        String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
-
         Long newestTimestampSeconds = null;
 
-        for (String timeframe : timeframes) {
-            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframe);
+        for (String interval : ASSET_INTERVALS) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
             if (fixedHistoricalData != null) {
                 long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
                 if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
@@ -112,26 +111,36 @@ public class TickerData implements Serializable {
         return newestTimestampSeconds;
     }
     public boolean areAllFixedHistoricalDataStale() {
-        String[] timeframes = {"1d", "1wk", "1mo", "3mo"};
-        long[] staleThresholds = {
-            // Add 1 day for delayed periodic update
-            TimeUnit.DAYS.toMillis(2),      // 1d data stale after 2 days
-            TimeUnit.DAYS.toMillis(8),      // 1wk data stale after 8 days
-            TimeUnit.DAYS.toMillis(32),     // 1mo data stale after ~32 days
-            TimeUnit.DAYS.toMillis(93)      // 3mo data stale after ~93 days
-        };
-        long currentTimeMillis = System.currentTimeMillis();
-        for (int i = 0; i < timeframes.length; i++) {
-            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(timeframes[i]);
+        long currentTimeMs = System.currentTimeMillis();
+        long marketClosedDurationMs = 0;
+
+        // Add dynamic expiry buffer only for stock market being closed on weekends.
+        // If market is closed: expiry buffer = (now - recent close time)
+        // If market is open: expiry buffer = 0
+        if (STOCK_TYPE.equals(type)) {
+            marketClosedDurationMs = calculateMarketClosedDuration(currentTimeMs);
+        }
+
+        for (int i = 0; i < ASSET_INTERVALS.length; i++) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(ASSET_INTERVALS[i]);
+
             if (fixedHistoricalData != null) {
-                long fixedHistoricalDataAgeMillis = currentTimeMillis - (fixedHistoricalData.updatedAtTimestampSeconds() * 1000);
-                if (fixedHistoricalDataAgeMillis < staleThresholds[i]) {
-                    return false;
+                long lastUpdateTimestampMs = fixedHistoricalData.updatedAtTimestampSeconds() * 1000L;
+                long timeSinceLastUpdateMs = currentTimeMs - lastUpdateTimestampMs;
+
+                // Dynamic threshold: base duration + expiry buffer when market closed
+                long allowedStalenessMs = ASSET_BASE_EXPIRY_DURATIONS_MS[i] + marketClosedDurationMs;
+
+                // Data is fresh if age is less than allowed staleness
+                boolean isDataFresh = timeSinceLastUpdateMs < allowedStalenessMs;
+
+                if (isDataFresh) {
+                    return false; // At least one historical data is fresh
                 }
             }
         }
 
-        return true;
+        return true; // All historical data are stale
     }
 
     public @NonNull BigDecimal getDensePrice() {

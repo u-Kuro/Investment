@@ -1,5 +1,7 @@
 package com.example.investment.util;
 
+import java.util.concurrent.TimeUnit;
+
 public class Constants {
     // File Data Records
     public static final String FILE_RECORD_TICKERS = "tickers.ser";
@@ -31,10 +33,14 @@ public class Constants {
     public static final String STOCK_TYPE = "stock";
 
     // Asset Intervals
-    public static final String ONE_DAY_INTERVAL = "1d";
-    public static final String ONE_WEEK_INTERVAL = "1wk";
-    public static final String ONE_MONTH_INTERVAL = "1mo";
-    public static final String THREE_MONTHS_INTERVAL = "3mo";
+    public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
+    public static final long[] ASSET_BASE_EXPIRY_DURATIONS_MS = {
+        // Added 1 Day Periodic Update Buffer
+        TimeUnit.DAYS.toMillis(2),   // 1d
+        TimeUnit.DAYS.toMillis(8),   // 1wk
+        TimeUnit.DAYS.toMillis(32),  // 1mo
+        TimeUnit.DAYS.toMillis(93)   // 3mo
+    };
 
     // Asset Price States
     public static final String PRICE_ABOVE = "above_upper";

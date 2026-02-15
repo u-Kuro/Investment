@@ -268,7 +268,7 @@ public class TickerService extends Service {
                 String subtext;
                 Long when = null;
                 if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
-                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds();
+                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds() * 1000;
                     notifyOutdatedLeadingTicker(currentLeadingTicker, when);
                     // Below outdated data notification to avoid redundant info
                     subtext = OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
@@ -284,7 +284,7 @@ public class TickerService extends Service {
                 String subtext;
                 Long when = null;
                 if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
-                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds();
+                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds() * 1000;
                     notifyOutdatedLeadingTicker(currentLeadingTicker, when);
                     // Below outdated data notification to avoid redundant info
                     subtext = OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
