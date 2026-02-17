@@ -313,14 +313,20 @@ public class TickerService extends Service {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void notifyOutdatedLeadingTicker(TickerData leadingTicker, Long when) {
+        String exchange = leadingTicker.getExchange();
+        String exchangeText = (exchange != null && !exchange.isEmpty())
+            ? exchange.replace(" ", "-")
+            : "its exchange";
+
         showHighPriorityNotification(
             this,
             CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA,
             CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA,
             "Outdated Data",
             String.format(
-                "%s | Historical data is out of date, check now.",
-                leadingTicker.getSymbol()
+                "%s | Historical data is out of date, %s could be closed for a holiday today, check now.",
+                leadingTicker.getSymbol(),
+                exchangeText
             ),
             leadingTicker.getSymbol(),
             when,
