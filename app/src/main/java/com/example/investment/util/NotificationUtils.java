@@ -103,6 +103,11 @@ public class NotificationUtils {
         )
         .setContentTitle(title)
         .setContentText(content)
+        .setStyle(
+            new NotificationCompat.BigTextStyle()
+            .setBigContentTitle(title)
+            .bigText(content)
+        )
         .setSubText(subtext)
         .setContentIntent(createActivityIntent(context, MainActivity.class))
         .setGroup(APP_NOTIFICATION_GROUP_KEY)

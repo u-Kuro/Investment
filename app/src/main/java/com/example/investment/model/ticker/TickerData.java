@@ -6,7 +6,9 @@ import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.STOCK_TYPE;
-import static com.example.investment.util.DateUtils.calculateMarketClosedDuration;
+import static com.example.investment.util.Constants.UPDATE_JOB_BUFFER_MS;
+import static com.example.investment.util.DateUtils.getLastMarketCloseMs;
+import static com.example.investment.util.DateUtils.getNextMarketOpenMs;
 
 import androidx.annotation.NonNull;
 
@@ -111,36 +113,43 @@ public class TickerData implements Serializable {
         return newestTimestampSeconds;
     }
     public boolean areAllFixedHistoricalDataStale() {
-        long currentTimeMs = System.currentTimeMillis();
-        long marketClosedDurationMs = 0;
+        long nowMs = System.currentTimeMillis();
 
-        // Add dynamic expiry buffer only for stock market being closed on weekends.
-        // If market is closed: expiry buffer = (now - recent close time)
-        // If market is open: expiry buffer = 0
+        long lastMarketCloseMs = 0;
+        long nextMarketOpenMs  = nowMs;
+
         if (STOCK_TYPE.equals(type)) {
-            marketClosedDurationMs = calculateMarketClosedDuration(currentTimeMs);
+            lastMarketCloseMs = getLastMarketCloseMs(nowMs);
+            nextMarketOpenMs  = getNextMarketOpenMs(nowMs);
         }
 
-        for (int i = 0; i < ASSET_INTERVALS.length; i++) {
-            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(ASSET_INTERVALS[i]);
+        long jobDeadlineMs = nextMarketOpenMs + UPDATE_JOB_BUFFER_MS;
 
-            if (fixedHistoricalData != null) {
-                long lastUpdateTimestampMs = fixedHistoricalData.updatedAtTimestampSeconds() * 1000L;
-                long timeSinceLastUpdateMs = currentTimeMs - lastUpdateTimestampMs;
+        for (Map.Entry<String, Long> entry : ASSET_BASE_EXPIRY_DURATIONS_MS.entrySet()) {
+            String interval = entry.getKey();
+            long assetBaseExpiryDurationMs = entry.getValue();
+            FixedHistoricalData data = getFixedHistoricalDataMap().get(interval);
 
-                // Dynamic threshold: base duration + expiry buffer when market closed
-                long allowedStalenessMs = ASSET_BASE_EXPIRY_DURATIONS_MS[i] + marketClosedDurationMs;
+            if (data == null) {
+                continue;
+            }
 
-                // Data is fresh if age is less than allowed staleness
-                boolean isDataFresh = timeSinceLastUpdateMs < allowedStalenessMs;
+            long lastUpdateMs = data.updatedAtTimestampSeconds() * 1000L;
+            long ageMs = nowMs - lastUpdateMs;
 
-                if (isDataFresh) {
-                    return false; // At least one historical data is fresh
-                }
+            boolean withinBaseExpiry = ageMs < assetBaseExpiryDurationMs;
+            boolean updatedAfterLastClose = lastUpdateMs >= lastMarketCloseMs && nowMs < nextMarketOpenMs;
+            boolean jobNotYetDue = nowMs >= nextMarketOpenMs && nowMs < jobDeadlineMs;
+
+            boolean isDataFresh = withinBaseExpiry || updatedAfterLastClose || jobNotYetDue;
+
+            if (isDataFresh) {
+                return false; // at least one interval is fresh — no notification
             }
         }
 
-        return true; // All historical data are stale
+        // Every interval failed all freshness checks — data is genuinely stale
+        return true;
     }
 
     public @NonNull BigDecimal getDensePrice() {

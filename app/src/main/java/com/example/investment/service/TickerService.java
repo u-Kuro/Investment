@@ -324,7 +324,7 @@ public class TickerService extends Service {
             CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA,
             "Outdated Data",
             String.format(
-                "%s | Historical data is out of date, %s could be closed for a holiday today, check now.",
+                "%s | Historical data may be out of date, %s may have recently closed for a holiday, check now.",
                 leadingTicker.getSymbol(),
                 exchangeText
             ),

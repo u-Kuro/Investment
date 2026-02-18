@@ -1,5 +1,6 @@
 package com.example.investment.util;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class Constants {
@@ -34,13 +35,13 @@ public class Constants {
 
     // Asset Intervals
     public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
-    public static final long[] ASSET_BASE_EXPIRY_DURATIONS_MS = {
-        // Added 1 Day Periodic Update Buffer
-        TimeUnit.DAYS.toMillis(2),   // 1d
-        TimeUnit.DAYS.toMillis(8),   // 1wk
-        TimeUnit.DAYS.toMillis(32),  // 1mo
-        TimeUnit.DAYS.toMillis(93)   // 3mo
-    };
+    public static final Map<String, Long> ASSET_BASE_EXPIRY_DURATIONS_MS = Map.ofEntries(
+        Map.entry("1d", TimeUnit.DAYS.toMillis(1)),
+        Map.entry("1wk", TimeUnit.DAYS.toMillis(7)),
+        Map.entry("1mo", TimeUnit.DAYS.toMillis(31)),
+        Map.entry("3mo", TimeUnit.DAYS.toMillis(92))
+    );
+    public static final long UPDATE_JOB_BUFFER_MS = TimeUnit.HOURS.toMillis(4);
 
     // Asset Price States
     public static final String PRICE_ABOVE = "above_upper";
