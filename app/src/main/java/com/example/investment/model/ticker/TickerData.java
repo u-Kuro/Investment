@@ -5,10 +5,8 @@ import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
-import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.UPDATE_JOB_BUFFER_MS;
-import static com.example.investment.util.DateUtils.getLastMarketCloseMs;
-import static com.example.investment.util.DateUtils.getNextMarketOpenMs;
+import static com.example.investment.util.DateUtils.calculateMarketActiveMillis;
 
 import androidx.annotation.NonNull;
 
@@ -112,18 +110,9 @@ public class TickerData implements Serializable {
 
         return newestTimestampSeconds;
     }
+
     public boolean areAllFixedHistoricalDataStale() {
         long nowMs = System.currentTimeMillis();
-
-        long lastMarketCloseMs = 0;
-        long nextMarketOpenMs  = nowMs;
-
-        if (STOCK_TYPE.equals(type)) {
-            lastMarketCloseMs = getLastMarketCloseMs(nowMs);
-            nextMarketOpenMs  = getNextMarketOpenMs(nowMs);
-        }
-
-        long jobDeadlineMs = nextMarketOpenMs + UPDATE_JOB_BUFFER_MS;
 
         for (Map.Entry<String, Long> entry : ASSET_BASE_EXPIRY_DURATIONS_MS.entrySet()) {
             String interval = entry.getKey();
@@ -135,14 +124,8 @@ public class TickerData implements Serializable {
             }
 
             long lastUpdateMs = data.updatedAtTimestampSeconds() * 1000L;
-            long ageMs = nowMs - lastUpdateMs;
 
-            boolean withinBaseExpiry = ageMs < assetBaseExpiryDurationMs;
-            boolean updatedAfterLastClose = lastUpdateMs >= lastMarketCloseMs && nowMs < nextMarketOpenMs;
-            boolean jobNotYetDue = nowMs >= nextMarketOpenMs && nowMs < jobDeadlineMs;
-
-            boolean isDataFresh = withinBaseExpiry || updatedAfterLastClose || jobNotYetDue;
-
+            boolean isDataFresh = calculateMarketActiveMillis(lastUpdateMs, nowMs) <= (assetBaseExpiryDurationMs + UPDATE_JOB_BUFFER_MS);
             if (isDataFresh) {
                 return false; // at least one interval is fresh — no notification
             }

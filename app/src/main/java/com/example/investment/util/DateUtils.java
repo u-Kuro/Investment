@@ -4,72 +4,89 @@ import java.util.Calendar;
 import java.util.TimeZone;
 
 public class DateUtils {
-    private static final TimeZone EST = TimeZone.getTimeZone("America/New_York");
-    // Market hours: 9:30 AM - 4:00 PM ET
-    private static final int MARKET_OPEN_MINUTES  = 9 * 60 + 30;  // 570
-    private static final int MARKET_CLOSE_MINUTES = 16 * 60;       // 960
+    private static final String MARKET_TZ = "America/New_York";
+    private static final int MARKET_OPEN_HOUR = 9;
+    private static final int MARKET_OPEN_MINUTE = 30;
+    private static final int MARKET_CLOSE_HOUR = 16;
+    public static long calculateMarketActiveMillis(long startMs, long endMs) {
+        if (startMs >= endMs) return 0;
 
-    public static long getLastMarketCloseMs(long nowMs) {
-        Calendar est = toEST(nowMs);
+        long totalActiveMs = 0;
+        Calendar current = createEasternCalendar(startMs);
+        Calendar end = createEasternCalendar(endMs);
 
-        Calendar lastClose = toEST(nowMs);
-        lastClose.set(Calendar.HOUR_OF_DAY, 16);
-        lastClose.set(Calendar.MINUTE, 0);
-        lastClose.set(Calendar.SECOND, 0);
-        lastClose.set(Calendar.MILLISECOND, 0);
+        while (current.before(end)) {
+            if (isWeekday(current)) {
 
-        // If today's 4 PM hasn't occurred yet, go back one day
-        if (!est.after(lastClose)) {
-            lastClose.add(Calendar.DAY_OF_MONTH, -1);
+                long windowStart = getDailyActiveWindowStart(current);
+                long windowEnd = getDailyActiveWindowEnd(current);
+
+                long effectiveStart = Math.max(current.getTimeInMillis(), windowStart);
+                long effectiveEnd = Math.min(end.getTimeInMillis(), windowEnd);
+
+                if (effectiveStart < effectiveEnd) {
+                    totalActiveMs += (effectiveEnd - effectiveStart);
+                }
+            }
+
+            // Move cursor to start of next day (Midnight)
+            current.add(Calendar.DAY_OF_MONTH, 1);
+            current.set(Calendar.HOUR_OF_DAY, 0);
+            current.set(Calendar.MINUTE, 0);
+            current.set(Calendar.SECOND, 0);
+            current.set(Calendar.MILLISECOND, 0);
         }
-
-        // Roll back past weekends — market doesn't close on weekends
-        while (isWeekend(lastClose)) {
-            lastClose.add(Calendar.DAY_OF_MONTH, -1);
-        }
-
-        return lastClose.getTimeInMillis();
+        return totalActiveMs;
     }
 
-    public static long getNextMarketOpenMs(long nowMs) {
-        Calendar est = toEST(nowMs);
+    private static long getDailyActiveWindowStart(Calendar date) {
+        Calendar cal = (Calendar) date.clone();
+        int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
 
-        if (isMarketOpen(est)) {
-            return nowMs;
+        // Monday: start is 09:30
+        if (dayOfWeek == Calendar.MONDAY) {
+            cal.set(Calendar.HOUR_OF_DAY, MARKET_OPEN_HOUR);
+            cal.set(Calendar.MINUTE, MARKET_OPEN_MINUTE);
+        } else {
+        // Others: start is 00:00
+            cal.set(Calendar.HOUR_OF_DAY, 0);
+            cal.set(Calendar.MINUTE, 0);
         }
 
-        Calendar nextOpen = toEST(nowMs);
-        nextOpen.set(Calendar.HOUR_OF_DAY, 9);
-        nextOpen.set(Calendar.MINUTE, 30);
-        nextOpen.set(Calendar.SECOND, 0);
-        nextOpen.set(Calendar.MILLISECOND, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
+    }
 
-        // If today's 9:30 AM has already passed, move to next day
-        if (!nextOpen.after(est)) {
-            nextOpen.add(Calendar.DAY_OF_MONTH, 1);
+    private static long getDailyActiveWindowEnd(Calendar date) {
+        Calendar cal = (Calendar) date.clone();
+        int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
+
+        // Friday: end is 16:00 (4 PM)
+        if (dayOfWeek == Calendar.FRIDAY) {
+            cal.set(Calendar.HOUR_OF_DAY, MARKET_CLOSE_HOUR);
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+        } else {
+        // Others: end is next day 00:00
+            cal.add(Calendar.DAY_OF_MONTH, 1);
+            cal.set(Calendar.HOUR_OF_DAY, 0);
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
+            cal.set(Calendar.MILLISECOND, 0);
         }
 
-        // Skip weekends — market doesn't open on weekends
-        while (isWeekend(nextOpen)) {
-            nextOpen.add(Calendar.DAY_OF_MONTH, 1);
-        }
-
-        return nextOpen.getTimeInMillis();
+        return cal.getTimeInMillis();
     }
 
-    public static boolean isMarketOpen(Calendar estCal) {
-        if (isWeekend(estCal)) return false;
-        int totalMinutes = estCal.get(Calendar.HOUR_OF_DAY) * 60 + estCal.get(Calendar.MINUTE);
-        return totalMinutes >= MARKET_OPEN_MINUTES && totalMinutes < MARKET_CLOSE_MINUTES;
+    private static boolean isWeekday(Calendar date) {
+        int dayOfWeek = date.get(Calendar.DAY_OF_WEEK);
+        return dayOfWeek != Calendar.SATURDAY && dayOfWeek != Calendar.SUNDAY;
     }
 
-    public static boolean isWeekend(Calendar cal) {
-        int day = cal.get(Calendar.DAY_OF_WEEK);
-        return day == Calendar.SATURDAY || day == Calendar.SUNDAY;
-    }
-
-    private static Calendar toEST(long ms) {
-        Calendar cal = Calendar.getInstance(EST);
+    private static Calendar createEasternCalendar(long ms) {
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone(MARKET_TZ));
         cal.setTimeInMillis(ms);
         return cal;
     }

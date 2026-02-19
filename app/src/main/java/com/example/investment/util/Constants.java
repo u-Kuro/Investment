@@ -36,12 +36,12 @@ public class Constants {
     // Asset Intervals
     public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
     public static final Map<String, Long> ASSET_BASE_EXPIRY_DURATIONS_MS = Map.ofEntries(
-        Map.entry("1d", TimeUnit.DAYS.toMillis(1)),
-        Map.entry("1wk", TimeUnit.DAYS.toMillis(7)),
-        Map.entry("1mo", TimeUnit.DAYS.toMillis(31)),
-        Map.entry("3mo", TimeUnit.DAYS.toMillis(92))
+        Map.entry("1d", TimeUnit.DAYS.toMillis(1 + 1)),
+        Map.entry("1wk", TimeUnit.DAYS.toMillis(7 + 1)),
+        Map.entry("1mo", TimeUnit.DAYS.toMillis(31 + 1)),
+        Map.entry("3mo", TimeUnit.DAYS.toMillis(92 + 1))
     );
-    public static final long UPDATE_JOB_BUFFER_MS = TimeUnit.HOURS.toMillis(4);
+    public static final long UPDATE_JOB_BUFFER_MS = TimeUnit.DAYS.toMillis(1);
 
     // Asset Price States
     public static final String PRICE_ABOVE = "above_upper";
