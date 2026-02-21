@@ -8,12 +8,13 @@ import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.UPDATE_JOB_BUFFER_MS;
 import static com.example.investment.util.DateUtils.calculateMarketActiveMillis;
 
+import static java.math.MathContext.DECIMAL128;
+
 import androidx.annotation.NonNull;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -27,8 +28,9 @@ public class TickerData implements Serializable {
     private final String exchange;
     private final long marketCap;
     private final long firstTradeTimestampSeconds;
-    private final double firstPrice;
-    private final double lastPrice;
+    @NonNull private final BigDecimal firstOpen;
+    @NonNull private final BigDecimal lastAdjustedClose;
+    @NonNull private final BigDecimal adjustmentFactor;
     @NonNull private final Map<String, FixedHistoricalData> fixedHistoricalDataMap;
     public record FixedHistoricalData(
         long updatedAtTimestampSeconds,
@@ -45,8 +47,9 @@ public class TickerData implements Serializable {
         String exchange,
         long marketCap,
         long firstTradeTimestampSeconds,
-        double firstPrice,
-        double lastPrice,
+        @NonNull BigDecimal firstOpen,
+        @NonNull BigDecimal lastAdjustedClose,
+        @NonNull BigDecimal adjustmentFactor,
         @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap
     ) {
         this.symbol = symbol;
@@ -55,8 +58,9 @@ public class TickerData implements Serializable {
         this.exchange = exchange;
         this.marketCap = marketCap;
         this.firstTradeTimestampSeconds = firstTradeTimestampSeconds;
-        this.firstPrice = firstPrice;
-        this.lastPrice = lastPrice;
+        this.firstOpen = firstOpen;
+        this.lastAdjustedClose = lastAdjustedClose;
+        this.adjustmentFactor = adjustmentFactor;
         this.fixedHistoricalDataMap = new HashMap<>(fixedHistoricalDataMap);
     }
 
@@ -71,8 +75,9 @@ public class TickerData implements Serializable {
     public String getExchange() { return exchange; }
     public long getMarketCap() { return marketCap; }
     public long getFirstTradeTimestampSeconds() { return firstTradeTimestampSeconds; }
-    public double getFirstPrice() { return firstPrice; }
-    public double getLastPrice() { return lastPrice; }
+    public @NonNull BigDecimal getFirstOpen() { return firstOpen; }
+    public @NonNull BigDecimal getLastAdjustedClose() { return lastAdjustedClose; }
+    public @NonNull BigDecimal getAdjustmentFactor() { return adjustmentFactor; }
     public @NonNull Map<String, FixedHistoricalData> getFixedHistoricalDataMap() { return new HashMap<>(fixedHistoricalDataMap); }
     public FixedHistoricalData getFixedHistoricalData(@NonNull String interval) {
         return getFixedHistoricalDataMap().getOrDefault(interval, null);
@@ -135,66 +140,72 @@ public class TickerData implements Serializable {
         return true;
     }
 
-    public @NonNull BigDecimal getDensePrice() {
-        FixedHistoricalData data = getNewestFixedHistoricalData();
-        if (data == null) return BigDecimal.ZERO;
+    public @NonNull BigDecimal getAdjustedDensePrice() {
+        FixedHistoricalData newestFixedHistoricalData = getNewestFixedHistoricalData();
+        if (newestFixedHistoricalData == null) return BigDecimal.ZERO;
 
-        @NonNull BigDecimal dpSumDen = data.dpSumDen();
-        if (dpSumDen.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
-
-        return data.dpSumNum().divide(dpSumDen, MathContext.DECIMAL128);
+        return newestFixedHistoricalData.dpSumNum()
+            .divide(newestFixedHistoricalData.dpSumDen(), DECIMAL128)
+            .multiply(adjustmentFactor, DECIMAL128);
     }
     public @NonNull BigDecimal getUpperBand() {
-        FixedHistoricalData data = getNewestFixedHistoricalData();
-        if (data == null) return BigDecimal.ZERO;
+        FixedHistoricalData newestFixedHistoricalData = getNewestFixedHistoricalData();
+        if (newestFixedHistoricalData == null) return BigDecimal.ZERO;
 
-        @NonNull BigDecimal dense = getDensePrice();
-        @NonNull BigDecimal dbSumDen = data.dbSumDen();
-
-        if (dbSumDen.compareTo(BigDecimal.ZERO) == 0) return dense;
-
-        @NonNull BigDecimal ratio = data.dbSumNum().divide(dbSumDen, MathContext.DECIMAL128).abs();
-        @NonNull BigDecimal multiplier = BigDecimal.ONE.add(ratio);
-
-        return dense.multiply(multiplier, MathContext.DECIMAL128);
+        return getAdjustedDensePrice()
+            .multiply(
+                newestFixedHistoricalData.dbSumNum()
+                .divide(newestFixedHistoricalData.dbSumDen(), DECIMAL128)
+                .abs()
+                .add(BigDecimal.ONE), DECIMAL128
+            );
     }
     public @NonNull BigDecimal getLowerBand() {
-        FixedHistoricalData data = getNewestFixedHistoricalData();
-        if (data == null) return BigDecimal.ZERO;
+        FixedHistoricalData newestFixedHistoricalData = getNewestFixedHistoricalData();
+        if (newestFixedHistoricalData == null) return BigDecimal.ZERO;
 
-        @NonNull BigDecimal dense = getDensePrice();
-        @NonNull BigDecimal dbSumDen = data.dbSumDen();
-
-        if (dbSumDen.compareTo(BigDecimal.ZERO) == 0) return dense;
-
-        @NonNull BigDecimal ratio = data.dbSumNum().divide(dbSumDen, MathContext.DECIMAL128).abs();
-        @NonNull BigDecimal divisor = BigDecimal.ONE.add(ratio);
-
-        if (divisor.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
-        return dense.divide(divisor, MathContext.DECIMAL128);
+        return getAdjustedDensePrice()
+            .divide(
+                newestFixedHistoricalData.dbSumNum()
+                .divide(newestFixedHistoricalData.dbSumDen(), DECIMAL128)
+                .abs()
+                .add(BigDecimal.ONE), DECIMAL128
+            );
     }
-    public double getPercentageIncreasePerDay() {
-        double numberOfDays = (System.currentTimeMillis() - (firstTradeTimestampSeconds * 1000)) / 86400000D;
 
-        if (numberOfDays <= 0 || firstPrice <= 0) return 0;
+    private static final BigDecimal HUNDRED = new BigDecimal("100");
+    private static final BigDecimal MILLIS_IN_DAY = new BigDecimal("86400000");
+    public @NonNull BigDecimal getPercentageIncreasePerDay() {
+        @NonNull BigDecimal numberOfDays = BigDecimal
+            .valueOf(System.currentTimeMillis() - (firstTradeTimestampSeconds * 1000L))
+            .divide(MILLIS_IN_DAY, DECIMAL128);
 
-        return (((lastPrice - firstPrice) / firstPrice) * 100) / numberOfDays;
+        if (numberOfDays.compareTo(BigDecimal.ZERO) <= 0 || firstOpen.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        @NonNull BigDecimal firstAdjustedOpen = firstOpen.multiply(adjustmentFactor);
+
+        return lastAdjustedClose
+            .subtract(firstAdjustedOpen, DECIMAL128)
+            .divide(firstAdjustedOpen, DECIMAL128)
+            .multiply(HUNDRED, DECIMAL128)
+            .divide(numberOfDays, DECIMAL128);
     }
 
     public @NonNull String getPriceState() {
         @NonNull BigDecimal lowerBand = getLowerBand();
         @NonNull BigDecimal upperBand = getUpperBand();
-        @NonNull BigDecimal lastPriceBD = BigDecimal.valueOf(lastPrice);
 
         if (
-            getPercentageIncreasePerDay() <= 0
-            || lastPriceBD.compareTo(lowerBand) < 0
+            getPercentageIncreasePerDay().compareTo(BigDecimal.ZERO) <= 0
+            || lastAdjustedClose.compareTo(lowerBand) < 0
             || upperBand.compareTo(lowerBand) < 0
         ) {
             return PRICE_BELOW;
         }
 
-        if (lastPriceBD.compareTo(upperBand) <= 0) {
+        if (lastAdjustedClose.compareTo(upperBand) <= 0) {
             return PRICE_BETWEEN;
         }
 
@@ -208,8 +219,9 @@ public class TickerData implements Serializable {
             && Objects.equals(exchange, tickerData.exchange)
             && marketCap == tickerData.marketCap
             && firstTradeTimestampSeconds == tickerData.firstTradeTimestampSeconds
-            && Double.compare(tickerData.lastPrice, lastPrice) == 0
-            && Double.compare(tickerData.firstPrice, firstPrice) == 0
+            && tickerData.firstOpen.compareTo(firstOpen) == 0
+            && tickerData.lastAdjustedClose.compareTo(lastAdjustedClose) == 0
+            && tickerData.adjustmentFactor.compareTo(adjustmentFactor) == 0
             && Objects.equals(fixedHistoricalDataMap, tickerData.fixedHistoricalDataMap);
     }
 }

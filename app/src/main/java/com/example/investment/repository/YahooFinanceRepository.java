@@ -20,8 +20,9 @@ import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static com.example.investment.util.NetworkUtils.getThrottleDelay;
 import static com.example.investment.util.FileUtils.loadObject;
 import static com.example.investment.util.FileUtils.saveObject;
+import static com.example.investment.util.NumberUtils.safeLog;
 import static java.lang.Double.isFinite;
-import static java.lang.Double.isNaN;
+import static java.math.MathContext.DECIMAL128;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -40,7 +41,6 @@ import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,7 +59,10 @@ public class YahooFinanceRepository {
     private record FetchSymbolsResult(@NonNull String type, long marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
-    private final OkHttpClient client = new OkHttpClient();
+    @NonNull private final OkHttpClient client = new OkHttpClient();
+    @NonNull private final BigDecimal TWO = new BigDecimal("2");
+    @NonNull private final BigDecimal FOUR = new BigDecimal("4");
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateTickers(Context context, boolean isFullRefresh, TickerUpdateListener listener) {
         List<TickerData> tickersList = new ArrayList<>();
@@ -109,7 +112,7 @@ public class YahooFinanceRepository {
 
                     // If ticker update succeeded, put its new data in the list
                     tickersList.add(ticker);
-                    tickersList.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
+                    tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickersList);
                     listener.onProgress(++current, total);
 
@@ -123,7 +126,7 @@ public class YahooFinanceRepository {
                     // If ticker update failed, put back its old data in the list
                     if (oldTicker != null) {
                         tickersList.add(oldTicker);
-                        tickersList.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
+                        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
                         listener.onTickerUpdate(tickersList);
                     }
                     listener.onProgress(++current, total);
@@ -143,7 +146,7 @@ public class YahooFinanceRepository {
         Set<String> finalDeletedTickersSet = deletedTickersSet;
         tickersList.removeIf(tickerData -> finalDeletedTickersSet.contains(tickerData.getSymbol()));
 
-        tickersList.sort((a, b) -> Double.compare(b.getPercentageIncreasePerDay(), a.getPercentageIncreasePerDay()));
+        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
 
         if (tickersList.isEmpty()) {
             listener.onError();
@@ -181,6 +184,8 @@ public class YahooFinanceRepository {
         JSONObject indicators = result.getJSONObject("indicators");
         JSONObject quote = indicators.getJSONArray("quote").getJSONObject(0);
         JSONArray apiAdjCloses = indicators.getJSONArray("adjclose").getJSONObject(0).getJSONArray("adjclose");
+        JSONArray apiCloses = quote.getJSONArray("close");
+        JSONArray apiOpens = quote.getJSONArray("open");
         JSONArray apiHighs = quote.getJSONArray("high");
         JSONArray apiLows = quote.getJSONArray("low");
         JSONArray apiVolumes = quote.getJSONArray("volume");
@@ -189,8 +194,9 @@ public class YahooFinanceRepository {
         String name = null;
         String exchange = null;
         Long firstTradeTimestampSeconds = null;
-        Double firstPrice = null;
-        Double lastPrice = null;
+        BigDecimal firstOpen = null;
+        BigDecimal lastAdjustedClose = null;
+        BigDecimal adjustmentFactor = null;
         final @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap;
 
         // Initialize fixed historical data
@@ -212,8 +218,9 @@ public class YahooFinanceRepository {
             name = oldTicker.getName(false);
             exchange = oldTicker.getExchange();
             firstTradeTimestampSeconds = oldTicker.getFirstTradeTimestampSeconds();
-            firstPrice = oldTicker.getFirstPrice();
-            lastPrice = oldTicker.getLastPrice();
+            firstOpen = oldTicker.getFirstOpen();
+            lastAdjustedClose = oldTicker.getLastAdjustedClose();
+            adjustmentFactor = oldTicker.getAdjustmentFactor();
             fixedHistoricalDataMap = oldTicker.getFixedHistoricalDataMap();
             if (HAS_FIXED_HISTORICAL_DATA) {
                 FixedHistoricalData fixedHistoricalData = oldTicker.getFixedHistoricalData(interval);
@@ -233,22 +240,26 @@ public class YahooFinanceRepository {
         int startIndex = SHOULD_UPDATE_ALL_DATA ? 0 : 1;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
+                double currentO = apiOpens.getDouble(i);
                 double currentAC = apiAdjCloses.getDouble(i);
+                double currentC = apiCloses.getDouble(i);
                 long currentTs = apiTimestamps.getLong(i);
 
                 if (
-                    currentAC > 0 && isFinite(currentAC)
+                    currentO > 0 && isFinite(currentO)
+                    && currentAC > 0 && isFinite(currentAC)
+                    && currentC > 0 && isFinite(currentC)
                     && currentTs > 0 && isFinite(currentTs) && System.currentTimeMillis() > (currentTs * 1000)
                 ) {
-
-                    // Track very first trade date and its corresponding price
+                    // Track very first trade date and its corresponding opening price
                     if (firstTradeTimestampSeconds == null || firstTradeTimestampSeconds > currentTs) {
                         firstTradeTimestampSeconds = currentTs;
-                        firstPrice = currentAC;
+                        firstOpen = BigDecimal.valueOf(currentO);
                     }
 
-                    // Always update last price with the latest value
-                    lastPrice = currentAC;
+                    // Always update last adjusted close and adjustment factor with the latest value
+                    lastAdjustedClose = BigDecimal.valueOf(currentAC);
+                    adjustmentFactor = lastAdjustedClose.divide(BigDecimal.valueOf(currentC), DECIMAL128);
                 }
             } catch (Exception ignored) {}
         }
@@ -271,33 +282,90 @@ public class YahooFinanceRepository {
                         && currentLow > 0 && isFinite(currentLow)
                         && currentVol > 0 && isFinite(currentVol)
                     ) {
-                        double bar_range = currentHigh - currentLow;
-                        double mid_point = (currentHigh + currentLow) / 2.0;
+                        @NonNull BigDecimal bHigh = BigDecimal.valueOf(currentHigh);
+                        @NonNull BigDecimal bLow = BigDecimal.valueOf(currentLow);
+                        @NonNull BigDecimal bVol = BigDecimal.valueOf(currentVol);
+
+                        @NonNull BigDecimal barRange = bHigh.subtract(bLow, DECIMAL128);
+                        @NonNull BigDecimal midPoint = bHigh.add(bLow, DECIMAL128).divide(TWO, DECIMAL128);
 
                         // Calculate DP increments
-                        double DP_num_inc = bar_range > 0 ? (currentVol * bar_range * mid_point) : (currentVol * mid_point);
-                        double D_den_inc = bar_range > 0 ? (currentVol * bar_range) : currentVol;
-
-                        if (!isNaN(DP_num_inc) && !isNaN(D_den_inc)) {
-                            DP_S_num = DP_S_num.add(BigDecimal.valueOf(DP_num_inc), MathContext.DECIMAL128);
-                            DP_S_den = DP_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
+                        @NonNull BigDecimal DP_num_inc;
+                        @NonNull BigDecimal D_den_inc;
+                        if (barRange.compareTo(BigDecimal.ZERO) > 0) {
+                            D_den_inc = bVol.multiply(barRange, DECIMAL128);
+                        } else {
+                            D_den_inc = bVol;
                         }
+                        DP_num_inc = D_den_inc.multiply(midPoint, DECIMAL128);
+
+                        DP_S_num = DP_S_num.add(DP_num_inc, DECIMAL128);
+                        DP_S_den = DP_S_den.add(D_den_inc, DECIMAL128);
 
                         // Calculate DB increments
-                        if (DP_S_num.compareTo(BigDecimal.ZERO) != 0 && DP_S_den.compareTo(BigDecimal.ZERO) != 0) {
+                        @NonNull BigDecimal densePrice = DP_S_num.divide(DP_S_den, DECIMAL128);
+                        @NonNull BigDecimal DB_num_inc;
+                        @NonNull BigDecimal pctDif;
 
-                            @NonNull BigDecimal densePrice = DP_S_num.divide(DP_S_den, MathContext.DECIMAL128);
-                            double densePriceDouble = densePrice.doubleValue();
+                        if (barRange.compareTo(BigDecimal.ZERO) > 0) {
+                            // Calculate logarithmic ratio: ln((H+DP)/(L+DP))
+                            BigDecimal logRatio = BigDecimal.valueOf(
+                                safeLog(
+                                    bHigh.add(densePrice, DECIMAL128)
+                                    .divide(bLow.add(densePrice, DECIMAL128), DECIMAL128)
+                                )
+                            );
 
-                            double pct_dif = 2 - (4 * densePriceDouble * Math.log((currentHigh + densePriceDouble) / (currentLow + densePriceDouble)) / bar_range);
+                            // Calculate scaled term: 4DP * ln((H+DP)/(L+DP)) / (H-L)
+                            BigDecimal scaledLogTerm = FOUR
+                                .multiply(densePrice, DECIMAL128)
+                                .multiply(logRatio, DECIMAL128)
+                                .divide(barRange, DECIMAL128);
 
-                            double DB_num_inc = bar_range > 0 ? (currentVol * bar_range * pct_dif) : (currentVol * pct_dif);
-
-                            if (!isNaN(DB_num_inc) && !isNaN(D_den_inc)) {
-                                DB_S_num = DB_S_num.add(BigDecimal.valueOf(DB_num_inc), MathContext.DECIMAL128);
-                                DB_S_den = DB_S_den.add(BigDecimal.valueOf(D_den_inc), MathContext.DECIMAL128);
+                            if (densePrice.compareTo(bLow) < 0) {
+                                // Case 1: All prices above dense price
+                                pctDif = TWO.subtract(scaledLogTerm, DECIMAL128); // 2 - (4DP * ln((H+DP)/(L+DP)) / (H-L))
+                            } else if (densePrice.compareTo(bHigh) > 0) {
+                                // Case 2: All prices below dense price
+                                pctDif = scaledLogTerm.subtract(TWO, DECIMAL128); // (4DP * ln((H+DP)/(L+DP)) / (H-L)) - 2
+                            } else {
+                                // Case 3: Dense price within range
+                                // Formula: [2(H+L-2DP) + 4DP * ln(4DP² / ((H+DP) * (L+DP)))] / (H-L)
+                                pctDif = TWO.multiply(
+                                    bHigh
+                                    .add(bLow, DECIMAL128)
+                                    .subtract(
+                                        TWO.multiply(densePrice, DECIMAL128), DECIMAL128
+                                    ), DECIMAL128
+                                )
+                                .add(
+                                    FOUR.multiply(densePrice, DECIMAL128)
+                                    .multiply(
+                                        BigDecimal.valueOf(
+                                            safeLog(
+                                                FOUR.multiply(densePrice, DECIMAL128).multiply(densePrice, DECIMAL128)
+                                                .divide(
+                                                    bLow.add(densePrice, DECIMAL128)
+                                                    .multiply(bHigh.add(densePrice, DECIMAL128), DECIMAL128), DECIMAL128
+                                                )
+                                            )
+                                        ), DECIMAL128
+                                    ), DECIMAL128
+                                ).divide(barRange, DECIMAL128);
                             }
+                            DB_num_inc = bVol.multiply(pctDif, DECIMAL128).multiply(barRange, DECIMAL128);
+                        } else {
+                            // Zero bar range
+                            pctDif = midPoint.subtract(densePrice, DECIMAL128).abs()
+                                .divide(
+                                    midPoint.add(densePrice, DECIMAL128)
+                                    .divide(TWO, DECIMAL128), DECIMAL128
+                                );
+                            DB_num_inc = bVol.multiply(pctDif, DECIMAL128);
                         }
+
+                        DB_S_num = DB_S_num.add(DB_num_inc, DECIMAL128);
+                        DB_S_den = DB_S_den.add(D_den_inc, DECIMAL128);
                     }
                 }
             } catch (Exception ignored) {}
@@ -305,7 +373,10 @@ public class YahooFinanceRepository {
 
         // Final Validation
         if (
-            lastPrice == null || firstPrice == null || firstTradeTimestampSeconds == null
+            firstTradeTimestampSeconds == null || firstOpen == null || lastAdjustedClose == null || adjustmentFactor == null
+            || firstOpen.compareTo(BigDecimal.ZERO) == 0
+            || lastAdjustedClose.compareTo(BigDecimal.ZERO) == 0
+            || adjustmentFactor.compareTo(BigDecimal.ZERO) == 0
             // Checks for Historical Data
             || updatedAtTimestampSeconds == null
             || DP_S_num.compareTo(BigDecimal.ZERO) == 0 || DP_S_den.compareTo(BigDecimal.ZERO) == 0
@@ -334,8 +405,9 @@ public class YahooFinanceRepository {
             exchange,
             newSymbolEntryValue.marketCap,
             firstTradeTimestampSeconds,
-            firstPrice,
-            lastPrice,
+            firstOpen,
+            lastAdjustedClose,
+            adjustmentFactor,
             fixedHistoricalDataMap
         );
     }

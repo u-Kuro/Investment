@@ -219,4 +219,47 @@ public class NumberUtils {
         String expectedPattern = "0".repeat(expectedZeros);
         return decimalPart.contains(expectedPattern);
     }
+
+    private static double toDoubleSafe(BigDecimal bd) {
+        if (bd == null) {
+            return 0.0;
+        }
+
+        // Check if it exceeds max positive
+        if (bd.compareTo(BigDecimal.valueOf(Double.MAX_VALUE)) > 0) {
+            return Double.MAX_VALUE;
+        }
+
+        // Check if it exceeds max negative
+        if (bd.compareTo(BigDecimal.valueOf(-Double.MAX_VALUE)) < 0) {
+            return -Double.MAX_VALUE;
+        }
+
+        // Check if it's too small positive (underflow to zero)
+        if (bd.compareTo(BigDecimal.ZERO) > 0 && bd.compareTo(BigDecimal.valueOf(Double.MIN_VALUE)) < 0) {
+            return Double.MIN_VALUE;
+        }
+
+        // Check if it's too small negative (underflow to zero)
+        if (bd.compareTo(BigDecimal.ZERO) < 0 && bd.compareTo(BigDecimal.valueOf(-Double.MIN_VALUE)) > 0) {
+            return -Double.MIN_VALUE;
+        }
+
+        // Safe to convert
+        return bd.doubleValue();
+    }
+
+    public static double safeLog(BigDecimal bd) {
+        if (bd == null || bd.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Cannot take log of non-positive number: " + bd);
+        }
+
+        double value = toDoubleSafe(bd);
+
+        if (value <= 0) {
+            throw new IllegalArgumentException("toDoubleSafe returned non-positive value: " + value);
+        }
+
+        return Math.log(value);
+    }
 }

@@ -90,7 +90,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         }
 
         timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
-        lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastPrice()));
+        lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastAdjustedClose()));
         percentageIncreasePerDayText.setText(
             String.format(
                 Locale.US,
@@ -109,14 +109,14 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
-        if (BigDecimal.valueOf(ticker.getLastPrice()).compareTo(ticker.getLowerBand()) < 0) {
+        if (ticker.getLastAdjustedClose().compareTo(ticker.getLowerBand()) < 0) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else if (ticker.getPriceState().equals(PRICE_BETWEEN)) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
         } else {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
-        if (ticker.getPercentageIncreasePerDay() <= 0) {
+        if (ticker.getPercentageIncreasePerDay().compareTo(BigDecimal.ZERO) <= 0) {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
