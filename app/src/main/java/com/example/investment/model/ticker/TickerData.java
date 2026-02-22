@@ -1,11 +1,11 @@
 package com.example.investment.model.ticker;
 
-import static com.example.investment.util.Constants.ASSET_BASE_EXPIRY_DURATIONS_MS;
+import static com.example.investment.util.Constants.ASSET_DURATION_UNTIL_NEXT_UPDATE_MS;
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
-import static com.example.investment.util.Constants.UPDATE_JOB_BUFFER_MS;
+import static com.example.investment.util.Constants.PERIODIC_WORKER_UPDATE_BUFFER_MS;
 import static com.example.investment.util.DateUtils.calculateMarketActiveMillis;
 
 import static java.math.MathContext.DECIMAL128;
@@ -119,9 +119,9 @@ public class TickerData implements Serializable {
     public boolean areAllFixedHistoricalDataStale() {
         long nowMs = System.currentTimeMillis();
 
-        for (Map.Entry<String, Long> entry : ASSET_BASE_EXPIRY_DURATIONS_MS.entrySet()) {
+        for (Map.Entry<String, Long> entry : ASSET_DURATION_UNTIL_NEXT_UPDATE_MS.entrySet()) {
             String interval = entry.getKey();
-            long assetBaseExpiryDurationMs = entry.getValue();
+            long assetDurationUntilNextUpdateMs = entry.getValue();
             FixedHistoricalData data = getFixedHistoricalDataMap().get(interval);
 
             if (data == null) {
@@ -130,7 +130,7 @@ public class TickerData implements Serializable {
 
             long lastUpdateMs = data.updatedAtTimestampSeconds() * 1000L;
 
-            boolean isDataFresh = calculateMarketActiveMillis(lastUpdateMs, nowMs) <= (assetBaseExpiryDurationMs + UPDATE_JOB_BUFFER_MS);
+            boolean isDataFresh = calculateMarketActiveMillis(lastUpdateMs, nowMs) <= (assetDurationUntilNextUpdateMs + PERIODIC_WORKER_UPDATE_BUFFER_MS);
             if (isDataFresh) {
                 return false; // at least one interval is fresh — no notification
             }

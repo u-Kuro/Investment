@@ -35,13 +35,15 @@ public class Constants {
 
     // Asset Intervals
     public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
-    public static final Map<String, Long> ASSET_BASE_EXPIRY_DURATIONS_MS = Map.ofEntries(
-        Map.entry("1d", TimeUnit.DAYS.toMillis(1 + 1)),
-        Map.entry("1wk", TimeUnit.DAYS.toMillis(7 + 1)),
-        Map.entry("1mo", TimeUnit.DAYS.toMillis(31 + 1)),
-        Map.entry("3mo", TimeUnit.DAYS.toMillis(92 + 1))
+    public static final Map<String, Long> ASSET_DURATION_UNTIL_NEXT_UPDATE_MS = Map.ofEntries(
+        // Interval time * 2 until Next Update
+        // Periodic worker's buffer handles DST shifts and Leap Seconds (1hr + 2s)
+        Map.entry("1d", TimeUnit.DAYS.toMillis(2)), // 1 + 1
+        Map.entry("1wk", TimeUnit.DAYS.toMillis(14)), // 7 + 7
+        Map.entry("1mo", TimeUnit.DAYS.toMillis(62)), // 31 + 31  (July 1 to Aug 31)
+        Map.entry("3mo", TimeUnit.DAYS.toMillis(184)) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
     );
-    public static final long UPDATE_JOB_BUFFER_MS = TimeUnit.DAYS.toMillis(1);
+    public static final long PERIODIC_WORKER_UPDATE_BUFFER_MS = TimeUnit.DAYS.toMillis(1);
 
     // Asset Price States
     public static final String PRICE_ABOVE = "above_upper";
