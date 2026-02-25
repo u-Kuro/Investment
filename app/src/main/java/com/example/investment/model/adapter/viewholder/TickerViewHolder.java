@@ -95,7 +95,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             String.format(
                 Locale.US,
                 "%s%%",
-                NumberUtils.formatNumber(ticker.getPercentageIncreasePerDay(), 2)
+                NumberUtils.formatNumber(ticker.getPercentageIncrease(), 2)
             )
         );
 
@@ -116,7 +116,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         } else {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
-        if (ticker.getPercentageIncreasePerDay().compareTo(BigDecimal.ZERO) <= 0) {
+        if (ticker.getPercentageIncrease().compareTo(BigDecimal.ZERO) <= 0) {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));

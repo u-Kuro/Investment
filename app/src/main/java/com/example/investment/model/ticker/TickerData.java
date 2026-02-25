@@ -174,7 +174,9 @@ public class TickerData implements Serializable {
     }
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+    /** @noinspection unused*/
     private static final BigDecimal MILLIS_IN_DAY = new BigDecimal("86400000");
+    /** @noinspection unused*/
     public @NonNull BigDecimal getPercentageIncreasePerDay() {
         @NonNull BigDecimal numberOfDays = BigDecimal
             .valueOf(System.currentTimeMillis() - (firstTradeTimestampSeconds * 1000L))
@@ -192,13 +194,22 @@ public class TickerData implements Serializable {
             .multiply(HUNDRED, DECIMAL128)
             .divide(numberOfDays, DECIMAL128);
     }
+    public @NonNull BigDecimal getPercentageIncrease() {
+        @NonNull BigDecimal adjustedDensePrice = getAdjustedDensePrice();
+        if (adjustedDensePrice.compareTo(BigDecimal.ZERO) <= 0) return BigDecimal.ZERO;
+
+        return lastAdjustedClose
+            .subtract(adjustedDensePrice, DECIMAL128)
+            .divide(adjustedDensePrice, DECIMAL128)
+            .multiply(HUNDRED, DECIMAL128);
+    }
 
     public @NonNull String getPriceState() {
         @NonNull BigDecimal lowerBand = getLowerBand();
         @NonNull BigDecimal upperBand = getUpperBand();
 
         if (
-            getPercentageIncreasePerDay().compareTo(BigDecimal.ZERO) <= 0
+            getPercentageIncrease().compareTo(BigDecimal.ZERO) <= 0
             || lastAdjustedClose.compareTo(lowerBand) < 0
             || upperBand.compareTo(lowerBand) < 0
         ) {

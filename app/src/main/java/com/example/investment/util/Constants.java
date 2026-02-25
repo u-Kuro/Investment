@@ -94,6 +94,12 @@ public class Constants {
 
     // Filter Defaults
     public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L; // $ 10 Billion
+    public static final Map<String, Double> MINIMUM_LIQUIDITY_RATIO = Map.ofEntries(
+        Map.entry("1d", 0.0001), // 0.01% * $ 10 Billion = $ 1 Million
+        Map.entry("1wk", 0.0001 * 7), // 7
+        Map.entry("1mo", 0.0001 * 31), // 31 (July)
+        Map.entry("3mo", 0.0001 * 92) // 31 + 31 + 30 (July 1 to September 30)
+    );
 
     // Request Defaults
     public static final int MAX_FETCH_RETRY_COUNT = 3;

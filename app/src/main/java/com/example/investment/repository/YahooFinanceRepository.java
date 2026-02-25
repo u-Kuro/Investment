@@ -6,6 +6,7 @@ import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
+import static com.example.investment.util.Constants.MINIMUM_LIQUIDITY_RATIO;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
@@ -112,7 +113,7 @@ public class YahooFinanceRepository {
 
                     // If ticker update succeeded, put its new data in the list
                     tickersList.add(ticker);
-                    tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
+                    tickersList.sort((a, b) -> b.getPercentageIncrease().compareTo(a.getPercentageIncrease()));
                     listener.onTickerUpdate(tickersList);
                     listener.onProgress(++current, total);
 
@@ -126,7 +127,7 @@ public class YahooFinanceRepository {
                     // If ticker update failed, put back its old data in the list
                     if (oldTicker != null) {
                         tickersList.add(oldTicker);
-                        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
+                        tickersList.sort((a, b) -> b.getPercentageIncrease().compareTo(a.getPercentageIncrease()));
                         listener.onTickerUpdate(tickersList);
                     }
                     listener.onProgress(++current, total);
@@ -146,7 +147,7 @@ public class YahooFinanceRepository {
         Set<String> finalDeletedTickersSet = deletedTickersSet;
         tickersList.removeIf(tickerData -> finalDeletedTickersSet.contains(tickerData.getSymbol()));
 
-        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
+        tickersList.sort((a, b) -> b.getPercentageIncrease().compareTo(a.getPercentageIncrease()));
 
         if (tickersList.isEmpty()) {
             listener.onError();
@@ -214,6 +215,31 @@ public class YahooFinanceRepository {
                 try { exchange = meta.getString("fullExchangeName"); } catch (Exception ignored) {}
             } catch (Exception ignored) {}
             fixedHistoricalDataMap = new HashMap<>();
+
+            // Filter out stocks with insufficient trading volume relative to market cap
+            double totalDollarVolume = 0;
+            int totalDollarVolumeLen = 0;
+            for (int i = 0; i < Math.min(apiVolumes.length(), apiCloses.length()); i++) {
+                try {
+                    long volume = apiVolumes.getLong(i);
+                    double close = apiCloses.getDouble(i);
+                    if (volume > 0 && close > 0 && isFinite(volume) && isFinite(close)) {
+                        totalDollarVolume += volume * close;
+                        totalDollarVolumeLen++;
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (totalDollarVolume > 0 && totalDollarVolumeLen > 0) {
+                Double minimumLiquidityRatio = MINIMUM_LIQUIDITY_RATIO.get(interval);
+                if (minimumLiquidityRatio == null) throw new NullPointerException("Minimum liquidity ratio expected to be Non-Null.");
+                double averageDollarVolume = totalDollarVolume / totalDollarVolumeLen;
+                double dollarVolumeThreshold = newSymbolEntryValue.marketCap * minimumLiquidityRatio; // 1D Default: 0.01%
+                if (averageDollarVolume < dollarVolumeThreshold) {
+                    throw new Exception("Insufficient liquidity: Average dollar volume did not reach the threshold.");
+                }
+            } else {
+                throw new Exception("No valid volume data for liquidity check.");
+            }
         } else {
             name = oldTicker.getName(false);
             exchange = oldTicker.getExchange();
