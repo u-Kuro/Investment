@@ -1,5 +1,6 @@
 package com.example.investment.model.ticker;
 
+import static com.example.investment.util.Constants.ASSET_DURATION_DAYS;
 import static com.example.investment.util.Constants.ASSET_DURATION_UNTIL_NEXT_UPDATE_MS;
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
@@ -37,7 +38,9 @@ public class TickerData implements Serializable {
         @NonNull BigDecimal dpSumNum,
         @NonNull BigDecimal dpSumDen,
         @NonNull BigDecimal dbSumNum,
-        @NonNull BigDecimal dbSumDen
+        @NonNull BigDecimal dbSumDen,
+        @NonNull BigDecimal sumDollarVol,
+        @NonNull BigDecimal sumDollarVolLen
     ) implements Serializable { @Serial private static final long serialVersionUID = 1L; }
 
     public TickerData(
@@ -202,6 +205,33 @@ public class TickerData implements Serializable {
             .subtract(adjustedDensePrice, DECIMAL128)
             .divide(adjustedDensePrice, DECIMAL128)
             .multiply(HUNDRED, DECIMAL128);
+    }
+
+    public BigDecimal getDailyDollarVolume() {
+        Long newestTimestampSeconds = null;
+        FixedHistoricalData newestFixedHistoricalData = null;
+        Long assetDurationDays = null;
+
+        for (String interval : ASSET_INTERVALS) {
+            FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
+            if (fixedHistoricalData != null) {
+                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                    newestTimestampSeconds = updatedAtTimestampSeconds;
+                    newestFixedHistoricalData = fixedHistoricalData;
+                    assetDurationDays = ASSET_DURATION_DAYS.get(interval);
+                }
+            }
+        }
+
+        if (newestFixedHistoricalData != null && assetDurationDays != null) {
+            @NonNull BigDecimal sumDollarVol = newestFixedHistoricalData.sumDollarVol();
+            @NonNull BigDecimal sumDollarVolLen = newestFixedHistoricalData.sumDollarVolLen();
+            return sumDollarVol.divide(sumDollarVolLen, DECIMAL128)
+                .divide(BigDecimal.valueOf(assetDurationDays), DECIMAL128);
+        } else {
+            return BigDecimal.ZERO;
+        }
     }
 
     public @NonNull String getPriceState() {

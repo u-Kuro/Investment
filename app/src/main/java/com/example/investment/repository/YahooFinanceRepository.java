@@ -3,13 +3,9 @@ package com.example.investment.repository;
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
-import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
-import static com.example.investment.util.Constants.MINIMUM_LIQUIDITY_RATIO;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.PREFS_NAME;
-import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.SCREENER_COUNT;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
@@ -26,7 +22,6 @@ import static java.lang.Double.isFinite;
 import static java.math.MathContext.DECIMAL128;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -74,7 +69,7 @@ public class YahooFinanceRepository {
             listener.onProgress(0, 0);
 
             // Get new tickers from screeners
-            Map<String, FetchSymbolsResult> newSymbolsMap = fetchTickers(context);
+            Map<String, FetchSymbolsResult> newSymbolsMap = fetchTickers();
 
             // Load old ticker data record if doing partial refresh
             if (!isFullRefresh) {
@@ -202,10 +197,12 @@ public class YahooFinanceRepository {
 
         // Initialize fixed historical data
         Long updatedAtTimestampSeconds = null;
-        @NonNull BigDecimal DP_S_num = BigDecimal.ZERO;
-        @NonNull BigDecimal DP_S_den = BigDecimal.ZERO;
-        @NonNull BigDecimal DB_S_num = BigDecimal.ZERO;
-        @NonNull BigDecimal DB_S_den = BigDecimal.ZERO;
+        @NonNull BigDecimal dpSumNum = BigDecimal.ZERO;
+        @NonNull BigDecimal dpSumDen = BigDecimal.ZERO;
+        @NonNull BigDecimal dbSumNum = BigDecimal.ZERO;
+        @NonNull BigDecimal dbSumDen = BigDecimal.ZERO;
+        @NonNull BigDecimal sumDollarVol = BigDecimal.ZERO;
+        @NonNull BigDecimal sumDollarVolLen = BigDecimal.ZERO;
 
         // Update all data
         if (SHOULD_UPDATE_ALL_DATA) {
@@ -215,31 +212,6 @@ public class YahooFinanceRepository {
                 try { exchange = meta.getString("fullExchangeName"); } catch (Exception ignored) {}
             } catch (Exception ignored) {}
             fixedHistoricalDataMap = new HashMap<>();
-
-            // Filter out stocks with insufficient trading volume relative to market cap
-            double totalDollarVolume = 0;
-            int totalDollarVolumeLen = 0;
-            for (int i = 0; i < Math.min(apiVolumes.length(), apiCloses.length()); i++) {
-                try {
-                    long volume = apiVolumes.getLong(i);
-                    double close = apiCloses.getDouble(i);
-                    if (volume > 0 && close > 0 && isFinite(volume) && isFinite(close)) {
-                        totalDollarVolume += volume * close;
-                        totalDollarVolumeLen++;
-                    }
-                } catch (Exception ignored) {}
-            }
-            if (totalDollarVolume > 0 && totalDollarVolumeLen > 0) {
-                Double minimumLiquidityRatio = MINIMUM_LIQUIDITY_RATIO.get(interval);
-                if (minimumLiquidityRatio == null) throw new NullPointerException("Minimum liquidity ratio expected to be Non-Null.");
-                double averageDollarVolume = totalDollarVolume / totalDollarVolumeLen;
-                double dollarVolumeThreshold = newSymbolEntryValue.marketCap * minimumLiquidityRatio; // 1D Default: 0.01%
-                if (averageDollarVolume < dollarVolumeThreshold) {
-                    throw new Exception("Insufficient liquidity: Average dollar volume did not reach the threshold.");
-                }
-            } else {
-                throw new Exception("No valid volume data for liquidity check.");
-            }
         } else {
             name = oldTicker.getName(false);
             exchange = oldTicker.getExchange();
@@ -254,10 +226,12 @@ public class YahooFinanceRepository {
                     throw new NullPointerException("Fixed historical data \""+interval+"\" is expected to be Non-Null");
                 }
                 updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
-                DP_S_num = fixedHistoricalData.dpSumNum();
-                DP_S_den = fixedHistoricalData.dpSumDen();
-                DB_S_num = fixedHistoricalData.dbSumNum();
-                DB_S_den = fixedHistoricalData.dbSumDen();
+                dpSumNum = fixedHistoricalData.dpSumNum();
+                dpSumDen = fixedHistoricalData.dpSumDen();
+                dbSumNum = fixedHistoricalData.dbSumNum();
+                dbSumDen = fixedHistoricalData.dbSumDen();
+                sumDollarVol = fixedHistoricalData.sumDollarVol();
+                sumDollarVolLen = fixedHistoricalData.sumDollarVolLen();
             }
         }
 
@@ -316,21 +290,21 @@ public class YahooFinanceRepository {
                         @NonNull BigDecimal midPoint = bHigh.add(bLow, DECIMAL128).divide(TWO, DECIMAL128);
 
                         // Calculate DP increments
-                        @NonNull BigDecimal DP_num_inc;
-                        @NonNull BigDecimal D_den_inc;
+                        @NonNull BigDecimal dpNumInc;
+                        @NonNull BigDecimal dDenInc;
                         if (barRange.compareTo(BigDecimal.ZERO) > 0) {
-                            D_den_inc = bVol.multiply(barRange, DECIMAL128);
+                            dDenInc = bVol.multiply(barRange, DECIMAL128);
                         } else {
-                            D_den_inc = bVol;
+                            dDenInc = bVol;
                         }
-                        DP_num_inc = D_den_inc.multiply(midPoint, DECIMAL128);
+                        dpNumInc = dDenInc.multiply(midPoint, DECIMAL128);
 
-                        DP_S_num = DP_S_num.add(DP_num_inc, DECIMAL128);
-                        DP_S_den = DP_S_den.add(D_den_inc, DECIMAL128);
+                        dpSumNum = dpSumNum.add(dpNumInc, DECIMAL128);
+                        dpSumDen = dpSumDen.add(dDenInc, DECIMAL128);
 
                         // Calculate DB increments
-                        @NonNull BigDecimal densePrice = DP_S_num.divide(DP_S_den, DECIMAL128);
-                        @NonNull BigDecimal DB_num_inc;
+                        @NonNull BigDecimal densePrice = dpSumNum.divide(dpSumDen, DECIMAL128);
+                        @NonNull BigDecimal dbNumInc;
                         @NonNull BigDecimal pctDif;
 
                         if (barRange.compareTo(BigDecimal.ZERO) > 0) {
@@ -379,7 +353,7 @@ public class YahooFinanceRepository {
                                     ), DECIMAL128
                                 ).divide(barRange, DECIMAL128);
                             }
-                            DB_num_inc = bVol.multiply(pctDif, DECIMAL128).multiply(barRange, DECIMAL128);
+                            dbNumInc = bVol.multiply(pctDif, DECIMAL128).multiply(barRange, DECIMAL128);
                         } else {
                             // Zero bar range
                             pctDif = midPoint.subtract(densePrice, DECIMAL128).abs()
@@ -387,11 +361,25 @@ public class YahooFinanceRepository {
                                     midPoint.add(densePrice, DECIMAL128)
                                     .divide(TWO, DECIMAL128), DECIMAL128
                                 );
-                            DB_num_inc = bVol.multiply(pctDif, DECIMAL128);
+                            dbNumInc = bVol.multiply(pctDif, DECIMAL128);
                         }
 
-                        DB_S_num = DB_S_num.add(DB_num_inc, DECIMAL128);
-                        DB_S_den = DB_S_den.add(D_den_inc, DECIMAL128);
+                        dbSumNum = dbSumNum.add(dbNumInc, DECIMAL128);
+                        dbSumDen = dbSumDen.add(dDenInc, DECIMAL128);
+                    }
+
+                    double currentClose = apiCloses.getDouble(i);
+                    if (
+                        currentClose > 0 && isFinite(currentClose)
+                        && currentVol > 0 && isFinite(currentVol)
+                    ) {
+                        @NonNull BigDecimal bClose = BigDecimal.valueOf(currentClose);
+                        @NonNull BigDecimal bVol = BigDecimal.valueOf(currentVol);
+
+                        @NonNull BigDecimal dollarVolume = bClose.multiply(bVol, DECIMAL128);
+
+                        sumDollarVol = sumDollarVol.add(dollarVolume, DECIMAL128);
+                        sumDollarVolLen = sumDollarVolLen.add(BigDecimal.ONE, DECIMAL128);
                     }
                 }
             } catch (Exception ignored) {}
@@ -405,8 +393,9 @@ public class YahooFinanceRepository {
             || adjustmentFactor.compareTo(BigDecimal.ZERO) == 0
             // Checks for Historical Data
             || updatedAtTimestampSeconds == null
-            || DP_S_num.compareTo(BigDecimal.ZERO) == 0 || DP_S_den.compareTo(BigDecimal.ZERO) == 0
-            || DB_S_num.compareTo(BigDecimal.ZERO) == 0 || DB_S_den.compareTo(BigDecimal.ZERO) == 0
+            || dpSumNum.compareTo(BigDecimal.ZERO) == 0 || dpSumDen.compareTo(BigDecimal.ZERO) == 0
+            || dbSumNum.compareTo(BigDecimal.ZERO) == 0 || dbSumDen.compareTo(BigDecimal.ZERO) == 0
+            || sumDollarVol.compareTo(BigDecimal.ZERO) == 0 || sumDollarVolLen.compareTo(BigDecimal.ZERO) == 0
         ) {
             throw new Exception("Invalid History: Insufficient valid data points.");
         }
@@ -416,10 +405,12 @@ public class YahooFinanceRepository {
             interval,
             new FixedHistoricalData(
                 updatedAtTimestampSeconds,
-                DP_S_num,
-                DP_S_den,
-                DB_S_num,
-                DB_S_den
+                dpSumNum,
+                dpSumDen,
+                dbSumNum,
+                dbSumDen,
+                sumDollarVol,
+                sumDollarVolLen
             )
         );
 
@@ -559,13 +550,10 @@ public class YahooFinanceRepository {
 
         throw new Exception("Failed to fetch ticker data (no fetchTickerAttempts performed)");
     }
-    private Map<String, FetchSymbolsResult> fetchTickers(Context context) throws Exception {
+    private Map<String, FetchSymbolsResult> fetchTickers() throws Exception {
         Map<String, FetchSymbolsResult> symbols = new HashMap<>();
 
         String[] screeners = new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS };
-
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        long minMarketCap = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
 
         for (String screener : screeners) {
             if (Thread.currentThread().isInterrupted()) {
@@ -622,23 +610,16 @@ public class YahooFinanceRepository {
                     if (firstSymbol.equals(prevFirstSymbol)) break;
                     prevFirstSymbol = firstSymbol;
 
-                    boolean stopPaging = false;
                     for (int i = 0; i < length; i++) {
                         try {
                             JSONObject object = quotes.getJSONObject(i);
                             String symbol = object.getString("symbol");
                             long marketCap = object.getLong("marketCap");
                             if (!symbol.isEmpty() && marketCap > 0 && isFinite(marketCap)) {
-                                if (marketCap < minMarketCap) {
-                                    stopPaging = true;
-                                    break;
-                                }
                                 symbols.put(symbol, new FetchSymbolsResult(SCREENER_CRYPTO.equals(screener) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE, marketCap));
                             }
                         } catch (Exception ignored) {}
                     }
-
-                    if (stopPaging) break;
 
                     retryCount = 0;
                     start_index += length;

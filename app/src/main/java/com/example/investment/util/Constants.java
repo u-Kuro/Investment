@@ -13,6 +13,7 @@ public class Constants {
     public static final String PREF_FILTER_TYPE = "filterType";
     public static final String PREF_FILTER_STATUS = "filterStatus";
     public static final String PREF_FILTER_MARKET_CAP_THRESHOLD = "filterMarketCapThreshold";
+    public static final String PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD = "filterDailyDollarVolumeThreshold";
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
     public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
@@ -42,6 +43,12 @@ public class Constants {
         Map.entry("1wk", TimeUnit.DAYS.toMillis(14)), // 7 + 7
         Map.entry("1mo", TimeUnit.DAYS.toMillis(62)), // 31 + 31  (July 1 to Aug 31)
         Map.entry("3mo", TimeUnit.DAYS.toMillis(184)) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
+    );
+    public static final Map<String, Long> ASSET_DURATION_DAYS = Map.ofEntries(
+        Map.entry("1d", 1L), // 1
+        Map.entry("1wk", 7L), // 7
+        Map.entry("1mo", 31L), // 31 (July)
+        Map.entry("3mo", 92L) // 31 + 31 + 30 (July 1 to September 30)
     );
     public static final long PERIODIC_WORKER_UPDATE_BUFFER_MS = TimeUnit.DAYS.toMillis(1);
 
@@ -94,12 +101,7 @@ public class Constants {
 
     // Filter Defaults
     public static final long DEFAULT_MARKET_CAP_THRESHOLD = 10_000_000_000L; // $ 10 Billion
-    public static final Map<String, Double> MINIMUM_LIQUIDITY_RATIO = Map.ofEntries(
-        Map.entry("1d", 0.0001), // 0.01% * $ 10 Billion = $ 1 Million
-        Map.entry("1wk", 0.0001 * 7), // 7
-        Map.entry("1mo", 0.0001 * 31), // 31 (July)
-        Map.entry("3mo", 0.0001 * 92) // 31 + 31 + 30 (July 1 to September 30)
-    );
+    public static final long DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD = 1_000_000L; // $ 1 Million
 
     // Request Defaults
     public static final int MAX_FETCH_RETRY_COUNT = 3;

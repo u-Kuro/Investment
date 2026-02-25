@@ -33,24 +33,26 @@ import java.util.Locale;
 public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView nameText;
     private final ImageView typeIconImage;
-    private final TextView timeSpanText;
+    private final TextView marketCapText;
     private final TextView lastPriceText;
     private final TextView percentageIncreasePerDayText;
-    private final TextView marketCapText;
+    private final TextView dailyDollarVolumeText;
     private final TextView upperBandText;
-    private final TextView lowerBandText;
+    private final TextView timeSpanText;
     private TickerData currentTicker;
 
     public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
         super(itemView);
         nameText = itemView.findViewById(R.id.nameText);
         typeIconImage = itemView.findViewById(R.id.typeIconImage);
-        timeSpanText = itemView.findViewById(R.id.timeSpanText);
+
+        marketCapText = itemView.findViewById(R.id.marketCapText);
         lastPriceText = itemView.findViewById(R.id.lastPriceText);
         percentageIncreasePerDayText = itemView.findViewById(R.id.percentageIncreasePerDayText);
-        marketCapText = itemView.findViewById(R.id.marketCapText);
+
+        dailyDollarVolumeText = itemView.findViewById(R.id.dailyDollarVolumeText);
         upperBandText = itemView.findViewById(R.id.upperBandText);
-        lowerBandText = itemView.findViewById(R.id.lowerBandText);
+        timeSpanText = itemView.findViewById(R.id.timeSpanText);
 
         if (listener != null) {
             itemView.setOnClickListener(v -> listener.onTickerClick(currentTicker));
@@ -89,7 +91,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             typeIconImage.setVisibility(View.GONE);
         }
 
-        timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
+        marketCapText.setText(PriceUtils.formatPrice(ticker.getMarketCap()));
         lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastAdjustedClose()));
         percentageIncreasePerDayText.setText(
             String.format(
@@ -99,9 +101,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             )
         );
 
-        marketCapText.setText(NumberUtils.formatNumber(ticker.getMarketCap()));
+        dailyDollarVolumeText.setText(PriceUtils.formatPrice(ticker.getDailyDollarVolume()));
         upperBandText.setText(PriceUtils.formatPrice(ticker.getUpperBand()));
-        lowerBandText.setText(PriceUtils.formatPrice(ticker.getLowerBand()));
+        timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
 
         if (isDataStale) {
             nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.slate_grey));
@@ -124,10 +126,8 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
 
         if (ticker.getUpperBand().compareTo(ticker.getLowerBand()) < 0) {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
-            lowerBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
-            lowerBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
         MaterialCardView cardView = (MaterialCardView) itemView;

@@ -63,7 +63,7 @@
             android:useDefaultMargins="true">
 
             <TextView
-                android:id="@+id/timeSpanText"
+                android:id="@+id/marketCapText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -86,8 +86,8 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDayText"
-                app:layout_constraintLeft_toRightOf="@id/timeSpanText" />
+                app:layout_constraintLeft_toRightOf="@id/marketCapText"
+                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDayText" />
 
             <TextView
                 android:id="@+id/percentageIncreasePerDayText"
@@ -100,8 +100,8 @@
                 android:ellipsize="end"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/lastPriceText" />
+                app:layout_constraintLeft_toRightOf="@id/lastPriceText"
+                app:layout_constraintRight_toRightOf="parent" />
 
         </GridLayout>
 
@@ -114,7 +114,7 @@
             android:useDefaultMargins="true">
 
             <TextView
-                android:id="@+id/marketCapText"
+                android:id="@+id/dailyDollarVolumeText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -138,11 +138,11 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toLeftOf="@id/marketCapText"
-                app:layout_constraintRight_toLeftOf="@id/lowerBandText" />
+                app:layout_constraintLeft_toRightOf="@id/dailyDollarVolumeText"
+                app:layout_constraintRight_toLeftOf="@id/timeSpanText" />
 
             <TextView
-                android:id="@+id/lowerBandText"
+                android:id="@+id/timeSpanText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -152,8 +152,8 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintRight_toRightOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/upperBandText" />
+                app:layout_constraintLeft_toRightOf="@id/upperBandText"
+                app:layout_constraintRight_toRightOf="parent" />
 
         </GridLayout>
 

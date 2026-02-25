@@ -6,6 +6,7 @@ import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_REC
 import static com.example.investment.util.Constants.CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA;
 import static com.example.investment.util.Constants.CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA;
+import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.FILE_RECORD_LEADING_TICKERS;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RISK;
 import static com.example.investment.util.Constants.CHANNEL_ID_INVESTMENT_OPPORTUNITY;
@@ -28,6 +29,7 @@ import static com.example.investment.util.Constants.CHANNEL_NAME_NEW_LEADING_ASS
 import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
 import static com.example.investment.util.Constants.OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
 import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
@@ -58,6 +60,7 @@ import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -243,10 +246,13 @@ public class TickerService extends Service {
 
         // Get new leading tickers
         long filterMarketCapThreshold = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        long filterDailyDollarVolumeThreshold = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t ->
-                // Market Cap is Above Limit (Default of $10B)
+                // Market Cap is Above Limit
                 t.getMarketCap() >= filterMarketCapThreshold
+                // Daily Dollar Volume is Above Limit
+                && t.getDailyDollarVolume().compareTo(BigDecimal.valueOf(filterDailyDollarVolumeThreshold)) >= 0
                 // Asset is Not a Risk
                 && !t.getPriceState().equals(PRICE_BELOW)
             )

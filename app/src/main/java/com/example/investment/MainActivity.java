@@ -3,8 +3,10 @@ package com.example.investment;
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
+import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_STATUS;
 import static com.example.investment.util.Constants.PREF_FILTER_TYPE;
@@ -77,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView filterStatusImage;
     private boolean filterStatus = false;
     private long filterMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
+    private long filterDailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
     private ImageView stopProcessingImage;
     private String dataRefreshType;
     private boolean isManuallyUpdated = false;
@@ -165,8 +168,8 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        ImageView editMarketCapImage = findViewById(R.id.editMarketCapImage);
-        editMarketCapImage.setOnClickListener(v -> showMarketCapThresholdDialog());
+        ImageView editThresholdsImage = findViewById(R.id.editThresholdsImage);
+        editThresholdsImage.setOnClickListener(v -> showThresholdsDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -437,6 +440,7 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
         filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        filterDailyDollarVolumeThreshold = prefs.getLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
 
         ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
@@ -450,6 +454,7 @@ public class MainActivity extends AppCompatActivity {
         adapter.setStatusFilter(filterStatus);
         adapter.setTypeFilter(typeFilterSpinner.getSelectedItem().toString());
         adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
+        adapter.setDailyDollarVolumeThresholdFilter(filterDailyDollarVolumeThreshold);
 
         filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
 
@@ -491,32 +496,52 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showMarketCapThresholdDialog() {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_market_cap_threshold, null);
+    private void showThresholdsDialog() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_thresholds, null);
+
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
+        EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
+
         marketCapThresholdInput.setText(NumberUtils.toFullNumericString(filterMarketCapThreshold));
+        dailyDollarVolumeThresholdInput.setText(NumberUtils.toFullNumericString(filterDailyDollarVolumeThreshold));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("Market Cap Threshold")
+            .setTitle(getResources().getText(R.string.edit_thresholds))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
-                    String input = marketCapThresholdInput.getText().toString().trim();
+                    SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+
+                    String marketCapThreshold = marketCapThresholdInput.getText().toString().trim();
                     long newMarketCapThreshold;
-                    if (input.isEmpty()) {
+                    if (marketCapThreshold.isEmpty()) {
                         newMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
                     } else {
-                        newMarketCapThreshold = Long.parseLong(marketCapThresholdInput.getText().toString());
+                        newMarketCapThreshold = Long.parseLong(marketCapThreshold);
                     }
                     if (newMarketCapThreshold > 0) {
                         filterMarketCapThreshold = newMarketCapThreshold;
                         adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
-                        SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
                         editor.putLong(PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold);
                         editor.apply();
-                        Toast.makeText(this, "Market Cap Threshold Updated", Toast.LENGTH_SHORT).show();
                     } else {
                         Toast.makeText(this, "Market Cap Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
+                    }
+
+                    String dailyDollarVolumeThreshold = dailyDollarVolumeThresholdInput.getText().toString().trim();
+                    long newDailyDollarVolumeThreshold;
+                    if (dailyDollarVolumeThreshold.isEmpty()) {
+                        newDailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
+                    } else {
+                        newDailyDollarVolumeThreshold = Long.parseLong(dailyDollarVolumeThreshold);
+                    }
+                    if (newDailyDollarVolumeThreshold > 0) {
+                        filterDailyDollarVolumeThreshold = newDailyDollarVolumeThreshold;
+                        adapter.setDailyDollarVolumeThresholdFilter(filterDailyDollarVolumeThreshold);
+                        editor.putLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, filterDailyDollarVolumeThreshold);
+                        editor.apply();
+                    } else {
+                        Toast.makeText(this, "Daily Dollar Volume Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
                     }
                 } catch (NumberFormatException e) {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();

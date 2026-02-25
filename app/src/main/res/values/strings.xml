@@ -10,5 +10,6 @@
     <string name="stop_processing">Stop Processing</string>
     <string name="na">NA</string>
     <string name="market_cap_threshold">Market Cap Threshold</string>
-    <string name="edit_market_cap_threshold">Edit Market Cap Threshold</string>
+    <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
+    <string name="edit_thresholds">Edit Thresholds</string>
 </resources>

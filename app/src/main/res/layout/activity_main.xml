@@ -59,19 +59,19 @@
                     android:contentDescription="@string/stop_processing"
                     android:clickable="true"
                     android:focusable="true"
-                    app:layout_constraintRight_toLeftOf="@id/editMarketCapImage"
+                    app:layout_constraintRight_toLeftOf="@id/editThresholdsImage"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toBottomOf="parent" />
 
-<ImageView
-                    android:id="@+id/editMarketCapImage"
+                <ImageView
+                    android:id="@+id/editThresholdsImage"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_centerVertical="true"
                     android:layout_gravity="end"
                     android:padding="12dp"
                     android:src="@drawable/edit"
-                    android:contentDescription="@string/edit_market_cap_threshold"
+                    android:contentDescription="@string/edit_thresholds"
                     android:clickable="true"
                     android:focusable="true"
                     app:layout_constraintRight_toLeftOf="@id/statusFilterImage"

@@ -20,6 +20,7 @@ import com.example.investment.model.adapter.diffcallback.TickerDiffCallback;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,6 +32,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private String typeFilter = "All";
     private boolean statusFilter = false;
     private long marketCapThresholdFilter;
+    private long dailyDollarVolumeThresholdFilter;
     private OnTickerClickListener clickListener;
     private OnTickerLongClickListener longClickListener;
 
@@ -93,21 +95,30 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         });
     }
 
+    public void setDailyDollarVolumeThresholdFilter(long dailyDollarVolumeThreshold) {
+        mainHandler.post(() -> {
+            this.dailyDollarVolumeThresholdFilter = dailyDollarVolumeThreshold;
+            applyFilters();
+        });
+    }
+
     private void applyFilters() {
         List<TickerData> filteredList = originalTickers.stream()
-                .filter(ticker -> {
-                    boolean typeMatch = typeFilter.equals("All")
-                        || typeFilter.equals("Crypto") && CRYPTOCURRENCY_TYPE.equals(ticker.getType())
-                        || typeFilter.equals("Stock") && STOCK_TYPE.equals(ticker.getType());
+            .filter(ticker -> {
+                boolean typeMatch = typeFilter.equals("All")
+                    || typeFilter.equals("Crypto") && CRYPTOCURRENCY_TYPE.equals(ticker.getType())
+                    || typeFilter.equals("Stock") && STOCK_TYPE.equals(ticker.getType());
 
-                    boolean statusMatch = !statusFilter
-                        || ticker.getPriceState().equals(PRICE_ABOVE);
+                boolean statusMatch = !statusFilter
+                    || ticker.getPriceState().equals(PRICE_ABOVE);
 
-                    boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
+                boolean marketCapThresholdMatch = ticker.getMarketCap() >= marketCapThresholdFilter;
 
-                    return typeMatch && statusMatch && marketCapThresholdMatch;
-                })
-                .collect(Collectors.toList());
+                boolean dailyDollarVolumeThresholdMatch = ticker.getDailyDollarVolume().compareTo(BigDecimal.valueOf(dailyDollarVolumeThresholdFilter)) >= 0;
+
+                return typeMatch && statusMatch && marketCapThresholdMatch && dailyDollarVolumeThresholdMatch;
+            })
+            .collect(Collectors.toList());
 
         setFilteredTickers(filteredList);
     }
