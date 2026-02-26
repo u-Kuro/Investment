@@ -34,7 +34,8 @@ public class TickerDiffCallback extends DiffUtil.Callback {
         if (oldTicker == null || newTicker == null) {
             return false;
         }
-        return oldTicker.equals(newTicker);
+
+        return oldTicker.getSymbol().equals(newTicker.getSymbol());
     }
 
     @Override
@@ -45,6 +46,7 @@ public class TickerDiffCallback extends DiffUtil.Callback {
         if (oldTicker == null || newTicker == null) {
             return false;
         }
-        return oldTicker.equals(newTicker);
+
+        return oldTicker.customEquals(newTicker);
     }
 } 

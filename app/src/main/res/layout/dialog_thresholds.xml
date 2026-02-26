@@ -1,26 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingHorizontal="24dp"
     android:paddingVertical="16dp">
 
-    <EditText
-        android:id="@+id/marketCapThresholdInput"
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="number"
-        android:hint="@string/market_cap_threshold"
-        android:importantForAutofill="no"
-        android:layout_marginBottom="16dp" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        app:endIconMode="clear_text">
 
-    <EditText
-        android:id="@+id/dailyDollarVolumeThresholdInput"
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/marketCapThresholdInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:hint="@string/market_cap_threshold"
+            android:textColorHint="@color/off_white"
+            android:textColor="@color/white"
+            android:background="@color/transparent"
+            android:inputType="number"
+            android:maxLines="1"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:importantForAutofill="no" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:inputType="number"
-        android:hint="@string/daily_dollar_volume_threshold"
-        android:importantForAutofill="no" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        app:endIconMode="clear_text">
 
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/dailyDollarVolumeThresholdInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:hint="@string/daily_dollar_volume_threshold"
+            android:textColorHint="@color/off_white"
+            android:textColor="@color/white"
+            android:background="@color/transparent"
+            android:inputType="number"
+            android:maxLines="1"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:importantForAutofill="no" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:endIconMode="clear_text">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/ageInSecondsThresholdInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:hint="@string/age_in_seconds_threshold"
+            android:textColorHint="@color/off_white"
+            android:textColor="@color/white"
+            android:background="@color/transparent"
+            android:inputType="number"
+            android:maxLines="1"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:importantForAutofill="no" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 </LinearLayout> 

@@ -10,6 +10,7 @@ import static com.example.investment.util.Constants.SCREENER_COUNT;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
+import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
@@ -17,8 +18,7 @@ import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static com.example.investment.util.NetworkUtils.getThrottleDelay;
 import static com.example.investment.util.FileUtils.loadObject;
 import static com.example.investment.util.FileUtils.saveObject;
-import static com.example.investment.util.NumberUtils.safeLog;
-import static java.lang.Double.isFinite;
+import static com.example.investment.util.BigDecimalUtils.safeLog;
 import static java.math.MathContext.DECIMAL128;
 
 import android.content.Context;
@@ -32,11 +32,11 @@ import com.example.investment.model.ticker.TickerData.FixedHistoricalData;
 import com.example.investment.util.Logger;
 import com.example.investment.model.TickerDataRecord;
 import com.example.investment.model.listener.TickerUpdateListener;
-import com.example.investment.util.NumberUtils;
 import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,7 +52,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class YahooFinanceRepository {
-    private record FetchSymbolsResult(@NonNull String type, long marketCap) {}
+    private record FetchSymbolsResult(@NonNull String type, BigDecimal marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
     @NonNull private final OkHttpClient client = new OkHttpClient();
@@ -184,19 +184,23 @@ public class YahooFinanceRepository {
         JSONArray apiOpens = quote.getJSONArray("open");
         JSONArray apiHighs = quote.getJSONArray("high");
         JSONArray apiLows = quote.getJSONArray("low");
+        // Convert since Cryptocurrency volume unit is in USD
         JSONArray apiVolumes = quote.getJSONArray("volume");
+        if (newSymbolEntryValue.type.equals(CRYPTOCURRENCY_TYPE)) {
+            apiVolumes = convertCryptoVolumeToUnits(apiVolumes, apiCloses);
+        }
 
         // Initialize ticker data
         String name = null;
         String exchange = null;
-        Long firstTradeTimestampSeconds = null;
+        BigInteger firstTradeTimestampSeconds = null;
         BigDecimal firstOpen = null;
         BigDecimal lastAdjustedClose = null;
         BigDecimal adjustmentFactor = null;
         final @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap;
 
         // Initialize fixed historical data
-        Long updatedAtTimestampSeconds = null;
+        BigInteger updatedAtTimestampSeconds = null;
         @NonNull BigDecimal dpSumNum = BigDecimal.ZERO;
         @NonNull BigDecimal dpSumDen = BigDecimal.ZERO;
         @NonNull BigDecimal dbSumNum = BigDecimal.ZERO;
@@ -240,52 +244,51 @@ public class YahooFinanceRepository {
         int startIndex = SHOULD_UPDATE_ALL_DATA ? 0 : 1;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
-                double currentO = apiOpens.getDouble(i);
-                double currentAC = apiAdjCloses.getDouble(i);
-                double currentC = apiCloses.getDouble(i);
-                long currentTs = apiTimestamps.getLong(i);
+                @NonNull BigDecimal bOpen = new BigDecimal(apiOpens.getString(i));
+                @NonNull BigDecimal bAdjClose = new BigDecimal(apiAdjCloses.getString(i));
+                @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
+                @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
 
                 if (
-                    currentO > 0 && isFinite(currentO)
-                    && currentAC > 0 && isFinite(currentAC)
-                    && currentC > 0 && isFinite(currentC)
-                    && currentTs > 0 && isFinite(currentTs) && System.currentTimeMillis() > (currentTs * 1000)
+                    bOpen.compareTo(BigDecimal.ZERO) > 0
+                    && bAdjClose.compareTo(BigDecimal.ZERO) > 0
+                    && bClose.compareTo(BigDecimal.ZERO) > 0
+                    && bTimestamp.compareTo(BigInteger.ZERO) > 0
+                    && BigInteger.valueOf(System.currentTimeMillis()).compareTo(bTimestamp.multiply(THOUSAND_BI)) > 0
                 ) {
                     // Track very first trade date and its corresponding opening price
-                    if (firstTradeTimestampSeconds == null || firstTradeTimestampSeconds > currentTs) {
-                        firstTradeTimestampSeconds = currentTs;
-                        firstOpen = BigDecimal.valueOf(currentO);
+                    if (firstTradeTimestampSeconds == null || firstTradeTimestampSeconds.compareTo(bTimestamp) > 0) {
+                        firstTradeTimestampSeconds = bTimestamp;
+                        firstOpen = bOpen;
                     }
 
                     // Always update last adjusted close and adjustment factor with the latest value
-                    lastAdjustedClose = BigDecimal.valueOf(currentAC);
-                    adjustmentFactor = lastAdjustedClose.divide(BigDecimal.valueOf(currentC), DECIMAL128);
+                    lastAdjustedClose = bAdjClose;
+                    adjustmentFactor = lastAdjustedClose.divide(bClose, DECIMAL128);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception error) {
+                Logger.error(error.getMessage(), error);
+            }
         }
 
         // For fixed historical data only use non changing data (before last bar || length - 1)
         for (int i = startIndex; i < apiHighs.length() - 1; i++) {
             try {
-                long currentTs = apiTimestamps.getLong(i);
+                @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
 
                 // If timestamp is valid then its assumed to be updated even if other data are null
-                if (currentTs > 0 && isFinite(currentTs) && (updatedAtTimestampSeconds == null || currentTs > updatedAtTimestampSeconds)) {
-                    updatedAtTimestampSeconds = currentTs;
+                if (bTimestamp.compareTo(BigInteger.ZERO) > 0 && (updatedAtTimestampSeconds == null || bTimestamp.compareTo(updatedAtTimestampSeconds) > 0)) {
+                    updatedAtTimestampSeconds = bTimestamp;
 
                     // Still, only add historical summed values if its valid (it's a skipped bar if either one is null)
-                    double currentHigh = apiHighs.getDouble(i);
-                    double currentLow = apiLows.getDouble(i);
-                    long currentVol = apiVolumes.getLong(i);
+                    @NonNull BigDecimal bHigh = new BigDecimal(apiHighs.getString(i));
+                    @NonNull BigDecimal bLow = new BigDecimal(apiLows.getString(i));
+                    @NonNull BigDecimal bVol = new BigDecimal(apiVolumes.getString(i));
                     if (
-                        currentHigh > 0 && isFinite(currentHigh)
-                        && currentLow > 0 && isFinite(currentLow)
-                        && currentVol > 0 && isFinite(currentVol)
+                        bHigh.compareTo(BigDecimal.ZERO) > 0
+                        && bLow.compareTo(BigDecimal.ZERO) > 0
+                        && bVol.compareTo(BigDecimal.ZERO) > 0
                     ) {
-                        @NonNull BigDecimal bHigh = BigDecimal.valueOf(currentHigh);
-                        @NonNull BigDecimal bLow = BigDecimal.valueOf(currentLow);
-                        @NonNull BigDecimal bVol = BigDecimal.valueOf(currentVol);
-
                         @NonNull BigDecimal barRange = bHigh.subtract(bLow, DECIMAL128);
                         @NonNull BigDecimal midPoint = bHigh.add(bLow, DECIMAL128).divide(TWO, DECIMAL128);
 
@@ -368,29 +371,25 @@ public class YahooFinanceRepository {
                         dbSumDen = dbSumDen.add(dDenInc, DECIMAL128);
                     }
 
-                    double currentClose = apiCloses.getDouble(i);
+                    @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
                     if (
-                        currentClose > 0 && isFinite(currentClose)
-                        && currentVol > 0 && isFinite(currentVol)
+                        bClose.compareTo(BigDecimal.ZERO) > 0
+                        && bVol.compareTo(BigDecimal.ZERO) > 0
                     ) {
-                        @NonNull BigDecimal bClose = BigDecimal.valueOf(currentClose);
-                        @NonNull BigDecimal bVol = BigDecimal.valueOf(currentVol);
-
                         @NonNull BigDecimal dollarVolume = bClose.multiply(bVol, DECIMAL128);
 
                         sumDollarVol = sumDollarVol.add(dollarVolume, DECIMAL128);
                         sumDollarVolLen = sumDollarVolLen.add(BigDecimal.ONE, DECIMAL128);
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception error) {
+                Logger.error(error.getMessage(), error);
+            }
         }
 
         // Final Validation
         if (
             firstTradeTimestampSeconds == null || firstOpen == null || lastAdjustedClose == null || adjustmentFactor == null
-            || firstOpen.compareTo(BigDecimal.ZERO) == 0
-            || lastAdjustedClose.compareTo(BigDecimal.ZERO) == 0
-            || adjustmentFactor.compareTo(BigDecimal.ZERO) == 0
             // Checks for Historical Data
             || updatedAtTimestampSeconds == null
             || dpSumNum.compareTo(BigDecimal.ZERO) == 0 || dpSumDen.compareTo(BigDecimal.ZERO) == 0
@@ -483,7 +482,7 @@ public class YahooFinanceRepository {
             FetchTickerAttempt fetchTickerAttempt = fetchTickerAttempts.get(i);
             final @NonNull String interval = fetchTickerAttempt.interval;
             final @NonNull String baseUrl = fetchTickerAttempt.baseUrl;
-            final long oldUpdatedAtTimestampSeconds;
+            final @NonNull String oldUpdatedAtTimestampSeconds;
             final boolean hasFixedHistoricalData;
             if (isFullRefresh || oldTicker == null) {
                 oldUpdatedAtTimestampSeconds = FIRST_TRADE_TIMESTAMP_SECONDS;
@@ -494,15 +493,15 @@ public class YahooFinanceRepository {
                     oldUpdatedAtTimestampSeconds = FIRST_TRADE_TIMESTAMP_SECONDS;
                     hasFixedHistoricalData = false;
                 } else {
-                    oldUpdatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                    oldUpdatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds().toString();
                     hasFixedHistoricalData = true;
                 }
             }
 
             String url = new UrlBuilder(baseUrl)
                 .addPath(symbol)
-                .addParam("period1", NumberUtils.toFullNumericString(oldUpdatedAtTimestampSeconds))
-                .addParam("period2", NumberUtils.toFullNumericString(Math.floor(System.currentTimeMillis() / 1000D) + 2678400L))
+                .addParam("period1", oldUpdatedAtTimestampSeconds)
+                .addParam("period2", String.valueOf((System.currentTimeMillis() / 1000L) + 2678400L))
                 .addParam("interval", interval)
                 .addParam("includePrePost", "true")
                 .addParam("events", "div|split|earn")
@@ -570,11 +569,11 @@ public class YahooFinanceRepository {
                 }
 
                 String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
-                    .addParam("count", NumberUtils.toFullNumericString(SCREENER_COUNT))
+                    .addParam("count", String.valueOf(SCREENER_COUNT))
                     .addParam("scrIds", screener)
                     .addParam("sortField", "intradaymarketcap")
                     .addParam("sortType", "DESC")
-                    .addParam("start", NumberUtils.toFullNumericString(start_index))
+                    .addParam("start", String.valueOf(start_index))
                     .build();
 
                 Request request = new Request.Builder().url(url).build();
@@ -606,19 +605,23 @@ public class YahooFinanceRepository {
                     int length = quotes.length();
                     if (length < 1) break;
 
-                    String firstSymbol = quotes.getJSONObject(0).getString("symbol");
-                    if (firstSymbol.equals(prevFirstSymbol)) break;
+                    String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
+                    if (firstSymbol.equals(prevFirstSymbol)) {
+                        throw new Exception("Duplicate symbol was found.");
+                    }
                     prevFirstSymbol = firstSymbol;
 
                     for (int i = 0; i < length; i++) {
                         try {
                             JSONObject object = quotes.getJSONObject(i);
                             String symbol = object.getString("symbol");
-                            long marketCap = object.getLong("marketCap");
-                            if (!symbol.isEmpty() && marketCap > 0 && isFinite(marketCap)) {
+                            @NonNull BigDecimal marketCap = new BigDecimal(object.getString("marketCap"));
+                            if (!symbol.isEmpty() && marketCap.compareTo(BigDecimal.ZERO) > 0) {
                                 symbols.put(symbol, new FetchSymbolsResult(SCREENER_CRYPTO.equals(screener) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE, marketCap));
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception error) {
+                            Logger.error(error.getMessage(), error);
+                        }
                     }
 
                     retryCount = 0;
@@ -636,5 +639,24 @@ public class YahooFinanceRepository {
         }
 
         return symbols;
+    }
+
+    private JSONArray convertCryptoVolumeToUnits(JSONArray apiVolumes, JSONArray apiCloses) {
+        JSONArray convertedVolumes = new JSONArray();
+        for (int i = 0; i < apiVolumes.length(); i++) {
+            try {
+                @NonNull BigDecimal bVol = new BigDecimal(apiVolumes.getString(i));
+                @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
+                if (bVol.compareTo(BigDecimal.ZERO) > 0 && bClose.compareTo(BigDecimal.ZERO) > 0) {
+                    convertedVolumes.put(bVol.divide(bClose, DECIMAL128).toPlainString());
+                } else {
+                    convertedVolumes.put(JSONObject.NULL);
+                }
+            } catch (Exception ignored) {
+                convertedVolumes.put(JSONObject.NULL);
+            }
+        }
+
+        return convertedVolumes;
     }
 }

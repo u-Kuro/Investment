@@ -6,6 +6,7 @@ import androidx.work.Constraints;
 import androidx.work.NetworkType;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.WorkManager;
 
 import com.example.investment.worker.TickerWorker;
 
@@ -24,7 +25,7 @@ public class WorkerManager {
             .build())
         .build();
 
-        androidx.work.WorkManager.getInstance(context)
+        WorkManager.getInstance(context)
         .enqueueUniquePeriodicWork(
             TICKER_WORK_TAG,
             ExistingPeriodicWorkPolicy.KEEP,

@@ -3,19 +3,26 @@ package com.example.investment.model.ticker;
 import static com.example.investment.util.Constants.ASSET_DURATION_DAYS;
 import static com.example.investment.util.Constants.ASSET_DURATION_UNTIL_NEXT_UPDATE_MS;
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
+import static com.example.investment.util.Constants.MILLIS_PER_DAY;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.PERIODIC_WORKER_UPDATE_BUFFER_MS;
+import static com.example.investment.util.Constants.THOUSAND_BD;
+import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.DateUtils.calculateMarketActiveMillis;
 
 import static java.math.MathContext.DECIMAL128;
 
+import android.os.Build;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -27,14 +34,14 @@ public class TickerData implements Serializable {
     @NonNull private final String type;
     private final String name;
     private final String exchange;
-    private final long marketCap;
-    private final long firstTradeTimestampSeconds;
+    @NonNull private final BigDecimal marketCap;
+    @NonNull private final BigInteger firstTradeTimestampSeconds;
     @NonNull private final BigDecimal firstOpen;
     @NonNull private final BigDecimal lastAdjustedClose;
     @NonNull private final BigDecimal adjustmentFactor;
     @NonNull private final Map<String, FixedHistoricalData> fixedHistoricalDataMap;
     public record FixedHistoricalData(
-        long updatedAtTimestampSeconds,
+        @NonNull BigInteger updatedAtTimestampSeconds,
         @NonNull BigDecimal dpSumNum,
         @NonNull BigDecimal dpSumDen,
         @NonNull BigDecimal dbSumNum,
@@ -48,8 +55,8 @@ public class TickerData implements Serializable {
         @NonNull String type,
         String name,
         String exchange,
-        long marketCap,
-        long firstTradeTimestampSeconds,
+        @NonNull BigDecimal marketCap,
+        @NonNull BigInteger firstTradeTimestampSeconds,
         @NonNull BigDecimal firstOpen,
         @NonNull BigDecimal lastAdjustedClose,
         @NonNull BigDecimal adjustmentFactor,
@@ -76,8 +83,8 @@ public class TickerData implements Serializable {
         return name;
     }
     public String getExchange() { return exchange; }
-    public long getMarketCap() { return marketCap; }
-    public long getFirstTradeTimestampSeconds() { return firstTradeTimestampSeconds; }
+    public @NonNull BigDecimal getMarketCap() { return marketCap; }
+    public @NonNull BigInteger getFirstTradeTimestampSeconds() { return firstTradeTimestampSeconds; }
     public @NonNull BigDecimal getFirstOpen() { return firstOpen; }
     public @NonNull BigDecimal getLastAdjustedClose() { return lastAdjustedClose; }
     public @NonNull BigDecimal getAdjustmentFactor() { return adjustmentFactor; }
@@ -87,14 +94,14 @@ public class TickerData implements Serializable {
     }
 
     public FixedHistoricalData getNewestFixedHistoricalData() {
-        Long newestTimestampSeconds = null;
+        BigInteger newestTimestampSeconds = null;
         FixedHistoricalData newestFixedHistoricalData = null;
 
         for (String interval : ASSET_INTERVALS) {
             FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
             if (fixedHistoricalData != null) {
-                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
-                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                @NonNull BigInteger updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds.compareTo(newestTimestampSeconds) > 0) {
                     newestTimestampSeconds = updatedAtTimestampSeconds;
                     newestFixedHistoricalData = fixedHistoricalData;
                 }
@@ -103,14 +110,14 @@ public class TickerData implements Serializable {
 
         return newestFixedHistoricalData;
     }
-    public Long getNewestFixedHistoricalDataTimestampSeconds() {
-        Long newestTimestampSeconds = null;
+    public BigInteger getNewestFixedHistoricalDataTimestampSeconds() {
+        BigInteger newestTimestampSeconds = null;
 
         for (String interval : ASSET_INTERVALS) {
             FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
             if (fixedHistoricalData != null) {
-                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
-                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                @NonNull BigInteger updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds.compareTo(newestTimestampSeconds) > 0) {
                     newestTimestampSeconds = updatedAtTimestampSeconds;
                 }
             }
@@ -119,21 +126,21 @@ public class TickerData implements Serializable {
         return newestTimestampSeconds;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     public boolean areAllFixedHistoricalDataStale() {
-        long nowMs = System.currentTimeMillis();
+        @NonNull BigInteger nowMs = BigInteger.valueOf(System.currentTimeMillis());
 
-        for (Map.Entry<String, Long> entry : ASSET_DURATION_UNTIL_NEXT_UPDATE_MS.entrySet()) {
+        for (Map.Entry<String, BigInteger> entry : ASSET_DURATION_UNTIL_NEXT_UPDATE_MS.entrySet()) {
             String interval = entry.getKey();
-            long assetDurationUntilNextUpdateMs = entry.getValue();
+            BigInteger assetDurationUntilNextUpdateMs = entry.getValue();
             FixedHistoricalData data = getFixedHistoricalDataMap().get(interval);
 
             if (data == null) {
                 continue;
             }
 
-            long lastUpdateMs = data.updatedAtTimestampSeconds() * 1000L;
-
-            boolean isDataFresh = calculateMarketActiveMillis(lastUpdateMs, nowMs) <= (assetDurationUntilNextUpdateMs + PERIODIC_WORKER_UPDATE_BUFFER_MS);
+            @NonNull BigInteger lastUpdateMs = data.updatedAtTimestampSeconds().multiply(THOUSAND_BI);
+            boolean isDataFresh = calculateMarketActiveMillis(lastUpdateMs, nowMs).compareTo(assetDurationUntilNextUpdateMs.add(PERIODIC_WORKER_UPDATE_BUFFER_MS)) <= 0;
             if (isDataFresh) {
                 return false; // at least one interval is fresh — no notification
             }
@@ -178,12 +185,11 @@ public class TickerData implements Serializable {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     /** @noinspection unused*/
-    private static final BigDecimal MILLIS_IN_DAY = new BigDecimal("86400000");
-    /** @noinspection unused*/
     public @NonNull BigDecimal getPercentageIncreasePerDay() {
-        @NonNull BigDecimal numberOfDays = BigDecimal
-            .valueOf(System.currentTimeMillis() - (firstTradeTimestampSeconds * 1000L))
-            .divide(MILLIS_IN_DAY, DECIMAL128);
+        @NonNull BigDecimal numberOfDays = new BigDecimal(BigInteger
+            .valueOf(System.currentTimeMillis())
+            .subtract(firstTradeTimestampSeconds.multiply(THOUSAND_BI)))
+            .divide(new BigDecimal(MILLIS_PER_DAY), DECIMAL128);
 
         if (numberOfDays.compareTo(BigDecimal.ZERO) <= 0 || firstOpen.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
@@ -207,16 +213,16 @@ public class TickerData implements Serializable {
             .multiply(HUNDRED, DECIMAL128);
     }
 
-    public BigDecimal getDailyDollarVolume() {
-        Long newestTimestampSeconds = null;
+    public @NonNull BigDecimal getDailyDollarVolume() {
+        BigInteger newestTimestampSeconds = null;
         FixedHistoricalData newestFixedHistoricalData = null;
-        Long assetDurationDays = null;
+        BigInteger assetDurationDays = null;
 
         for (String interval : ASSET_INTERVALS) {
             FixedHistoricalData fixedHistoricalData = getFixedHistoricalDataMap().get(interval);
             if (fixedHistoricalData != null) {
-                long updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
-                if (newestTimestampSeconds == null || updatedAtTimestampSeconds > newestTimestampSeconds) {
+                @NonNull BigInteger updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
+                if (newestTimestampSeconds == null || updatedAtTimestampSeconds.compareTo(newestTimestampSeconds) > 0) {
                     newestTimestampSeconds = updatedAtTimestampSeconds;
                     newestFixedHistoricalData = fixedHistoricalData;
                     assetDurationDays = ASSET_DURATION_DAYS.get(interval);
@@ -225,13 +231,20 @@ public class TickerData implements Serializable {
         }
 
         if (newestFixedHistoricalData != null && assetDurationDays != null) {
+
             @NonNull BigDecimal sumDollarVol = newestFixedHistoricalData.sumDollarVol();
             @NonNull BigDecimal sumDollarVolLen = newestFixedHistoricalData.sumDollarVolLen();
+
             return sumDollarVol.divide(sumDollarVolLen, DECIMAL128)
-                .divide(BigDecimal.valueOf(assetDurationDays), DECIMAL128);
+                .divide(new BigDecimal(assetDurationDays), DECIMAL128);
         } else {
             return BigDecimal.ZERO;
         }
+    }
+
+    public @NonNull BigDecimal getAgeInSeconds() {
+        return BigDecimal.valueOf(System.currentTimeMillis()).divide(THOUSAND_BD, DECIMAL128)
+            .subtract(new BigDecimal(firstTradeTimestampSeconds));
     }
 
     public @NonNull String getPriceState() {
@@ -253,16 +266,16 @@ public class TickerData implements Serializable {
         return PRICE_ABOVE;
     }
 
-    public boolean equals(TickerData tickerData) {
+    public boolean customEquals(TickerData tickerData) {
         return symbol.equals(tickerData.symbol)
             && type.equals(tickerData.type)
             && Objects.equals(name, tickerData.name)
             && Objects.equals(exchange, tickerData.exchange)
-            && marketCap == tickerData.marketCap
-            && firstTradeTimestampSeconds == tickerData.firstTradeTimestampSeconds
-            && tickerData.firstOpen.compareTo(firstOpen) == 0
-            && tickerData.lastAdjustedClose.compareTo(lastAdjustedClose) == 0
-            && tickerData.adjustmentFactor.compareTo(adjustmentFactor) == 0
+            && marketCap.compareTo(tickerData.marketCap) == 0
+            && firstTradeTimestampSeconds.compareTo(tickerData.firstTradeTimestampSeconds) == 0
+            && firstOpen.compareTo(tickerData.firstOpen) == 0
+            && lastAdjustedClose.compareTo(tickerData.lastAdjustedClose) == 0
+            && adjustmentFactor.compareTo(tickerData.adjustmentFactor) == 0
             && Objects.equals(fixedHistoricalDataMap, tickerData.fixedHistoricalDataMap);
     }
 }

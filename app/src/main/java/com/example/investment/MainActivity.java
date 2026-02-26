@@ -3,13 +3,15 @@ package com.example.investment;
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
+import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
-import static com.example.investment.util.Constants.PREF_FILTER_STATUS;
 import static com.example.investment.util.Constants.PREF_FILTER_TYPE;
+import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
 
 import android.Manifest;
 import android.app.AlertDialog;
@@ -18,15 +20,21 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -54,9 +62,9 @@ import com.example.investment.util.Logger;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.service.TickerService;
 import com.example.investment.util.CustomTabsUtils;
-import com.example.investment.util.NumberUtils;
 
 import java.lang.ref.WeakReference;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -76,15 +84,17 @@ public class MainActivity extends AppCompatActivity {
     private TextView updateText;
     private ProgressBar progressBar;
     private static final int PERMISSION_REQUEST_CODE = 123;
-    private ImageView filterStatusImage;
-    private boolean filterStatus = false;
-    private long filterMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
-    private long filterDailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
+    private @NonNull BigDecimal filterMarketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
+    private @NonNull BigDecimal filterDailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+    private @NonNull BigDecimal filterAgeInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
     private ImageView stopProcessingImage;
     private String dataRefreshType;
     private boolean isManuallyUpdated = false;
     private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
     private RecyclerView recyclerView;
+    private ImageView searchIcon;
+    private LinearLayout searchBarContainer;
+    private EditText searchInput;
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
@@ -107,6 +117,10 @@ public class MainActivity extends AppCompatActivity {
         updateText = findViewById(R.id.updateText);
         progressBar = findViewById(R.id.progressBar);
 
+        searchIcon = findViewById(R.id.searchIcon);
+        searchBarContainer = findViewById(R.id.searchBarContainer);
+        searchInput = findViewById(R.id.searchInput);
+
         adapter = new TickerAdapter();
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -114,18 +128,18 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(() -> {
             if (isManuallyUpdated) {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-                    Toast.makeText(this, "Full data update started", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Full data update starting...", Toast.LENGTH_LONG).show();
                 }
                 manualUpdateTickerDataRecord(true);
             } else {
                 isManuallyUpdated = true;
+                Toast.makeText(this, "Incremental update starting...", Toast.LENGTH_LONG).show();
+                swipeRefreshLayout.setRefreshing(false);
                 manualUpdateTickerDataRecord(false);
             }
         });
 
         dataLoader = TickerDataLoader.getInstance();
-
-        autoLoadTickerDataRecord(true);
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
@@ -139,28 +153,26 @@ public class MainActivity extends AppCompatActivity {
         stopProcessingImage.setVisibility(View.GONE);
         stopProcessingImage.setOnClickListener(v -> {
             AlertDialog alertDialog = new AlertDialog.Builder(this)
-                .setTitle("Confirmation")
-                .setMessage("Do you want to cancel the update?")
-                .setPositiveButton("YES", (dialog, which) -> {
-                    Intent serviceIntent = new Intent(this, TickerService.class);
-                    stopService(serviceIntent);
+                    .setTitle("Confirmation")
+                    .setMessage("Do you want to cancel the update?")
+                    .setPositiveButton("YES", (dialog, which) -> {
+                        Intent serviceIntent = new Intent(this, TickerService.class);
+                        stopService(serviceIntent);
 
-                    Intent stopIntent = new Intent(this, TickerService.class);
-                    stopIntent.setAction(STOP_SERVICE_ACTION);
-                    startService(stopIntent);
+                        Intent stopIntent = new Intent(this, TickerService.class);
+                        stopIntent.setAction(STOP_SERVICE_ACTION);
+                        startService(stopIntent);
 
-                    stopProcessingImage.setVisibility(View.GONE);
-                    progressBar.setVisibility(View.GONE);
-                    progressBar.getLayoutParams().height = 0;
-                    progressBar.requestLayout();
-                    ((View) progressBar.getParent()).requestLayout();
+                        stopProcessingImage.setVisibility(View.GONE);
+                        progressBar.setVisibility(View.GONE);
+                        progressBar.getLayoutParams().height = 0;
+                        progressBar.requestLayout();
+                        ((View) progressBar.getParent()).requestLayout();
 
-                    autoLoadTickerDataRecord(false);
-
-                    dataRefreshType = null;
-                    isManuallyUpdated = false;
-                })
-                .create();
+                        dataRefreshType = null;
+                        isManuallyUpdated = false;
+                    })
+                    .create();
             Window dialogWindow = alertDialog.getWindow();
             if (dialogWindow != null) {
                 dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
@@ -176,13 +188,23 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (recyclerView.canScrollVertically(-1)) {
+                if (searchInput.hasFocus()) {
+                    searchInput.clearFocus();
+                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+                } else if (searchBarContainer.getVisibility() == View.VISIBLE) {
+                    searchBarContainer.setVisibility(View.GONE);
+                    searchIcon.setImageResource(R.drawable.search);
+                    searchInput.setText("");
+                } else if (recyclerView.canScrollVertically(-1)) {
                     recyclerView.scrollToPosition(0);
                 } else {
                     moveTaskToBack(true);
                 }
             }
         });
+
+        autoLoadTickerDataRecord(true);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -211,7 +233,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
-                Logger.error("Failed to retrieve data.", e);
+                Logger.error("Failed to load data.", e);
             }
         }).start();
     }
@@ -230,7 +252,8 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
-                Logger.error("Failed to retrieve data.", e);
+                Logger.error("Failed to update data.", e);
+                swipeRefreshLayout.setRefreshing(false);
             }
         }).start();
     }
@@ -240,9 +263,10 @@ public class MainActivity extends AppCompatActivity {
         intent.setAction(isFullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
 
         if (isManual) {
-            swipeRefreshLayout.setRefreshing(true);
+            if (isFullDataRefresh) {
+                swipeRefreshLayout.setRefreshing(false);
+            }
             startService(intent);
-            swipeRefreshLayout.setRefreshing(false);
         } else {
             startService(intent);
         }
@@ -252,8 +276,8 @@ public class MainActivity extends AppCompatActivity {
     private void updateLastUpdateTime(long timestamp) {
         if (timestamp > 0) {
             LocalDateTime updateTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(timestamp),
-                ZoneId.systemDefault()
+                    Instant.ofEpochMilli(timestamp),
+                    ZoneId.systemDefault()
             );
             LocalDateTime now = LocalDateTime.now();
             String timeAgo;
@@ -367,7 +391,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public static MainActivity getInstanceActivity() {
-        if (weakActivity!=null) {
+        if (weakActivity != null) {
             return weakActivity.get();
         } else {
             return null;
@@ -378,8 +402,8 @@ public class MainActivity extends AppCompatActivity {
         if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 requestPermissions(
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                    PERMISSION_REQUEST_CODE
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        PERMISSION_REQUEST_CODE
                 );
                 return;
             }
@@ -435,13 +459,12 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void setupFilters() {
         Spinner typeFilterSpinner = findViewById(R.id.typeFilterSpinner);
-        filterStatusImage = findViewById(R.id.statusFilterImage);
 
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        filterStatus = prefs.getBoolean(PREF_FILTER_STATUS, false);
-        filterMarketCapThreshold = prefs.getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        filterDailyDollarVolumeThreshold = prefs.getLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
-        int savedFilterPosition = prefs.getInt(PREF_FILTER_TYPE, 0);
+        SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        filterMarketCapThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        filterDailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        filterAgeInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+        int savedFilterPosition = sharedPref.getInt(PREF_FILTER_TYPE, 0);
 
         ArrayAdapter<CharSequence> filterAdapter = new ArrayAdapter<>(this,
             R.layout.spinner_item,
@@ -451,12 +474,10 @@ public class MainActivity extends AppCompatActivity {
         typeFilterSpinner.setAdapter(filterAdapter);
         typeFilterSpinner.setSelection(savedFilterPosition);
 
-        adapter.setStatusFilter(filterStatus);
         adapter.setTypeFilter(typeFilterSpinner.getSelectedItem().toString());
         adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
         adapter.setDailyDollarVolumeThresholdFilter(filterDailyDollarVolumeThreshold);
-
-        filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
+        adapter.setAgeInSecondsThresholdFilter(filterAgeInSecondsThreshold);
 
         typeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -472,15 +493,29 @@ public class MainActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        filterStatusImage.setOnClickListener(v -> {
-            filterStatus = !filterStatus;
-            filterStatusImage.setImageResource(filterStatus ? R.drawable.check : R.drawable.check_crossed);
-
-            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
-            editor.putBoolean(PREF_FILTER_STATUS, filterStatus);
-            editor.apply();
-
-            adapter.setStatusFilter(filterStatus);
+        searchIcon.setOnClickListener(v -> {
+            if (searchBarContainer.getVisibility() == View.GONE) {
+                searchBarContainer.setVisibility(View.VISIBLE);
+                searchIcon.setImageResource(R.drawable.search_off);
+                searchInput.requestFocus();
+            } else {
+                searchInput.clearFocus();
+                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+                searchBarContainer.setVisibility(View.GONE);
+                searchIcon.setImageResource(R.drawable.search);
+                searchInput.setText("");
+            }
+        });
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                adapter.setSearchQuery(s.toString());
+            }
+            @Override
+            public void afterTextChanged(Editable s) { }
         });
     }
 
@@ -496,14 +531,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            View v = getCurrentFocus();
+            if (v instanceof EditText) {
+                Rect outRect = new Rect();
+                v.getGlobalVisibleRect(outRect);
+                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+                    v.clearFocus();
+                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
     private void showThresholdsDialog() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_thresholds, null);
 
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
         EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
+        EditText ageInSecondsThresholdInput = dialogView.findViewById(R.id.ageInSecondsThresholdInput);
 
-        marketCapThresholdInput.setText(NumberUtils.toFullNumericString(filterMarketCapThreshold));
-        dailyDollarVolumeThresholdInput.setText(NumberUtils.toFullNumericString(filterDailyDollarVolumeThreshold));
+        marketCapThresholdInput.setText(filterMarketCapThreshold.toPlainString());
+        dailyDollarVolumeThresholdInput.setText(filterDailyDollarVolumeThreshold.toPlainString());
+        ageInSecondsThresholdInput.setText(filterAgeInSecondsThreshold.toPlainString());
 
         AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle(getResources().getText(R.string.edit_thresholds))
@@ -513,37 +567,52 @@ public class MainActivity extends AppCompatActivity {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
 
                     String marketCapThreshold = marketCapThresholdInput.getText().toString().trim();
-                    long newMarketCapThreshold;
+                    @NonNull BigDecimal newMarketCapThreshold;
                     if (marketCapThreshold.isEmpty()) {
-                        newMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
+                        newMarketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
                     } else {
-                        newMarketCapThreshold = Long.parseLong(marketCapThreshold);
+                        newMarketCapThreshold = new BigDecimal(marketCapThreshold);
                     }
-                    if (newMarketCapThreshold > 0) {
+                    if (newMarketCapThreshold.compareTo(BigDecimal.ZERO) > 0) {
                         filterMarketCapThreshold = newMarketCapThreshold;
                         adapter.setMarketCapThresholdFilter(filterMarketCapThreshold);
-                        editor.putLong(PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold);
-                        editor.apply();
+                        editor.putString(PREF_FILTER_MARKET_CAP_THRESHOLD, filterMarketCapThreshold.stripTrailingZeros().toPlainString());
                     } else {
                         Toast.makeText(this, "Market Cap Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
                     }
 
                     String dailyDollarVolumeThreshold = dailyDollarVolumeThresholdInput.getText().toString().trim();
-                    long newDailyDollarVolumeThreshold;
+                    @NonNull BigDecimal newDailyDollarVolumeThreshold;
                     if (dailyDollarVolumeThreshold.isEmpty()) {
-                        newDailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
+                        newDailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
                     } else {
-                        newDailyDollarVolumeThreshold = Long.parseLong(dailyDollarVolumeThreshold);
+                        newDailyDollarVolumeThreshold = new BigDecimal(dailyDollarVolumeThreshold);
                     }
-                    if (newDailyDollarVolumeThreshold > 0) {
+                    if (newDailyDollarVolumeThreshold.compareTo(BigDecimal.ZERO) > 0) {
                         filterDailyDollarVolumeThreshold = newDailyDollarVolumeThreshold;
                         adapter.setDailyDollarVolumeThresholdFilter(filterDailyDollarVolumeThreshold);
-                        editor.putLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, filterDailyDollarVolumeThreshold);
-                        editor.apply();
+                        editor.putString(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, filterDailyDollarVolumeThreshold.stripTrailingZeros().toPlainString());
                     } else {
                         Toast.makeText(this, "Daily Dollar Volume Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
                     }
-                } catch (NumberFormatException e) {
+
+                    String ageInSecondsThreshold = ageInSecondsThresholdInput.getText().toString().trim();
+                    @NonNull BigDecimal newAgeInSecondsThreshold;
+                    if (ageInSecondsThreshold.isEmpty()) {
+                        newAgeInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+                    } else {
+                        newAgeInSecondsThreshold = new BigDecimal(ageInSecondsThreshold);
+                    }
+                    if (newAgeInSecondsThreshold.compareTo(BigDecimal.ZERO) > 0) {
+                        filterAgeInSecondsThreshold = newAgeInSecondsThreshold;
+                        adapter.setAgeInSecondsThresholdFilter(filterAgeInSecondsThreshold);
+                        editor.putString(PREF_FILTER_AGE_IN_SECONDS_THRESHOLD, filterAgeInSecondsThreshold.stripTrailingZeros().toPlainString());
+                    } else {
+                        Toast.makeText(this, "Age Threshold (Seconds) Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
+                    }
+
+                    editor.apply();
+                } catch (Exception e) {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
                 }
             })

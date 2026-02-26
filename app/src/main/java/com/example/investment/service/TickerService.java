@@ -6,6 +6,7 @@ import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_REC
 import static com.example.investment.util.Constants.CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA;
 import static com.example.investment.util.Constants.CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA;
+import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.FILE_RECORD_LEADING_TICKERS;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RISK;
@@ -28,22 +29,23 @@ import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
 import static com.example.investment.util.Constants.CHANNEL_NAME_NEW_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
 import static com.example.investment.util.Constants.OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
-import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_FILTER_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.SAVED_LEADING_TICKERS_COUNT;
+import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.FileUtils.loadObject;
 import static com.example.investment.util.FileUtils.saveObject;
 import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
 import static com.example.investment.util.NotificationUtils.showGroupSummary;
 import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
 import static com.example.investment.util.NotificationUtils.showLowPriorityServiceNotification;
+import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
 
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
@@ -245,14 +247,17 @@ public class TickerService extends Service {
         notifyDeletedLeadingTickers(tickers, savedLeadingTickers);
 
         // Get new leading tickers
-        long filterMarketCapThreshold = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        long filterDailyDollarVolumeThreshold = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        @NonNull BigDecimal filterMarketCapThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        @NonNull BigDecimal filterDailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        @NonNull BigDecimal filterAgeInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
         List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t ->
                 // Market Cap is Above Limit
-                t.getMarketCap() >= filterMarketCapThreshold
+                t.getMarketCap().compareTo(filterMarketCapThreshold) >= 0
                 // Daily Dollar Volume is Above Limit
-                && t.getDailyDollarVolume().compareTo(BigDecimal.valueOf(filterDailyDollarVolumeThreshold)) >= 0
+                && t.getDailyDollarVolume().compareTo(filterDailyDollarVolumeThreshold) >= 0
+                // Age is Above Limit
+                && t.getAgeInSeconds().compareTo(filterAgeInSecondsThreshold) >= 0
                 // Asset is Not a Risk
                 && !t.getPriceState().equals(PRICE_BELOW)
             )
@@ -273,7 +278,9 @@ public class TickerService extends Service {
                 String subtext;
                 Long when = null;
                 if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
-                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds() * 1000;
+                    try {
+                        when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds().multiply(THOUSAND_BI).longValueExact();
+                    } catch (Exception ignored) {}
                     notifyOutdatedLeadingTicker(currentLeadingTicker, when);
                     // Below outdated data notification to avoid redundant info
                     subtext = OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
@@ -289,7 +296,9 @@ public class TickerService extends Service {
                 String subtext;
                 Long when = null;
                 if (currentLeadingTicker.areAllFixedHistoricalDataStale()) {
-                    when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds() * 1000;
+                    try {
+                        when = currentLeadingTicker.getNewestFixedHistoricalDataTimestampSeconds().multiply(THOUSAND_BI).longValueExact();
+                    } catch (Exception ignored) {}
                     notifyOutdatedLeadingTicker(currentLeadingTicker, when);
                     // Below outdated data notification to avoid redundant info
                     subtext = OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
