@@ -189,12 +189,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void handleOnBackPressed() {
                 if (searchInput.hasFocus()) {
-                    searchInput.clearFocus();
-                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                    imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+                    hideKeyboardForEditText(searchInput);
                 } else if (searchBarContainer.getVisibility() == View.VISIBLE) {
                     searchBarContainer.setVisibility(View.GONE);
                     searchIcon.setImageResource(R.drawable.search);
+                    hideKeyboardForEditText(searchInput);
                     searchInput.setText("");
                 } else if (recyclerView.canScrollVertically(-1)) {
                     recyclerView.scrollToPosition(0);
@@ -497,13 +496,11 @@ public class MainActivity extends AppCompatActivity {
             if (searchBarContainer.getVisibility() == View.GONE) {
                 searchBarContainer.setVisibility(View.VISIBLE);
                 searchIcon.setImageResource(R.drawable.search_off);
-                searchInput.requestFocus();
+                showKeyboardForEditText(searchInput);
             } else {
-                searchInput.clearFocus();
-                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
                 searchBarContainer.setVisibility(View.GONE);
                 searchIcon.setImageResource(R.drawable.search);
+                hideKeyboardForEditText(searchInput);
                 searchInput.setText("");
             }
         });
@@ -534,18 +531,64 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            // Hides keyboard
             View v = getCurrentFocus();
-            if (v instanceof EditText) {
-                Rect outRect = new Rect();
-                v.getGlobalVisibleRect(outRect);
-                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
-                    v.clearFocus();
-                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                    imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+            if (v instanceof EditText editText) {
+                int x = (int) ev.getRawX();
+                int y = (int) ev.getRawY();
+                // Not touched view that opens keyboard
+                View touchedView = findViewAtLocation(getWindow().getDecorView(), x, y);
+                if (touchedView != searchIcon) {
+                    // Touched outside the focused EditText
+                    Rect rect = new Rect();
+                    editText.getGlobalVisibleRect(rect);
+                    if (!rect.contains(x, y)) {
+                        hideKeyboardForEditText(editText);
+                    }
                 }
             }
         }
         return super.dispatchTouchEvent(ev);
+    }
+    private void showKeyboardForEditText(EditText editText) {
+        if (editText == null) return;
+        editText.post(() -> {
+            editText.requestFocus();
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+    }
+    private void hideKeyboardForEditText(EditText editText) {
+        if (editText == null) return;
+        editText.clearFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+        }
+    }
+    private View findViewAtLocation(View parent, int x, int y) {
+        if (parent instanceof ViewGroup group) {
+            // Loop backwards to check views on top (highest Z-index) first
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                View child = group.getChildAt(i);
+                int[] location = new int[2];
+                child.getLocationOnScreen(location);
+
+                Rect rect = new Rect(
+                    location[0],
+                    location[1],
+                    location[0] + child.getWidth(),
+                    location[1] + child.getHeight()
+                );
+
+                if (rect.contains(x, y) && child.getVisibility() == View.VISIBLE) {
+                    return findViewAtLocation(child, x, y);
+                }
+            }
+        }
+        return parent;
     }
 
     private void showThresholdsDialog() {

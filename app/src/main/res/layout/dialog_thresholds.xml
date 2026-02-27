@@ -11,7 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="16dp"
+        android:layout_marginTop="16dp"
         app:endIconMode="clear_text">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -22,10 +22,9 @@
             android:textColorHint="@color/off_white"
             android:textColor="@color/white"
             android:background="@color/transparent"
-            android:inputType="number"
+            android:inputType="numberDecimal"
             android:maxLines="1"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingHorizontal="16dp"
             android:importantForAutofill="no" />
 
     </com.google.android.material.textfield.TextInputLayout>
@@ -34,7 +33,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="16dp"
+        android:layout_marginTop="16dp"
         app:endIconMode="clear_text">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -45,10 +44,9 @@
             android:textColorHint="@color/off_white"
             android:textColor="@color/white"
             android:background="@color/transparent"
-            android:inputType="number"
+            android:inputType="numberDecimal"
             android:maxLines="1"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingHorizontal="16dp"
             android:importantForAutofill="no" />
 
     </com.google.android.material.textfield.TextInputLayout>
@@ -57,6 +55,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
+        android:layout_marginTop="16dp"
         app:endIconMode="clear_text">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -67,10 +66,9 @@
             android:textColorHint="@color/off_white"
             android:textColor="@color/white"
             android:background="@color/transparent"
-            android:inputType="number"
+            android:inputType="numberDecimal"
             android:maxLines="1"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingHorizontal="16dp"
             android:importantForAutofill="no" />
 
     </com.google.android.material.textfield.TextInputLayout>
