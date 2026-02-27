@@ -53,11 +53,11 @@ public class Constants {
         Map.entry("1mo", new BigInteger("5356800000")), // 31 + 31  (July 1 to Aug 31)
         Map.entry("3mo", new BigInteger("15897600000")) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
     );
-    public static final Map<String, BigInteger> ASSET_DURATION_DAYS = Map.ofEntries(
-        Map.entry("1d", BigInteger.ONE), // 1
-        Map.entry("1wk", DAYS_PER_WEEK), // 7
-        Map.entry("1mo", new BigInteger("31")), // 31 (July)
-        Map.entry("3mo", new BigInteger("92")) // 31 + 31 + 30 (July 1 to September 30)
+    public static final Map<String, BigDecimal> ASSET_DURATION_DAYS = Map.ofEntries(
+        Map.entry("1d", BigDecimal.ONE), // 1
+        Map.entry("1wk", new BigDecimal(DAYS_PER_WEEK)), // 7
+        Map.entry("1mo", new BigDecimal("31")), // 31 (July)
+        Map.entry("3mo", new BigDecimal("92")) // 31 + 31 + 30 (July 1 to September 30)
     );
     public static final BigInteger PERIODIC_WORKER_UPDATE_BUFFER_MS = MILLIS_PER_DAY; // 1D
 

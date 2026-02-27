@@ -24,6 +24,7 @@ public class BigDecimalUtils {
         new BigDecimalRange(new BigDecimal("1000000"), "M"),                // Million
         new BigDecimalRange(THOUSAND_BD, "K")                                   // Thousand
     };
+    private static final BigDecimalRange DEFAULT_RANGE = new BigDecimalRange(BigDecimal.ONE, "");
 
     public static @NonNull String formatNumber(@NonNull BigDecimal number) {
         if (number.compareTo(BigDecimal.ZERO) == 0) {
@@ -37,7 +38,7 @@ public class BigDecimalUtils {
         BigDecimalRange range = Arrays.stream(BIG_DECIMAL_RANGES)
             .filter(r -> absNumber.compareTo(r.value()) >= 0)
             .findFirst()
-            .orElse(new BigDecimalRange(BigDecimal.ONE, ""));
+            .orElse(DEFAULT_RANGE);
 
         // Scale number by range
         BigDecimal scaled = absNumber.divide(range.value(), 10, RoundingMode.HALF_UP);

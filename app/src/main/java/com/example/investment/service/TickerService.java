@@ -251,16 +251,19 @@ public class TickerService extends Service {
         @NonNull BigDecimal filterDailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         @NonNull BigDecimal filterAgeInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
         List<TickerData> validNewLeadingTickers = tickers.stream()
-            .filter(t ->
-                // Market Cap is Above Limit
-                t.getMarketCap().compareTo(filterMarketCapThreshold) >= 0
-                // Daily Dollar Volume is Above Limit
-                && t.getDailyDollarVolume().compareTo(filterDailyDollarVolumeThreshold) >= 0
-                // Age is Above Limit
-                && t.getAgeInSeconds().compareTo(filterAgeInSecondsThreshold) >= 0
-                // Asset is Not a Risk
-                && !t.getPriceState().equals(PRICE_BELOW)
-            )
+            .filter(t -> {
+                TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = t.getNewestFixedHistoricalDataWithInterval();
+                return (
+                    // Market Cap is Above Limit
+                    t.getMarketCap().compareTo(filterMarketCapThreshold) >= 0
+                    // Daily Dollar Volume is Above Limit
+                    && t.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(filterDailyDollarVolumeThreshold) >= 0
+                    // Age is Above Limit
+                    && t.getAgeInSeconds().compareTo(filterAgeInSecondsThreshold) >= 0
+                    // Asset is Not a Risk
+                    && !t.getPriceState(newestFixedHistoricalDataRecord.fixedHistoricalData()).equals(PRICE_BELOW)
+                );
+            })
             .toList();
         List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
 

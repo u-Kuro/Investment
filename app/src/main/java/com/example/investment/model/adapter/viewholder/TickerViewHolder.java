@@ -65,6 +65,8 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     @RequiresApi(api = Build.VERSION_CODES.S)
     public void bind(TickerData ticker) {
         this.currentTicker = ticker;
+        TickerData.FixedHistoricalData newestFixedHistoricalData = ticker.getNewestFixedHistoricalData();
+
         boolean isDataStale = ticker.areAllFixedHistoricalDataStale();
         String symbol = ticker.getSymbol();
         String name = ticker.getName(false);
@@ -99,12 +101,12 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastAdjustedClose()));
         percentageIncreasePerDayText.setText(
             new StringBuilder()
-            .append(formatNumber(ticker.getPercentageIncrease()))
+            .append(formatNumber(ticker.getPercentageIncreasePerDay(newestFixedHistoricalData)))
             .append("%")
         );
 
         dailyDollarVolumeText.setText(PriceUtils.formatPrice(ticker.getDailyDollarVolume()));
-        upperBandText.setText(PriceUtils.formatPrice(ticker.getUpperBand()));
+        upperBandText.setText(PriceUtils.formatPrice(ticker.getAdjustedUpperBand(newestFixedHistoricalData)));
         timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
 
         if (isDataStale) {
@@ -113,27 +115,27 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getLastAdjustedClose().compareTo(ticker.getLowerBand()) < 0) {
+        if (ticker.getLastAdjustedClose().compareTo(ticker.getAdjustedLowerBand(newestFixedHistoricalData)) < 0) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
-        } else if (ticker.getPriceState().equals(PRICE_BETWEEN)) {
+        } else if (ticker.getPriceState(newestFixedHistoricalData).equals(PRICE_BETWEEN)) {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
         } else {
             lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
-        if (ticker.getPercentageIncrease().compareTo(BigDecimal.ZERO) <= 0) {
+        if (ticker.getPercentageIncreasePerDay(newestFixedHistoricalData).compareTo(BigDecimal.ZERO) <= 0) {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
             percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getUpperBand().compareTo(ticker.getLowerBand()) < 0) {
+        if (ticker.getAdjustedUpperBand(newestFixedHistoricalData).compareTo(ticker.getAdjustedLowerBand(newestFixedHistoricalData)) < 0) {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
         } else {
             upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
         }
 
         MaterialCardView cardView = (MaterialCardView) itemView;
-        cardView.setStrokeColor(getCardColor(ticker));
+        cardView.setStrokeColor(getCardColor(ticker, newestFixedHistoricalData));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -241,10 +243,10 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         return valueStr + (isOne ? " " + singular : " " + plural);
     }
 
-    private int getCardColor(TickerData ticker) {
+    private int getCardColor(TickerData ticker, TickerData.FixedHistoricalData newestFixedHistoricalData) {
         int colorResId;
 
-        @NonNull String priceState = ticker.getPriceState();
+        @NonNull String priceState = ticker.getPriceState(newestFixedHistoricalData);
         if (priceState.equals(PRICE_BETWEEN)) {
             colorResId = R.color.profit_taking;
         } else if (priceState.equals(PRICE_ABOVE)) {
