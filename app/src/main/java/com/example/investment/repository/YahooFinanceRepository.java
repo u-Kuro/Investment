@@ -208,6 +208,9 @@ public class YahooFinanceRepository {
         BigDecimal startPrice = null;
         BigInteger startPriceTimestampSeconds = null;
 
+        // Lag variable
+        BigDecimal prevUpperBand = null;
+
         // Update all data
         if (SHOULD_UPDATE_ALL_DATA) {
             try {
@@ -237,6 +240,14 @@ public class YahooFinanceRepository {
                 sumDollarVolLen = fixedHistoricalData.sumDollarVolLen();
                 startPrice = fixedHistoricalData.startPrice();
                 startPriceTimestampSeconds = fixedHistoricalData.startPriceTimestampSeconds();
+                // Fill lag variable
+                prevUpperBand = dpSumNum.divide(dpSumDen, DECIMAL128)
+                    .multiply(
+                        dbSumNum
+                        .divide(dbSumDen, DECIMAL128)
+                        .abs()
+                        .add(BigDecimal.ONE), DECIMAL128
+                    );
             }
         }
 
@@ -270,8 +281,6 @@ public class YahooFinanceRepository {
         }
 
         // For fixed historical data only use non changing data (before last bar || length - 1)
-        BigDecimal bPrevHigh = null;
-        BigDecimal bPrevLow = null;
         for (int i = startIndex; i < apiHighs.length() - 1; i++) {
             try {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
@@ -381,19 +390,13 @@ public class YahooFinanceRepository {
                                     .add(BigDecimal.ONE), DECIMAL128
                                 );
 
-                            // Bar crosses upper band
-                            boolean currentBarTouches = bLow.compareTo(upperBand) <= 0 && bHigh.compareTo(upperBand) >= 0;
-                            boolean crossedFromBelow = bPrevLow != null && bPrevLow.compareTo(upperBand) <= 0 && bHigh.compareTo(upperBand) >= 0;
-                            boolean crossedFromAbove = bPrevHigh != null && bPrevHigh.compareTo(upperBand) >= 0 && bLow.compareTo(upperBand) <= 0;
-
-                            // Redo starting point
-                            if (currentBarTouches || crossedFromBelow || crossedFromAbove) {
+                            // Trend restarts
+                            if (prevUpperBand != null && upperBand.compareTo(prevUpperBand) <= 0) {
                                 startPrice = upperBand;
                                 startPriceTimestampSeconds = bTimestamp;
                             }
 
-                            bPrevHigh = bHigh;
-                            bPrevLow = bLow;
+                            prevUpperBand = upperBand;
                         }
                     } catch (Exception error) {
                         Logger.error(error.getMessage(), error);

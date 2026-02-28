@@ -7,6 +7,7 @@
     <string name="successful_ticker_progress">Successfully Processed Tickers</string>
     <string name="stop_processing">Stop Processing</string>
     <string name="asset_type">Asset Type</string>
+    <string name="overbought_threshold">Overbought Threshold</string>
     <string name="market_cap_threshold">Market Cap Threshold</string>
     <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
     <string name="age_in_seconds_threshold">Age Threshold (Seconds)</string>

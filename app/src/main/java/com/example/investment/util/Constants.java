@@ -12,11 +12,12 @@ public class Constants {
     public static final String FILE_RECORD_LEADING_TICKERS = "leading_tickers.ser";
 
     // Preferences
-    public static final String PREFS_NAME = "TickerFilterPrefs";
-    public static final String PREF_FILTER_TYPE = "filterType";
-    public static final String PREF_FILTER_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
-    public static final String PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
-    public static final String PREF_FILTER_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
+    public static final String PREFS_NAME = "Investment Shared Preferences";
+    public static final String PREF_ASSET_TYPE_FILTER = "Asset Type Filter Position";
+    public static final String PREF_OVERBOUGHT_THRESHOLD_TYPE = "Overbought Threshold Type";
+    public static final String PREF_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
+    public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
+    public static final String PREF_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
     public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";
@@ -34,8 +35,16 @@ public class Constants {
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
     // Asset Types
-    public static final String CRYPTOCURRENCY_TYPE = "cryptocurrency";
-    public static final String STOCK_TYPE = "stock";
+    public static final String ALL_TYPE = "All";
+    public static final String CRYPTOCURRENCY_TYPE = "Crypto";
+    public static final String STOCK_TYPE = "Stock";
+
+    // Overbought Threshold Types
+    public static final String NONE_THRESHOLD = "None";
+    public static final String IQR_THRESHOLD = "IQR (Upper Bound)";
+    public static final String SD_THRESHOLD = "Standard Deviation (2 SD)";
+    public static final String MAD_THRESHOLD = "Mean Absolute Deviation (MAD)";
+    public static final String MEAN_THRESHOLD = "Arithmetic Mean";
 
     // BigDecimal Constants
     public static final BigDecimal THOUSAND_BD = new BigDecimal("1000");

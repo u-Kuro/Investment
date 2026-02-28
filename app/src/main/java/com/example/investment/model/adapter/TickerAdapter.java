@@ -1,8 +1,9 @@
 package com.example.investment.model.adapter;
 
-import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
-import static com.example.investment.util.Constants.STOCK_TYPE;
+import static com.example.investment.util.Constants.ALL_TYPE;
+import static com.example.investment.util.TickerDataUtils.getOverboughtThreshold;
 
+import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,10 +34,11 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<TickerData> tickers = new ArrayList<>();
     private final List<TickerData> originalTickers = new ArrayList<>();
-    private String typeFilter = "All";
-    private BigDecimal marketCapThresholdFilter;
-    private BigDecimal dailyDollarVolumeThresholdFilter;
-    private BigDecimal ageInSecondsThresholdFilter;
+    private String assetTypeFilter;
+    private BigDecimal marketCapThreshold;
+    private BigDecimal dailyDollarVolumeThreshold;
+    private BigDecimal ageInSecondsThreshold;
+    private String overBoughtThresholdType;
     private String searchQuery = "";
     private OnTickerClickListener clickListener;
     private OnTickerLongClickListener longClickListener;
@@ -71,46 +73,53 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         return tickers.size();
     }
 
-    public void setTickers(List<TickerData> newOriginalTickers) {
+    public void setTickers(Context context, List<TickerData> newOriginalTickers) {
         mainHandler.post(() -> {
             originalTickers.clear();
             originalTickers.addAll(newOriginalTickers);
-            applyFilters();
+            applyFilters(context);
         });
     }
 
-    public void setTypeFilter(String type) {
+    public void setAssetTypeFilter(Context context, @NonNull String assetTypeFilter) {
         mainHandler.post(() -> {
-            this.typeFilter = type;
-            applyFilters();
+            this.assetTypeFilter = assetTypeFilter;
+            applyFilters(context);
         });
     }
 
-    public void setMarketCapThresholdFilter(@NonNull BigDecimal marketCapThreshold) {
+    public void setMarketCapThreshold(Context context, @NonNull BigDecimal marketCapThreshold) {
         mainHandler.post(() -> {
-            this.marketCapThresholdFilter = marketCapThreshold;
-            applyFilters();
+            this.marketCapThreshold = marketCapThreshold;
+            applyFilters(context);
         });
     }
 
-    public void setDailyDollarVolumeThresholdFilter(@NonNull BigDecimal dailyDollarVolumeThreshold) {
+    public void setDailyDollarVolumeThreshold(Context context, @NonNull BigDecimal dailyDollarVolumeThreshold) {
         mainHandler.post(() -> {
-            this.dailyDollarVolumeThresholdFilter = dailyDollarVolumeThreshold;
-            applyFilters();
+            this.dailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
+            applyFilters(context);
         });
     }
 
-    public void setAgeInSecondsThresholdFilter(@NonNull BigDecimal ageInSecondsThreshold) {
+    public void setAgeInSecondsThreshold(Context context, @NonNull BigDecimal ageInSecondsThreshold) {
         mainHandler.post(() -> {
-            this.ageInSecondsThresholdFilter = ageInSecondsThreshold;
-            applyFilters();
+            this.ageInSecondsThreshold = ageInSecondsThreshold;
+            applyFilters(context);
         });
     }
 
-    public void setSearchQuery(String query) {
+    public void setOverboughtThresholdType(Context context, String overBoughtThresholdType) {
+        mainHandler.post(() -> {
+            this.overBoughtThresholdType = overBoughtThresholdType;
+            applyFilters(context);
+        });
+    }
+
+    public void setSearchQuery(Context context, String query) {
         mainHandler.post(() -> {
             this.searchQuery = query;
-            applyFilters();
+            applyFilters(context);
         });
     }
 
@@ -119,18 +128,16 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         return string.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
     }
 
-    private void applyFilters() {
+    private void applyFilters(Context context) {
         if (future != null && !future.isDone()) {
             future.cancel(true);
         }
         future = executor.submit(() -> {
             try {
+                final BigDecimal overboughtThreshold = getOverboughtThreshold(context, originalTickers, overBoughtThresholdType);
                 List<TickerData> filteredList = originalTickers.stream()
                     .filter(ticker -> {
-
-                        boolean typeMatch = typeFilter.equals("All")
-                            || typeFilter.equals("Crypto") && CRYPTOCURRENCY_TYPE.equals(ticker.getType())
-                            || typeFilter.equals("Stock") && STOCK_TYPE.equals(ticker.getType());
+                        boolean typeMatch = ALL_TYPE.equals(assetTypeFilter) || assetTypeFilter.equals(ticker.getType());
                         if (!typeMatch) return false;
 
                         boolean searchMatch = true;
@@ -166,14 +173,21 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                         }
                         if (!searchMatch) return false;
 
-                        boolean marketCapThresholdMatch = ticker.getMarketCap().compareTo(marketCapThresholdFilter) >= 0;
-                        if (!marketCapThresholdMatch) return false;
-
-                        boolean ageInSecondsThresholdMatch = ticker.getAgeInSeconds().compareTo(ageInSecondsThresholdFilter) >= 0;
-                        if (!ageInSecondsThresholdMatch) return false;
-
-                        // Daily Dollar Volume Threshold Match
-                        return ticker.getDailyDollarVolume().compareTo(dailyDollarVolumeThresholdFilter) >= 0;
+                        TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = ticker.getNewestFixedHistoricalDataWithInterval();
+                        return (
+                            // Market cap is above or equal to threshold
+                            ticker.getMarketCap().compareTo(marketCapThreshold) >= 0
+                            // Daily dollar volume is above or equal to threshold
+                            && ticker.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(dailyDollarVolumeThreshold) >= 0
+                            // Age is above or equal to threshold
+                            && ticker.getAgeInSeconds().compareTo(ageInSecondsThreshold) >= 0
+                            // Asset is not overbought/outlier
+                            && (
+                                overboughtThreshold == null
+                                || ticker.getPercentageIncreasePerDay(newestFixedHistoricalDataRecord.fixedHistoricalData())
+                                    .compareTo(overboughtThreshold) <= 0
+                            )
+                        );
                     })
                     .collect(Collectors.toList());
                 mainHandler.post(() -> setFilteredTickers(filteredList));

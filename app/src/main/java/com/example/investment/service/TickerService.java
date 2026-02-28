@@ -18,6 +18,7 @@ import static com.example.investment.util.Constants.CHANNEL_NAME_LEADING_ASSET_R
 import static com.example.investment.util.Constants.CHANNEL_NAME_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.CHANNEL_NAME_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.IQR_THRESHOLD;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING_ASSET_RISK;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_INVESTMENT_OPPORTUNITY;
@@ -29,9 +30,11 @@ import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
 import static com.example.investment.util.Constants.CHANNEL_NAME_NEW_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
 import static com.example.investment.util.Constants.OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
-import static com.example.investment.util.Constants.PREF_FILTER_AGE_IN_SECONDS_THRESHOLD;
-import static com.example.investment.util.Constants.PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD;
-import static com.example.investment.util.Constants.PREF_FILTER_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PREFS_NAME;
+import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_OVERBOUGHT_THRESHOLD_TYPE;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
@@ -44,9 +47,12 @@ import static com.example.investment.util.NotificationUtils.showGroupSummary;
 import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
 import static com.example.investment.util.NotificationUtils.showLowPriorityServiceNotification;
 import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
+import static com.example.investment.util.TickerDataUtils.getOverboughtThreshold;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -247,21 +253,31 @@ public class TickerService extends Service {
         notifyDeletedLeadingTickers(tickers, savedLeadingTickers);
 
         // Get new leading tickers
-        @NonNull BigDecimal filterMarketCapThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        @NonNull BigDecimal filterDailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
-        @NonNull BigDecimal filterAgeInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_FILTER_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+        SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        @NonNull BigDecimal marketCapThreshold = getSafeBigDecimalPrefs(this, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        @NonNull BigDecimal dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        @NonNull BigDecimal ageInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+        @NonNull String overboughtThresholdType = sharedPref.getString(PREF_OVERBOUGHT_THRESHOLD_TYPE, IQR_THRESHOLD);
+
+        BigDecimal overboughtThreshold = getOverboughtThreshold(this, tickers, overboughtThresholdType);
         List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t -> {
                 TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = t.getNewestFixedHistoricalDataWithInterval();
                 return (
-                    // Market Cap is Above Limit
-                    t.getMarketCap().compareTo(filterMarketCapThreshold) >= 0
-                    // Daily Dollar Volume is Above Limit
-                    && t.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(filterDailyDollarVolumeThreshold) >= 0
-                    // Age is Above Limit
-                    && t.getAgeInSeconds().compareTo(filterAgeInSecondsThreshold) >= 0
-                    // Asset is Not a Risk
-                    && !t.getPriceState(newestFixedHistoricalDataRecord.fixedHistoricalData()).equals(PRICE_BELOW)
+                    // Market cap is above or equal to threshold
+                    t.getMarketCap().compareTo(marketCapThreshold) >= 0
+                    // Daily dollar volume is above or equal to threshold
+                    && t.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(dailyDollarVolumeThreshold) >= 0
+                    // Age is above or equal to threshold
+                    && t.getAgeInSeconds().compareTo(ageInSecondsThreshold) >= 0
+                    // Asset price is trending above
+                    && t.getPriceState(newestFixedHistoricalDataRecord.fixedHistoricalData()).equals(PRICE_ABOVE)
+                    // Asset is not overbought/outlier
+                    && (
+                        overboughtThreshold == null
+                        || t.getPercentageIncreasePerDay(newestFixedHistoricalDataRecord.fixedHistoricalData())
+                            .compareTo(overboughtThreshold) <= 0
+                    )
                 );
             })
             .toList();
