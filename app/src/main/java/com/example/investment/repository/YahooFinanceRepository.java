@@ -66,10 +66,10 @@ public class YahooFinanceRepository {
         Set<String> deletedTickersSet = new HashSet<>();
 
         try {
-            listener.onProgress(0, 0);
+            listener.onTickersProgress(0, 0);
 
             // Get new tickers from screeners
-            Map<String, FetchSymbolsResult> newSymbolsMap = fetchTickers();
+            Map<String, FetchSymbolsResult> newSymbolsMap = fetchTickers(listener);
 
             // Load old ticker data record if doing partial refresh
             if (!isFullRefresh) {
@@ -108,9 +108,8 @@ public class YahooFinanceRepository {
 
                     // If ticker update succeeded, put its new data in the list
                     tickersList.add(ticker);
-                    tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
                     listener.onTickerUpdate(tickersList);
-                    listener.onProgress(++current, total);
+                    listener.onTickersProgress(++current, total);
 
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
@@ -122,10 +121,9 @@ public class YahooFinanceRepository {
                     // If ticker update failed, put back its old data in the list
                     if (oldTicker != null) {
                         tickersList.add(oldTicker);
-                        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
                         listener.onTickerUpdate(tickersList);
                     }
-                    listener.onProgress(++current, total);
+                    listener.onTickersProgress(++current, total);
                 }
             }
         } catch (InterruptedException e) {
@@ -141,8 +139,6 @@ public class YahooFinanceRepository {
         // Delete missing tickers
         Set<String> finalDeletedTickersSet = deletedTickersSet;
         tickersList.removeIf(tickerData -> finalDeletedTickersSet.contains(tickerData.getSymbol()));
-
-        tickersList.sort((a, b) -> b.getPercentageIncreasePerDay().compareTo(a.getPercentageIncreasePerDay()));
 
         if (tickersList.isEmpty()) {
             listener.onError();
@@ -181,6 +177,7 @@ public class YahooFinanceRepository {
         JSONObject quote = indicators.getJSONArray("quote").getJSONObject(0);
         JSONArray apiAdjCloses = indicators.getJSONArray("adjclose").getJSONObject(0).getJSONArray("adjclose");
         JSONArray apiCloses = quote.getJSONArray("close");
+        JSONArray apiOpens = quote.getJSONArray("open");
         JSONArray apiHighs = quote.getJSONArray("high");
         JSONArray apiLows = quote.getJSONArray("low");
         // Convert since Cryptocurrency volume unit is in USD
@@ -193,7 +190,8 @@ public class YahooFinanceRepository {
         String name = null;
         String exchange = null;
         BigInteger firstTradeTimestampSeconds = null;
-        BigDecimal lastAdjustedClose = null;
+        BigDecimal firstTradeOpenPrice = null;
+        BigDecimal lastAdjustedClosePrice = null;
         BigDecimal adjustmentFactor = null;
         final @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap;
 
@@ -223,7 +221,8 @@ public class YahooFinanceRepository {
             name = oldTicker.getName(false);
             exchange = oldTicker.getExchange();
             firstTradeTimestampSeconds = oldTicker.getFirstTradeTimestampSeconds();
-            lastAdjustedClose = oldTicker.getLastAdjustedClose();
+            firstTradeOpenPrice = oldTicker.getFirstTradeOpenPrice();
+            lastAdjustedClosePrice = oldTicker.getLastAdjustedClosePrice();
             adjustmentFactor = oldTicker.getAdjustmentFactor();
             fixedHistoricalDataMap = oldTicker.getFixedHistoricalDataMap();
             if (HAS_FIXED_HISTORICAL_DATA) {
@@ -256,24 +255,27 @@ public class YahooFinanceRepository {
         int startIndex = SHOULD_UPDATE_ALL_DATA ? 0 : 1;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
+                @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
+                @NonNull BigDecimal bOpen = new BigDecimal(apiOpens.getString(i));
                 @NonNull BigDecimal bAdjClose = new BigDecimal(apiAdjCloses.getString(i));
                 @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
-                @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
 
                 if (
                     bAdjClose.compareTo(BigDecimal.ZERO) > 0
                     && bClose.compareTo(BigDecimal.ZERO) > 0
                     && bTimestamp.compareTo(BigInteger.ZERO) > 0
+                    && bOpen.compareTo(BigDecimal.ZERO) > 0
                     && BigInteger.valueOf(System.currentTimeMillis()).compareTo(bTimestamp.multiply(THOUSAND_BI)) > 0
                 ) {
                     // Track very first trade date
                     if (firstTradeTimestampSeconds == null || firstTradeTimestampSeconds.compareTo(bTimestamp) > 0) {
+                        firstTradeOpenPrice = bOpen;
                         firstTradeTimestampSeconds = bTimestamp;
                     }
 
                     // Always update last adjusted close and adjustment factor with the latest value
-                    lastAdjustedClose = bAdjClose;
-                    adjustmentFactor = lastAdjustedClose.divide(bClose, DECIMAL128);
+                    lastAdjustedClosePrice = bAdjClose;
+                    adjustmentFactor = lastAdjustedClosePrice.divide(bClose, DECIMAL128);
                 }
             } catch (Exception error) {
                 Logger.error(error.getMessage(), error);
@@ -421,7 +423,7 @@ public class YahooFinanceRepository {
 
         // Final Validation
         if (
-            firstTradeTimestampSeconds == null || lastAdjustedClose == null
+            firstTradeTimestampSeconds == null || firstTradeOpenPrice == null || lastAdjustedClosePrice == null
             || adjustmentFactor == null || adjustmentFactor.compareTo(BigDecimal.ZERO) <= 0
             // Checks for Historical Data
             || updatedAtTimestampSeconds == null
@@ -458,7 +460,8 @@ public class YahooFinanceRepository {
             exchange,
             newSymbolEntryValue.marketCap,
             firstTradeTimestampSeconds,
-            lastAdjustedClose,
+            firstTradeOpenPrice,
+            lastAdjustedClosePrice,
             adjustmentFactor,
             fixedHistoricalDataMap
         );
@@ -477,7 +480,7 @@ public class YahooFinanceRepository {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void saveTickerDataRecord(@NonNull Context context, @NonNull List<TickerData> tickers, long updateTime) throws IOException {
-        TickerDataRecord tickerDataRecord = new TickerDataRecord(tickers, updateTime);
+        TickerDataRecord tickerDataRecord = new TickerDataRecord(new ArrayList<>(tickers), updateTime);
         saveObject(context, FILE_RECORD_TICKERS, tickerDataRecord);
     }
 
@@ -585,7 +588,7 @@ public class YahooFinanceRepository {
 
         throw new Exception("Failed to fetch ticker data (no fetchTickerAttempts performed)");
     }
-    private Map<String, FetchSymbolsResult> fetchTickers() throws Exception {
+    private Map<String, FetchSymbolsResult> fetchTickers(TickerUpdateListener listener) throws Exception {
         Map<String, FetchSymbolsResult> symbols = new HashMap<>();
 
         String[] screeners = new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS };
@@ -662,6 +665,8 @@ public class YahooFinanceRepository {
 
                     retryCount = 0;
                     start_index += length;
+
+                    listener.onSymbolsProgress(symbols.size());
                 } catch (InterruptedException e) {
                     throw e;
                 } catch (Exception e) {

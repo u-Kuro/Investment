@@ -1,11 +1,7 @@
 package com.example.investment.util;
 
 import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
-import static com.example.investment.util.Constants.APP_NOTIFICATION_GROUP_KEY;
-import static com.example.investment.util.Constants.CHANNEL_ID_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.CHANNEL_ID_SERVICE;
-import static com.example.investment.util.Constants.CHANNEL_NAME_GROUP_SUMMARY;
-import static com.example.investment.util.Constants.NOTIFICATION_ID_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_SERVICE;
 import static com.example.investment.util.Constants.CHANNEL_NAME_SERVICE;
 
@@ -91,6 +87,7 @@ public class NotificationUtils {
         String content,
         String subtext,
         Long when,
+        String groupKey,
         String notificationTag,
         int notificationId
     ) {
@@ -110,7 +107,7 @@ public class NotificationUtils {
         )
         .setSubText(subtext)
         .setContentIntent(createActivityIntent(context, MainActivity.class))
-        .setGroup(APP_NOTIFICATION_GROUP_KEY)
+        .setGroup(groupKey)
         .setGroupSummary(false)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         .setAutoCancel(true);
@@ -123,20 +120,28 @@ public class NotificationUtils {
         manager.notify(notificationTag, notificationId, builder.build());
     }
 
-    public static void showGroupSummary(Context context) {
+    public static void showGroupSummary(
+        Context context,
+        String channelId,
+        String channelName,
+        String title,
+        String groupKey,
+        int notificationId
+    ) {
         NotificationCompat.Builder builder = createNotification(
             context,
-            CHANNEL_ID_GROUP_SUMMARY,
-            CHANNEL_NAME_GROUP_SUMMARY,
+            channelId,
+            channelName,
             NotificationManager.IMPORTANCE_HIGH,
             true
         )
-        .setGroup(APP_NOTIFICATION_GROUP_KEY)
+        .setContentTitle(title)
+        .setGroup(groupKey)
         .setGroupSummary(true)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         .setAutoCancel(false);
 
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        manager.notify(NOTIFICATION_ID_GROUP_SUMMARY, builder.build());
+        manager.notify(notificationId, builder.build());
     }
 } 

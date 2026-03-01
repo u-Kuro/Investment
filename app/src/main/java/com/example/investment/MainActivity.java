@@ -8,18 +8,15 @@ import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
-import static com.example.investment.util.Constants.NONE_THRESHOLD;
-import static com.example.investment.util.Constants.IQR_THRESHOLD;
-import static com.example.investment.util.Constants.MAD_THRESHOLD;
-import static com.example.investment.util.Constants.MEAN_THRESHOLD;
+import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
+import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
-import static com.example.investment.util.Constants.PREF_OVERBOUGHT_THRESHOLD_TYPE;
+import static com.example.investment.util.Constants.PREF_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREF_ASSET_TYPE_FILTER;
 import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
-import static com.example.investment.util.Constants.SD_THRESHOLD;
 import static com.example.investment.util.Constants.STOCK_TYPE;
 
 import android.Manifest;
@@ -94,10 +91,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView updateText;
     private ProgressBar progressBar;
     private static final int PERMISSION_REQUEST_CODE = 123;
+    private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
     private @NonNull BigDecimal marketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
     private @NonNull BigDecimal dailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
     private @NonNull BigDecimal ageInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
-    private @NonNull String overboughtThresholdType = IQR_THRESHOLD;
     private ImageView stopProcessingImage;
     private String dataRefreshType;
     private boolean isManuallyUpdated = false;
@@ -107,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout searchBarContainer;
     private EditText searchInput;
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
@@ -137,14 +134,16 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            if (isManuallyUpdated) {
-                if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+            if (isManuallyUpdated || dataRefreshType != null) {
+                if (FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
+                    Toast.makeText(this, "Update already started...", Toast.LENGTH_LONG).show();
+                } else {
                     Toast.makeText(this, "Full data update starting...", Toast.LENGTH_LONG).show();
                 }
                 manualUpdateTickerDataRecord(true);
             } else {
                 isManuallyUpdated = true;
-                Toast.makeText(this, "Incremental update starting...", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Update starting...", Toast.LENGTH_LONG).show();
                 swipeRefreshLayout.setRefreshing(false);
                 manualUpdateTickerDataRecord(false);
             }
@@ -191,8 +190,8 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        ImageView editThresholdsImage = findViewById(R.id.editThresholdsImage);
-        editThresholdsImage.setOnClickListener(v -> showThresholdsDialog());
+        ImageView editConfigurationsImage = findViewById(R.id.editConfigurationsImage);
+        editConfigurationsImage.setOnClickListener(v -> showConfigurationsDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -217,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
         autoLoadTickerDataRecord(true);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void autoLoadTickerDataRecord(boolean shouldCheckUpdate) {
         new Thread(() -> {
             try {
@@ -326,12 +325,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void updateTickerList(List<TickerData> tickers) {
-        runOnUiThread(() -> adapter.setTickers(MainActivity.this, tickers));
+        runOnUiThread(() -> adapter.setTickers(tickers));
     }
 
-    public void updateProgress(int current, int total, final String dataRefreshType) {
+    public void updateTickersProgress(int current, int total, final String dataRefreshType) {
         runOnUiThread(() -> {
             this.dataRefreshType = dataRefreshType;
             if (total > 0) {
@@ -361,6 +360,22 @@ public class MainActivity extends AppCompatActivity {
             ((View) progressBar.getParent()).requestLayout();
         });
     }
+    public void updateSymbolsProgress(int current, final String dataRefreshType) {
+        runOnUiThread(() -> {
+            this.dataRefreshType = dataRefreshType;
+            if (current > 0) {
+                updateText.setText(getString(R.string.fetching_tickers_found, dataRefreshType, current));
+            } else {
+                updateText.setText(getString(R.string.fetching_tickers, dataRefreshType));
+            }
+            stopProcessingImage.setVisibility(View.VISIBLE);
+            progressBar.setIndeterminate(true);
+            progressBar.setVisibility(View.VISIBLE);
+            progressBar.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            progressBar.requestLayout();
+            ((View) progressBar.getParent()).requestLayout();
+        });
+    }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateFinished(long updateTime) {
@@ -381,7 +396,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void updateError() {
         runOnUiThread(() -> {
             stopProcessingImage.setVisibility(View.GONE);
@@ -466,16 +481,16 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void setupFilters() {
         Spinner assetTypeFilterSpinner = findViewById(R.id.assetTypeFilterSpinner);
 
         SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         final @NonNull String assetTypeFilter = sharedPref.getString(PREF_ASSET_TYPE_FILTER, ALL_TYPE);
+        investmentType = sharedPref.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
         marketCapThreshold = getSafeBigDecimalPrefs(this, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         ageInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
-        overboughtThresholdType = sharedPref.getString(PREF_OVERBOUGHT_THRESHOLD_TYPE, IQR_THRESHOLD);
 
         ArrayAdapter<CharSequence> assetTypeFilterAdapter = new ArrayAdapter<>(this,
             R.layout.spinner_item,
@@ -485,13 +500,14 @@ public class MainActivity extends AppCompatActivity {
         assetTypeFilterSpinner.setAdapter(assetTypeFilterAdapter);
         assetTypeFilterSpinner.setSelection(assetTypeFilterAdapter.getPosition(assetTypeFilter));
 
-        adapter.setAssetTypeFilter(MainActivity.this, assetTypeFilter);
-        adapter.setMarketCapThreshold(MainActivity.this, marketCapThreshold);
-        adapter.setDailyDollarVolumeThreshold(MainActivity.this, dailyDollarVolumeThreshold);
-        adapter.setAgeInSecondsThreshold(MainActivity.this, ageInSecondsThreshold);
-        adapter.setOverboughtThresholdType(MainActivity.this, overboughtThresholdType);
+        adapter.setAssetTypeFilter(assetTypeFilter);
+        adapter.setInvestmentType(investmentType);
+        adapter.setMarketCapThreshold(marketCapThreshold);
+        adapter.setDailyDollarVolumeThreshold(dailyDollarVolumeThreshold);
+        adapter.setAgeInSecondsThreshold(ageInSecondsThreshold);
 
         assetTypeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 @NonNull String newAssetTypeFilter = parent.getSelectedItem().toString();
@@ -500,7 +516,7 @@ public class MainActivity extends AppCompatActivity {
                 editor.putString(PREF_ASSET_TYPE_FILTER, newAssetTypeFilter);
                 editor.apply();
 
-                adapter.setAssetTypeFilter(MainActivity.this, newAssetTypeFilter);
+                adapter.setAssetTypeFilter(newAssetTypeFilter);
             }
 
             @Override
@@ -522,9 +538,10 @@ public class MainActivity extends AppCompatActivity {
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                adapter.setSearchQuery(MainActivity.this, s.toString());
+                adapter.setSearchQuery(s.toString());
             }
             @Override
             public void afterTextChanged(Editable s) { }
@@ -606,31 +623,38 @@ public class MainActivity extends AppCompatActivity {
         return parent;
     }
 
-    private void showThresholdsDialog() {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_thresholds, null);
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void showConfigurationsDialog() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_configurations, null);
 
+        MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
+        ArrayAdapter<CharSequence> investmentTypeAdapter = new ArrayAdapter<>(this,
+            R.layout.auto_complete_text_view_spinner_item,
+            new String[]{PASSIVE_INVESTMENT_TYPE, MOMENTUM_INVESTMENT_TYPE}
+        );
+        investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+        investmentTypeSpinner.setAdapter(investmentTypeAdapter);
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
         EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
         EditText ageInSecondsThresholdInput = dialogView.findViewById(R.id.ageInSecondsThresholdInput);
-        MaterialAutoCompleteTextView overboughtThresholdTypeSpinner = dialogView.findViewById(R.id.overboughtThresholdTypeSpinner);
-        ArrayAdapter<CharSequence> overboughtThresholdTypeAdapter = new ArrayAdapter<>(this,
-            R.layout.auto_complete_text_view_spinner_item,
-            new String[]{NONE_THRESHOLD, IQR_THRESHOLD, SD_THRESHOLD, MAD_THRESHOLD, MEAN_THRESHOLD}
-        );
-        overboughtThresholdTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
-        overboughtThresholdTypeSpinner.setAdapter(overboughtThresholdTypeAdapter);
 
+        investmentTypeSpinner.setText(investmentType, false);
         marketCapThresholdInput.setText(marketCapThreshold.toPlainString());
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
         ageInSecondsThresholdInput.setText(ageInSecondsThreshold.toPlainString());
-        overboughtThresholdTypeSpinner.setText(overboughtThresholdType, false);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle(getResources().getText(R.string.edit_thresholds))
+            .setTitle(getResources().getText(R.string.edit_configurations))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+
+                    // Investment Type
+                    @NonNull String newInvestmentType = investmentTypeSpinner.getText().toString();
+                    investmentType = newInvestmentType;
+                    adapter.setInvestmentType(investmentType);
+                    editor.putString(PREF_INVESTMENT_TYPE, investmentType);
 
                     String newMarketCapThresholdString = marketCapThresholdInput.getText().toString().trim();
                     @NonNull BigDecimal newMarketCapThreshold;
@@ -641,7 +665,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (newMarketCapThreshold.compareTo(BigDecimal.ZERO) > 0) {
                         marketCapThreshold = newMarketCapThreshold;
-                        adapter.setMarketCapThreshold(MainActivity.this, marketCapThreshold);
+                        adapter.setMarketCapThreshold(marketCapThreshold);
                         editor.putString(PREF_MARKET_CAP_THRESHOLD, marketCapThreshold.stripTrailingZeros().toPlainString());
                     } else {
                         Toast.makeText(this, "Market Cap Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
@@ -656,7 +680,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (newDailyDollarVolumeThreshold.compareTo(BigDecimal.ZERO) > 0) {
                         dailyDollarVolumeThreshold = newDailyDollarVolumeThreshold;
-                        adapter.setDailyDollarVolumeThreshold(MainActivity.this, dailyDollarVolumeThreshold);
+                        adapter.setDailyDollarVolumeThreshold(dailyDollarVolumeThreshold);
                         editor.putString(PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, dailyDollarVolumeThreshold.stripTrailingZeros().toPlainString());
                     } else {
                         Toast.makeText(this, "Daily Dollar Volume Threshold Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
@@ -671,17 +695,11 @@ public class MainActivity extends AppCompatActivity {
                     }
                     if (newAgeInSecondsThreshold.compareTo(BigDecimal.ZERO) > 0) {
                         ageInSecondsThreshold = newAgeInSecondsThreshold;
-                        adapter.setAgeInSecondsThreshold(MainActivity.this, ageInSecondsThreshold);
+                        adapter.setAgeInSecondsThreshold(ageInSecondsThreshold);
                         editor.putString(PREF_AGE_IN_SECONDS_THRESHOLD, ageInSecondsThreshold.stripTrailingZeros().toPlainString());
                     } else {
                         Toast.makeText(this, "Age Threshold (Seconds) Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
                     }
-
-                    // Overbought Threshold
-                    @NonNull String newOverboughtThresholdType = overboughtThresholdTypeSpinner.getText().toString();
-                    overboughtThresholdType = newOverboughtThresholdType;
-                    adapter.setOverboughtThresholdType(MainActivity.this, overboughtThresholdType);
-                    editor.putString(PREF_OVERBOUGHT_THRESHOLD_TYPE, overboughtThresholdType);
 
                     editor.apply();
                 } catch (Exception e) {

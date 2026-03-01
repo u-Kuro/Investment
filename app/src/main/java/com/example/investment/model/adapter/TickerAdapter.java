@@ -1,9 +1,8 @@
 package com.example.investment.model.adapter;
 
 import static com.example.investment.util.Constants.ALL_TYPE;
-import static com.example.investment.util.TickerDataUtils.getOverboughtThreshold;
+import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 
-import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -26,19 +25,19 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.stream.Collectors;
 
 public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
     private Future<?> future;
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final List<TickerData> tickers = new ArrayList<>();
-    private final List<TickerData> originalTickers = new ArrayList<>();
+    private List<TickerData> tickers = new ArrayList<>();
+    private List<TickerData> originalTickers = new ArrayList<>();
     private String assetTypeFilter;
+    private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
+    private String oldInvestmentType;
     private BigDecimal marketCapThreshold;
     private BigDecimal dailyDollarVolumeThreshold;
     private BigDecimal ageInSecondsThreshold;
-    private String overBoughtThresholdType;
     private String searchQuery = "";
     private OnTickerClickListener clickListener;
     private OnTickerLongClickListener longClickListener;
@@ -65,7 +64,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull TickerViewHolder holder, int position) {
         TickerData ticker = tickers.get(position);
-        holder.bind(ticker);
+        holder.bind(ticker, investmentType);
     }
 
     @Override
@@ -73,53 +72,61 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         return tickers.size();
     }
 
-    public void setTickers(Context context, List<TickerData> newOriginalTickers) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setTickers(List<TickerData> newOriginalTickers) {
         mainHandler.post(() -> {
-            originalTickers.clear();
-            originalTickers.addAll(newOriginalTickers);
-            applyFilters(context);
+            originalTickers = new ArrayList<>(newOriginalTickers);
+            originalTickers.sort((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)));
+            applyFilters();
         });
     }
 
-    public void setAssetTypeFilter(Context context, @NonNull String assetTypeFilter) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setAssetTypeFilter(@NonNull String assetTypeFilter) {
         mainHandler.post(() -> {
             this.assetTypeFilter = assetTypeFilter;
-            applyFilters(context);
+            applyFilters();
         });
     }
 
-    public void setMarketCapThreshold(Context context, @NonNull BigDecimal marketCapThreshold) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setInvestmentType(@NonNull String investmentType) {
+        mainHandler.post(() -> {
+            this.investmentType = investmentType;
+            originalTickers.sort((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)));
+            applyFilters();
+        });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setMarketCapThreshold(@NonNull BigDecimal marketCapThreshold) {
         mainHandler.post(() -> {
             this.marketCapThreshold = marketCapThreshold;
-            applyFilters(context);
+            applyFilters();
         });
     }
 
-    public void setDailyDollarVolumeThreshold(Context context, @NonNull BigDecimal dailyDollarVolumeThreshold) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setDailyDollarVolumeThreshold(@NonNull BigDecimal dailyDollarVolumeThreshold) {
         mainHandler.post(() -> {
             this.dailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
-            applyFilters(context);
+            applyFilters();
         });
     }
 
-    public void setAgeInSecondsThreshold(Context context, @NonNull BigDecimal ageInSecondsThreshold) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setAgeInSecondsThreshold(@NonNull BigDecimal ageInSecondsThreshold) {
         mainHandler.post(() -> {
             this.ageInSecondsThreshold = ageInSecondsThreshold;
-            applyFilters(context);
+            applyFilters();
         });
     }
 
-    public void setOverboughtThresholdType(Context context, String overBoughtThresholdType) {
-        mainHandler.post(() -> {
-            this.overBoughtThresholdType = overBoughtThresholdType;
-            applyFilters(context);
-        });
-    }
-
-    public void setSearchQuery(Context context, String query) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setSearchQuery(String query) {
         mainHandler.post(() -> {
             this.searchQuery = query;
-            applyFilters(context);
+            applyFilters();
         });
     }
 
@@ -128,13 +135,13 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         return string.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
     }
 
-    private void applyFilters(Context context) {
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void applyFilters() {
         if (future != null && !future.isDone()) {
             future.cancel(true);
         }
         future = executor.submit(() -> {
             try {
-                final BigDecimal overboughtThreshold = getOverboughtThreshold(context, originalTickers, overBoughtThresholdType);
                 List<TickerData> filteredList = originalTickers.stream()
                     .filter(ticker -> {
                         boolean typeMatch = ALL_TYPE.equals(assetTypeFilter) || assetTypeFilter.equals(ticker.getType());
@@ -181,29 +188,21 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                             && ticker.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(dailyDollarVolumeThreshold) >= 0
                             // Age is above or equal to threshold
                             && ticker.getAgeInSeconds().compareTo(ageInSecondsThreshold) >= 0
-                            // Asset is not overbought/outlier
-                            && (
-                                overboughtThreshold == null
-                                || ticker.getPercentageIncreasePerDay(newestFixedHistoricalDataRecord.fixedHistoricalData())
-                                    .compareTo(overboughtThreshold) <= 0
-                            )
                         );
                     })
-                    .collect(Collectors.toList());
-                mainHandler.post(() -> setFilteredTickers(filteredList));
+                    .toList();
+                mainHandler.post(() -> setFilteredTickers(investmentType, filteredList));
             } catch (Exception ignored) {}
         });
     }
 
-    private void setFilteredTickers(List<TickerData> filteredTickers) {
+    private void setFilteredTickers(@NonNull String investmentType, List<TickerData> filteredTickers) {
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
-            new TickerDiffCallback(tickers, filteredTickers),
+            new TickerDiffCallback(oldInvestmentType, tickers, investmentType, filteredTickers),
             true
         );
-
-        tickers.clear();
-        tickers.addAll(filteredTickers);
-
+        tickers = new ArrayList<>(filteredTickers);
+        oldInvestmentType = investmentType;
         diffResult.dispatchUpdatesTo(this);
     }
 } 

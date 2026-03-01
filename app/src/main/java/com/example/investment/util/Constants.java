@@ -9,12 +9,13 @@ import java.util.Map;
 public class Constants {
     // File Data Records
     public static final String FILE_RECORD_TICKERS = "tickers.ser";
-    public static final String FILE_RECORD_LEADING_TICKERS = "leading_tickers.ser";
+    public static final String FILE_RECORD_PASSIVE_LEADING_TICKERS = "passive_leading_tickers.ser";
+    public static final String FILE_RECORD_MOMENTUM_LEADING_TICKERS = "momentum_leading_tickers.ser";
 
     // Preferences
     public static final String PREFS_NAME = "Investment Shared Preferences";
     public static final String PREF_ASSET_TYPE_FILTER = "Asset Type Filter Position";
-    public static final String PREF_OVERBOUGHT_THRESHOLD_TYPE = "Overbought Threshold Type";
+    public static final String PREF_INVESTMENT_TYPE = "Investment Type";
     public static final String PREF_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
     public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
     public static final String PREF_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
@@ -39,12 +40,9 @@ public class Constants {
     public static final String CRYPTOCURRENCY_TYPE = "Crypto";
     public static final String STOCK_TYPE = "Stock";
 
-    // Overbought Threshold Types
-    public static final String NONE_THRESHOLD = "None";
-    public static final String IQR_THRESHOLD = "IQR (Upper Bound)";
-    public static final String SD_THRESHOLD = "Standard Deviation (2 SD)";
-    public static final String MAD_THRESHOLD = "Mean Absolute Deviation (MAD)";
-    public static final String MEAN_THRESHOLD = "Arithmetic Mean";
+    // Investment Type
+    public static final String PASSIVE_INVESTMENT_TYPE = "Passive Investing";
+    public static final String MOMENTUM_INVESTMENT_TYPE = "Momentum Investing";
 
     // BigDecimal Constants
     public static final BigDecimal THOUSAND_BD = new BigDecimal("1000");
@@ -77,7 +75,6 @@ public class Constants {
 
     // Notification Channel IDs
     public static final String CHANNEL_ID_SERVICE = "investment_updates";
-    public static final String CHANNEL_ID_GROUP_SUMMARY = "group_summary";
     public static final String CHANNEL_ID_NEW_LEADING_ASSET = "new_leading_asset";
     public static final String CHANNEL_ID_PROFIT_TAKING = "profit_taking";
     public static final String CHANNEL_ID_LEADING_ASSET_RECOVERY = "leading_asset_recovery";
@@ -88,7 +85,6 @@ public class Constants {
 
     // Notification Channel Names
     public static final String CHANNEL_NAME_SERVICE = "Investment Updates";
-    public static final String CHANNEL_NAME_GROUP_SUMMARY = "Group Summary";
     public static final String CHANNEL_NAME_NEW_LEADING_ASSET = "New Leading Asset";
     public static final String CHANNEL_NAME_PROFIT_TAKING = "Profit Taking";
     public static final String CHANNEL_NAME_LEADING_ASSET_RECOVERY = "Leading Asset Recovery";
@@ -99,17 +95,17 @@ public class Constants {
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
-    public static final int NOTIFICATION_ID_GROUP_SUMMARY = 2;
-    public static final int NOTIFICATION_ID_NEW_LEADING_ASSET = 3;
-    public static final int NOTIFICATION_ID_PROFIT_TAKING = 4;
-    public static final int NOTIFICATION_ID_LEADING_ASSET_RECOVERY = 5;
-    public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 6;
-    public static final int NOTIFICATION_ID_LEADING_ASSET_RISK = 7;
-    public static final int NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET = 8;
-    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA = 9;
-
-    // Notification Group Keys
-    public static final String APP_NOTIFICATION_GROUP_KEY = "Investment";
+    public static final int NOTIFICATION_ID_PASSIVE_INVESTMENT_GROUP_SUMMARY = 2;
+    public static final int NOTIFICATION_ID_MOMENTUM_INVESTMENT_GROUP_SUMMARY = 3;
+    public static final int NOTIFICATION_ID_NEW_LEADING_ASSET = 4;
+    public static final int NOTIFICATION_ID_PROFIT_TAKING = 5;
+    public static final int NOTIFICATION_ID_LEADING_ASSET_RECOVERY = 6;
+    public static final int NOTIFICATION_ID_INVESTMENT_OPPORTUNITY = 7;
+    public static final int NOTIFICATION_ID_LEADING_ASSET_RISK = 8;
+    public static final int NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET = 9;
+    public static final int NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET_GROUP_SUMMARY = 10;
+    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA = 11;
+    public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA_GROUP_SUMMARY = 12;
 
     // Notification Messages
     public static final String OUTDATED_TICKER_NOTIFICATION_SUBTEXT = "OUTDATED";

@@ -1,11 +1,13 @@
 package com.example.investment.model.adapter.viewholder;
 
+import static androidx.core.content.ContextCompat.getColor;
 import static com.example.investment.util.BigDecimalUtils.formatNumber;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.THOUSAND_BI;
+import static com.example.investment.util.PriceUtils.formatPrice;
 
 import android.os.Build;
 import android.view.View;
@@ -13,13 +15,11 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.investment.R;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.model.listener.OnTickerClickListener;
 import com.example.investment.model.listener.OnTickerLongClickListener;
-import com.example.investment.util.PriceUtils;
 import com.google.android.material.card.MaterialCardView;
 
 import java.math.BigDecimal;
@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 public class TickerViewHolder extends RecyclerView.ViewHolder {
     private final TextView nameText;
@@ -63,11 +64,25 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.S)
-    public void bind(TickerData ticker) {
-        this.currentTicker = ticker;
-        TickerData.FixedHistoricalData newestFixedHistoricalData = ticker.getNewestFixedHistoricalData();
+    public void bind(TickerData ticker, @NonNull String investmentType) {
+        currentTicker = ticker;
 
-        boolean isDataStale = ticker.areAllFixedHistoricalDataStale();
+        final long currentTimeMillis = System.currentTimeMillis();
+        final boolean isDataStale = ticker.areAllFixedHistoricalDataStale(currentTimeMillis);
+        TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = ticker.getNewestFixedHistoricalDataWithInterval();
+        TickerData.FixedHistoricalData newestFixedHistoricalData = Optional
+            .ofNullable(newestFixedHistoricalDataRecord)
+            .map(TickerData.FixedHistoricalRecord::fixedHistoricalData)
+            .orElse(null);
+
+        @NonNull String assetType = ticker.getType();
+        @NonNull BigDecimal lastAdjustedClosePrice = ticker.getLastAdjustedClosePrice();
+        @NonNull BigDecimal adjustedDensePrice = ticker.getAdjustedDensePrice(newestFixedHistoricalData);
+        @NonNull BigDecimal adjustedLowerBand = ticker.getAdjustedLowerBand(newestFixedHistoricalData, adjustedDensePrice);
+        @NonNull BigDecimal adjustedUpperBand = ticker.getAdjustedUpperBand(newestFixedHistoricalData, adjustedDensePrice);
+        @NonNull BigDecimal percentageIncreasePerDay = ticker.getPercentageIncreasePerDay(investmentType, newestFixedHistoricalData, adjustedUpperBand, currentTimeMillis);
+        @NonNull String priceState = ticker.getPriceState(newestFixedHistoricalData, percentageIncreasePerDay, adjustedLowerBand, adjustedUpperBand);
+
         String symbol = ticker.getSymbol();
         String name = ticker.getName(false);
         if (name == null || name.isEmpty()) {
@@ -87,55 +102,55 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             );
         }
 
-        if (CRYPTOCURRENCY_TYPE.equals(ticker.getType())) {
+        if (CRYPTOCURRENCY_TYPE.equals(assetType)) {
             typeIconImage.setImageResource(R.drawable.crypto);
             typeIconImage.setVisibility(View.VISIBLE);
-        } else if (STOCK_TYPE.equals(ticker.getType())) {
+        } else if (STOCK_TYPE.equals(assetType)) {
             typeIconImage.setImageResource(R.drawable.stock);
             typeIconImage.setVisibility(View.VISIBLE);
         } else {
             typeIconImage.setVisibility(View.GONE);
         }
 
-        marketCapText.setText(PriceUtils.formatPrice(ticker.getMarketCap()));
-        lastPriceText.setText(PriceUtils.formatPrice(ticker.getLastAdjustedClose()));
+        marketCapText.setText(formatPrice(ticker.getMarketCap()));
+        lastPriceText.setText(formatPrice(lastAdjustedClosePrice));
         percentageIncreasePerDayText.setText(
             new StringBuilder()
-            .append(formatNumber(ticker.getPercentageIncreasePerDay(newestFixedHistoricalData)))
+            .append(formatNumber(percentageIncreasePerDay))
             .append("%")
         );
 
-        dailyDollarVolumeText.setText(PriceUtils.formatPrice(ticker.getDailyDollarVolume()));
-        upperBandText.setText(PriceUtils.formatPrice(ticker.getAdjustedUpperBand(newestFixedHistoricalData)));
-        timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds()));
+        dailyDollarVolumeText.setText(formatPrice(ticker.getDailyDollarVolume(newestFixedHistoricalDataRecord)));
+        upperBandText.setText(formatPrice(adjustedUpperBand));
+        timeSpanText.setText(getTimeAgo(ticker.getFirstTradeTimestampSeconds(), currentTimeMillis));
 
         if (isDataStale) {
-            nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.slate_grey));
+            nameText.setTextColor(getColor(itemView.getContext(), R.color.slate_grey));
         } else {
-            nameText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
+            nameText.setTextColor(getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getLastAdjustedClose().compareTo(ticker.getAdjustedLowerBand(newestFixedHistoricalData)) < 0) {
-            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
-        } else if (ticker.getPriceState(newestFixedHistoricalData).equals(PRICE_BETWEEN)) {
-            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.profit_taking));
+        if (lastAdjustedClosePrice.compareTo(adjustedLowerBand) < 0) {
+            lastPriceText.setTextColor(getColor(itemView.getContext(), R.color.bad));
+        } else if (priceState.equals(PRICE_BETWEEN)) {
+            lastPriceText.setTextColor(getColor(itemView.getContext(), R.color.profit_taking));
         } else {
-            lastPriceText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
+            lastPriceText.setTextColor(getColor(itemView.getContext(), R.color.white));
         }
-        if (ticker.getPercentageIncreasePerDay(newestFixedHistoricalData).compareTo(BigDecimal.ZERO) <= 0) {
-            percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        if (percentageIncreasePerDay.compareTo(BigDecimal.ZERO) <= 0) {
+            percentageIncreasePerDayText.setTextColor(getColor(itemView.getContext(), R.color.bad));
         } else {
-            percentageIncreasePerDayText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
+            percentageIncreasePerDayText.setTextColor(getColor(itemView.getContext(), R.color.white));
         }
 
-        if (ticker.getAdjustedUpperBand(newestFixedHistoricalData).compareTo(ticker.getAdjustedLowerBand(newestFixedHistoricalData)) < 0) {
-            upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.bad));
+        if (adjustedUpperBand.compareTo(adjustedLowerBand) < 0) {
+            upperBandText.setTextColor(getColor(itemView.getContext(), R.color.bad));
         } else {
-            upperBandText.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.white));
+            upperBandText.setTextColor(getColor(itemView.getContext(), R.color.white));
         }
 
         MaterialCardView cardView = (MaterialCardView) itemView;
-        cardView.setStrokeColor(getCardColor(ticker, newestFixedHistoricalData));
+        cardView.setStrokeColor(getCardColor(priceState));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -169,7 +184,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
     private static final BigInteger AVG_SECONDS_PER_MONTH = new BigInteger("2629800"); // 30.44 days
     private static final BigInteger AVG_SECONDS_PER_YEAR = new BigInteger("31557600"); // 365.25 days
     @RequiresApi(api = Build.VERSION_CODES.S)
-    public static String getTimeAgo(@NonNull BigInteger timestampSeconds) {
+    public static String getTimeAgo(@NonNull BigInteger timestampSeconds, long currentTimeMillis) {
         try {
             LocalDateTime now = LocalDateTime.now();
             Instant pastInstant = Instant.ofEpochSecond(timestampSeconds.longValueExact());
@@ -193,7 +208,7 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
             long seconds = ChronoUnit.SECONDS.between(past, now);
             return seconds + (seconds == 1 ? " second" : " seconds");
         } catch (Exception ignored) {
-            BigInteger nowMillis = BigInteger.valueOf(System.currentTimeMillis());
+            BigInteger nowMillis = BigInteger.valueOf(currentTimeMillis);
             BigInteger nowSeconds = nowMillis.divide(THOUSAND_BI);
 
             // Calculate difference in seconds
@@ -243,10 +258,9 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         return valueStr + (isOne ? " " + singular : " " + plural);
     }
 
-    private int getCardColor(TickerData ticker, TickerData.FixedHistoricalData newestFixedHistoricalData) {
+    private int getCardColor(@NonNull String priceState) {
         int colorResId;
 
-        @NonNull String priceState = ticker.getPriceState(newestFixedHistoricalData);
         if (priceState.equals(PRICE_BETWEEN)) {
             colorResId = R.color.profit_taking;
         } else if (priceState.equals(PRICE_ABOVE)) {

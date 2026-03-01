@@ -1,17 +1,18 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Investment</string>
     <string name="last_updated_format">Last Updated: %s</string>
     <string name="last_updated_na">Last Update: N/A</string>
     <string name="fetching_tickers">Fetching Tickers from YFinance (%s)…</string>
+    <string name="fetching_tickers_found" tools:ignore="PluralsCandidate">Fetching Tickers from YFinance (%s) | %d Found</string>
     <string name="processing_ticker_progress">Processing Tickers (%s) | %d of %d | %.2f%%</string>
     <string name="successful_ticker_progress">Successfully Processed Tickers</string>
     <string name="stop_processing">Stop Processing</string>
     <string name="asset_type">Asset Type</string>
-    <string name="overbought_threshold">Overbought Threshold</string>
+    <string name="investment_type">Investment Type</string>
     <string name="market_cap_threshold">Market Cap Threshold</string>
     <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
     <string name="age_in_seconds_threshold">Age Threshold (Seconds)</string>
-    <string name="edit_thresholds">Edit Thresholds</string>
+    <string name="edit_configurations">Edit Configurations</string>
     <string name="search">Search</string>
     <string name="search_hint">Search symbols, exchanges, or names…</string>
 </resources>

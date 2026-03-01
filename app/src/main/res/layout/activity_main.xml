@@ -59,19 +59,19 @@
                     android:contentDescription="@string/stop_processing"
                     android:clickable="true"
                     android:focusable="true"
-                    app:layout_constraintRight_toLeftOf="@id/editThresholdsImage"
+                    app:layout_constraintRight_toLeftOf="@id/editConfigurationsImage"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintBottom_toBottomOf="parent" />
 
                 <ImageView
-                    android:id="@+id/editThresholdsImage"
+                    android:id="@+id/editConfigurationsImage"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_centerVertical="true"
                     android:layout_gravity="end"
                     android:padding="12dp"
                     android:src="@drawable/edit"
-                    android:contentDescription="@string/edit_thresholds"
+                    android:contentDescription="@string/edit_configurations"
                     android:clickable="true"
                     android:focusable="true"
                     app:layout_constraintRight_toLeftOf="@id/searchIcon"
