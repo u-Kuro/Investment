@@ -128,6 +128,7 @@ public class NotificationUtils {
         String groupKey,
         int notificationId
     ) {
+        NotificationCompat.InboxStyle inboxStyle = new NotificationCompat.InboxStyle().setBigContentTitle(title);
         NotificationCompat.Builder builder = createNotification(
             context,
             channelId,
@@ -135,7 +136,8 @@ public class NotificationUtils {
             NotificationManager.IMPORTANCE_HIGH,
             true
         )
-        .setContentTitle(title)
+        .setContentTitle(title)  // For pre-Nougat only
+        .setStyle(inboxStyle)
         .setGroup(groupKey)
         .setGroupSummary(true)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)

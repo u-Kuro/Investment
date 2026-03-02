@@ -1,7 +1,6 @@
 package com.example.investment.model.adapter;
 
 import static com.example.investment.util.Constants.ALL_TYPE;
-import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 
 import android.os.Build;
 import android.os.Handler;
@@ -28,26 +27,37 @@ import java.util.concurrent.Future;
 
 public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
-    private Future<?> future;
+    private Future<?> currentTask;
+    private volatile Object currentToken = new Object();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private List<TickerData> tickers = new ArrayList<>();
-    private List<TickerData> originalTickers = new ArrayList<>();
-    private String assetTypeFilter;
-    private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
+    private @NonNull List<TickerData> tickers = new ArrayList<>();
+    private @NonNull List<TickerData> originalTickers = new ArrayList<>();
+    private @NonNull String assetTypeFilter;
+    private @NonNull String investmentType;
     private String oldInvestmentType;
-    private BigDecimal marketCapThreshold;
-    private BigDecimal dailyDollarVolumeThreshold;
-    private BigDecimal ageInSecondsThreshold;
-    private String searchQuery = "";
-    private OnTickerClickListener clickListener;
-    private OnTickerLongClickListener longClickListener;
+    private @NonNull BigDecimal marketCapThreshold;
+    private @NonNull BigDecimal dailyDollarVolumeThreshold;
+    private @NonNull BigDecimal ageInSecondsThreshold;
+    private String searchQuery;
+    private @NonNull final OnTickerClickListener clickListener;
+    private @NonNull final OnTickerLongClickListener longClickListener;
 
-    public void setOnTickerClickListener(OnTickerClickListener listener) {
-        this.clickListener = listener;
-    }
-
-    public void setOnTickerLongClickListener(OnTickerLongClickListener listener) {
-        this.longClickListener = listener;
+    public TickerAdapter(
+        @NonNull String assetTypeFilter,
+        @NonNull String investmentType,
+        @NonNull BigDecimal marketCapThreshold,
+        @NonNull BigDecimal dailyDollarVolumeThreshold,
+        @NonNull BigDecimal ageInSecondsThreshold,
+        @NonNull OnTickerClickListener clickListener,
+        @NonNull OnTickerLongClickListener longClickListener
+    ) {
+        this.assetTypeFilter = assetTypeFilter;
+        this.investmentType = investmentType;
+        this.marketCapThreshold = marketCapThreshold;
+        this.dailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
+        this.ageInSecondsThreshold = ageInSecondsThreshold;
+        this.clickListener = clickListener;
+        this.longClickListener = longClickListener;
     }
 
     @NonNull
@@ -73,7 +83,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void setTickers(List<TickerData> newOriginalTickers) {
+    public void setTickers(@NonNull List<TickerData> newOriginalTickers) {
         mainHandler.post(() -> {
             originalTickers = new ArrayList<>(newOriginalTickers);
             originalTickers.sort((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)));
@@ -137,21 +147,35 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void applyFilters() {
-        if (future != null && !future.isDone()) {
-            future.cancel(true);
+        if (currentTask != null && !currentTask.isDone()) {
+            currentTask.cancel(true);
         }
-        future = executor.submit(() -> {
+
+        final Object token = new Object();
+        currentToken = token;
+
+        @NonNull final List<TickerData> originalSnapshot = new ArrayList<>(originalTickers);
+        @NonNull final List<TickerData> oldTickersSnapshot = new ArrayList<>(tickers);
+        @NonNull final String currentInvestmentType = investmentType;
+        final String oldType = this.oldInvestmentType;
+        @NonNull final String filterAssetType = this.assetTypeFilter;
+        final String filterSearchQuery = this.searchQuery;
+        @NonNull final BigDecimal filterMarketCap = this.marketCapThreshold;
+        @NonNull final BigDecimal filterDailyVolume = this.dailyDollarVolumeThreshold;
+        @NonNull final BigDecimal filterAge = this.ageInSecondsThreshold;
+
+        currentTask = executor.submit(() -> {
             try {
-                List<TickerData> filteredList = originalTickers.stream()
+                @NonNull List<TickerData> currentFilteredSnapshot = originalSnapshot.stream()
                     .filter(ticker -> {
-                        boolean typeMatch = ALL_TYPE.equals(assetTypeFilter) || assetTypeFilter.equals(ticker.getType());
+                        boolean typeMatch = ALL_TYPE.equals(filterAssetType)
+                            || filterAssetType.equals(ticker.getType());
                         if (!typeMatch) return false;
 
                         boolean searchMatch = true;
-                        if (searchQuery != null && !searchQuery.trim().isEmpty()) {
+                        if (filterSearchQuery != null && !filterSearchQuery.trim().isEmpty()) {
                             searchMatch = false;
-
-                            String query = searchQuery.trim();
+                            String query = filterSearchQuery.trim();
                             boolean exactMatch = query.startsWith("\"") && query.endsWith("\"");
 
                             if (exactMatch) {
@@ -160,10 +184,9 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                                     String symbol = ticker.getSymbol();
                                     String name = ticker.getName(false);
                                     String exchange = ticker.getExchange();
-
                                     searchMatch = symbol.contains(exactQuery)
                                         || (name != null && name.contains(exactQuery))
-                                        || (exchange != null &&exchange.contains(exactQuery));
+                                        || (exchange != null && exchange.contains(exactQuery));
                                 }
                             } else {
                                 String cleanedQuery = cleanString(query).toLowerCase();
@@ -171,7 +194,6 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                                     String cleanedSymbol = cleanString(ticker.getSymbol()).toLowerCase();
                                     String cleanedName = cleanString(ticker.getName(false)).toLowerCase();
                                     String cleanedExchange = cleanString(ticker.getExchange()).toLowerCase();
-
                                     searchMatch = cleanedSymbol.contains(cleanedQuery)
                                         || cleanedName.contains(cleanedQuery)
                                         || cleanedExchange.contains(cleanedQuery);
@@ -181,28 +203,31 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                         if (!searchMatch) return false;
 
                         TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = ticker.getNewestFixedHistoricalDataWithInterval();
+
                         return (
-                            // Market cap is above or equal to threshold
-                            ticker.getMarketCap().compareTo(marketCapThreshold) >= 0
-                            // Daily dollar volume is above or equal to threshold
-                            && ticker.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(dailyDollarVolumeThreshold) >= 0
-                            // Age is above or equal to threshold
-                            && ticker.getAgeInSeconds().compareTo(ageInSecondsThreshold) >= 0
+                            ticker.getMarketCap().compareTo(filterMarketCap) >= 0
+                            && ticker.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(filterDailyVolume) >= 0
+                            && ticker.getAgeInSeconds().compareTo(filterAge) >= 0
                         );
                     })
                     .toList();
-                mainHandler.post(() -> setFilteredTickers(investmentType, filteredList));
+
+                @NonNull DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
+                    new TickerDiffCallback(
+                        oldType, oldTickersSnapshot,
+                        currentInvestmentType, currentFilteredSnapshot
+                    ),
+                    true
+                );
+
+                mainHandler.post(() -> {
+                    if (token == currentToken) {
+                        tickers = new ArrayList<>(currentFilteredSnapshot);
+                        this.oldInvestmentType = currentInvestmentType;
+                        diffResult.dispatchUpdatesTo(TickerAdapter.this);
+                    }
+                });
             } catch (Exception ignored) {}
         });
     }
-
-    private void setFilteredTickers(@NonNull String investmentType, List<TickerData> filteredTickers) {
-        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
-            new TickerDiffCallback(oldInvestmentType, tickers, investmentType, filteredTickers),
-            true
-        );
-        tickers = new ArrayList<>(filteredTickers);
-        oldInvestmentType = investmentType;
-        diffResult.dispatchUpdatesTo(this);
-    }
-} 
+}

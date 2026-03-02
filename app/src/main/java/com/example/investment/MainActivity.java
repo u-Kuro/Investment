@@ -79,30 +79,43 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import android.content.SharedPreferences;
 import androidx.activity.OnBackPressedCallback;
 
 public class MainActivity extends AppCompatActivity {
     public static WeakReference<MainActivity> weakActivity;
-    private TickerAdapter adapter;
+    private static final int PERMISSION_REQUEST_CODE = 123;
+    private @NonNull final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
+
     private SwipeRefreshLayout swipeRefreshLayout;
-    private TickerDataLoader dataLoader;
+    private ImageView stopProcessingImage;
+    private ImageView searchIcon;
+    private LinearLayout searchBarContainer;
+    private EditText searchInput;
     private TextView updateText;
     private ProgressBar progressBar;
-    private static final int PERMISSION_REQUEST_CODE = 123;
+    private RecyclerView recyclerView;
+    private TickerAdapter adapter;
+
     private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
     private @NonNull BigDecimal marketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
     private @NonNull BigDecimal dailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
     private @NonNull BigDecimal ageInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
-    private ImageView stopProcessingImage;
-    private String dataRefreshType;
+
+    private TickerDataLoader dataLoader;
+    private final ExecutorService autoUpdateTickerDataRecordExecutor = Executors.newFixedThreadPool(1);
+    private Future<?> currentAutoLoadTickerDataRecordTask;
+    private Object currentAutoLoadTickerDataRecordToken;
+    private final ExecutorService manualUpdateTickerDataRecordExecutor = Executors.newFixedThreadPool(1);
+    private Future<?> currentManualUpdateTickerDataRecordTask;
+    private Object currentManualUpdateTickerDataRecordToken;
+
     private boolean isManuallyUpdated = false;
-    private final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
-    private RecyclerView recyclerView;
-    private ImageView searchIcon;
-    private LinearLayout searchBarContainer;
-    private EditText searchInput;
+    private String dataRefreshType;
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
@@ -126,10 +139,10 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
 
         searchIcon = findViewById(R.id.searchIcon);
-        searchBarContainer = findViewById(R.id.searchBarContainer);
         searchInput = findViewById(R.id.searchInput);
+        searchBarContainer = findViewById(R.id.searchBarContainer);
 
-        adapter = new TickerAdapter();
+        adapter = setupFiltersAndGetAdapter(searchIcon, searchInput, searchBarContainer);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -137,6 +150,7 @@ public class MainActivity extends AppCompatActivity {
             if (isManuallyUpdated || dataRefreshType != null) {
                 if (FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     Toast.makeText(this, "Update already started...", Toast.LENGTH_LONG).show();
+                    swipeRefreshLayout.setRefreshing(false);
                 } else {
                     Toast.makeText(this, "Full data update starting...", Toast.LENGTH_LONG).show();
                 }
@@ -153,36 +167,34 @@ public class MainActivity extends AppCompatActivity {
 
         weakActivity = new WeakReference<>(MainActivity.this);
 
-        requestNotificationPermission();
-
-        setupRecyclerView();
-
-        setupFilters();
-
         stopProcessingImage = findViewById(R.id.stopProcessingImage);
         stopProcessingImage.setVisibility(View.GONE);
         stopProcessingImage.setOnClickListener(v -> {
             AlertDialog alertDialog = new AlertDialog.Builder(this)
-                    .setTitle("Confirmation")
-                    .setMessage("Do you want to cancel the update?")
-                    .setPositiveButton("YES", (dialog, which) -> {
-                        Intent serviceIntent = new Intent(this, TickerService.class);
-                        stopService(serviceIntent);
+                .setTitle("Confirmation")
+                .setMessage("Do you want to cancel the update?")
+                .setPositiveButton("YES", (dialog, which) -> {
+                    if (currentManualUpdateTickerDataRecordTask != null && !currentManualUpdateTickerDataRecordTask.isDone()) {
+                        currentManualUpdateTickerDataRecordTask.cancel(true);
+                    }
 
-                        Intent stopIntent = new Intent(this, TickerService.class);
-                        stopIntent.setAction(STOP_SERVICE_ACTION);
-                        startService(stopIntent);
+                    Intent serviceIntent = new Intent(this, TickerService.class);
+                    stopService(serviceIntent);
 
-                        stopProcessingImage.setVisibility(View.GONE);
-                        progressBar.setVisibility(View.GONE);
-                        progressBar.getLayoutParams().height = 0;
-                        progressBar.requestLayout();
-                        ((View) progressBar.getParent()).requestLayout();
+                    Intent stopIntent = new Intent(this, TickerService.class);
+                    stopIntent.setAction(STOP_SERVICE_ACTION);
+                    startService(stopIntent);
 
-                        dataRefreshType = null;
-                        isManuallyUpdated = false;
-                    })
-                    .create();
+                    stopProcessingImage.setVisibility(View.GONE);
+                    progressBar.setVisibility(View.GONE);
+                    progressBar.getLayoutParams().height = 0;
+                    progressBar.requestLayout();
+                    ((View) progressBar.getParent()).requestLayout();
+
+                    dataRefreshType = null;
+                    isManuallyUpdated = false;
+                })
+                .create();
             Window dialogWindow = alertDialog.getWindow();
             if (dialogWindow != null) {
                 dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
@@ -213,21 +225,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        requestNotificationPermission();
+
         autoLoadTickerDataRecord(true);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void autoLoadTickerDataRecord(boolean shouldCheckUpdate) {
-        new Thread(() -> {
-            try {
-                long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
-                runOnUiThread(() -> updateLastUpdateTime(lastUpdateTime));
-                List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
-                runOnUiThread(() -> {
-                    if (tickers != null && !tickers.isEmpty()) {
-                        updateTickerList(tickers);
-                    }
-                    if (shouldCheckUpdate) {
+    private void autoLoadTickerDataRecord(final boolean isInitialLoad) {
+        final TickerDataLoader dataLoader = this.dataLoader;
+
+        // Initial load shouldn't be cancelled
+        if (isInitialLoad) {
+            swipeRefreshLayout.setRefreshing(true);
+            Toast.makeText(this, "Please wait...", Toast.LENGTH_LONG).show();
+
+            autoUpdateTickerDataRecordExecutor.execute(() -> {
+                try {
+                    final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
+                    final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
+                    runOnUiThread(() -> {
+                        updateLastUpdateTime(lastUpdateTime);
+                        if (tickers != null && !tickers.isEmpty()) {
+                            updateTickerList(tickers);
+                        }
+
                         if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
                             updateTickers(false, true);
                         } else {
@@ -239,21 +260,68 @@ public class MainActivity extends AppCompatActivity {
                                 updateTickers(false, false);
                             }
                         }
-                    }
-                });
-            } catch (Exception e) {
-                Logger.error("Failed to load data.", e);
+
+                        swipeRefreshLayout.setRefreshing(false);
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Failed to load recent data...", Toast.LENGTH_LONG).show();
+                        swipeRefreshLayout.setRefreshing(false);
+                    });
+                    Logger.error("Failed to load data.", e);
+                }
+            });
+        } else {
+            if (currentAutoLoadTickerDataRecordTask != null && !currentAutoLoadTickerDataRecordTask.isDone()) {
+                currentAutoLoadTickerDataRecordTask.cancel(true);
             }
-        }).start();
+
+            final Object autoLoadTickerDataRecordToken = new Object();
+            currentAutoLoadTickerDataRecordToken = autoLoadTickerDataRecordToken;
+
+            currentAutoLoadTickerDataRecordTask = autoUpdateTickerDataRecordExecutor.submit(() -> {
+                try {
+                    final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
+                    final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
+                    runOnUiThread(() -> {
+                        if (autoLoadTickerDataRecordToken == currentAutoLoadTickerDataRecordToken) {
+                            updateLastUpdateTime(lastUpdateTime);
+                            if (tickers != null && !tickers.isEmpty()) {
+                                updateTickerList(tickers);
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        if (autoLoadTickerDataRecordToken == currentAutoLoadTickerDataRecordToken) {
+                            Toast.makeText(this, "Failed to load recent data...", Toast.LENGTH_LONG).show();
+                            swipeRefreshLayout.setRefreshing(false);
+                        }
+                    });
+                    Logger.error("Failed to load data.", e);
+                }
+            });
+        }
+
+
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void manualUpdateTickerDataRecord(boolean isFullDataRefresh) {
-        new Thread(() -> {
+    private void manualUpdateTickerDataRecord(final boolean isFullDataRefresh) {
+        if (currentManualUpdateTickerDataRecordTask != null && !currentManualUpdateTickerDataRecordTask.isDone()) {
+            currentManualUpdateTickerDataRecordTask.cancel(true);
+        }
+
+        final Object manualUpdateTickerDataRecordToken = new Object();
+        currentManualUpdateTickerDataRecordToken = manualUpdateTickerDataRecordToken;
+
+        final TickerDataLoader dataLoader = this.dataLoader;
+        currentManualUpdateTickerDataRecordTask = manualUpdateTickerDataRecordExecutor.submit(() -> {
             try {
-                long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
-                List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
+                final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
+                final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this.getApplicationContext());
                 runOnUiThread(() -> {
+                    if (manualUpdateTickerDataRecordToken != currentManualUpdateTickerDataRecordToken) return;
                     if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
                         updateTickers(true, true);
                     } else {
@@ -261,10 +329,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (manualUpdateTickerDataRecordToken != currentManualUpdateTickerDataRecordToken) return;
+                    Toast.makeText(this, "Failed to update data...", Toast.LENGTH_LONG).show();
+                    swipeRefreshLayout.setRefreshing(false);
+                });
                 Logger.error("Failed to update data.", e);
-                swipeRefreshLayout.setRefreshing(false);
             }
-        }).start();
+        });
     }
 
     private void updateTickers(boolean isManual, boolean isFullDataRefresh) {
@@ -451,61 +523,62 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void setupRecyclerView() {
-        adapter.setOnTickerClickListener(ticker -> {
-            try {
-                String symbol = ticker.getSymbol();
-                if (symbol.isEmpty()) throw new Exception("Empty Symbol");
-                String url = "https://finance.yahoo.com/quote/" + symbol;
-                customTabsUtils.launchUrl(
-                    this,
-                    Uri.parse(url),
-                    ContextCompat.getColor(this, R.color.black),
-                    true
-                );
-            } catch (Exception ignored) {
-                Toast.makeText(getApplicationContext(), "Can't open the link", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        adapter.setOnTickerLongClickListener(ticker -> {
-            String name = ticker.getName(true);
-            if (name != null && !name.isEmpty()) {
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                ClipData clip = ClipData.newPlainText("Ticker", name);
-                clipboard.setPrimaryClip(clip);
-
-                Toast.makeText(this, "Copied to clipboard.", Toast.LENGTH_SHORT).show();
-            }
-            return true;
-        });
-    }
-
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void setupFilters() {
-        Spinner assetTypeFilterSpinner = findViewById(R.id.assetTypeFilterSpinner);
-
-        SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        final @NonNull String assetTypeFilter = sharedPref.getString(PREF_ASSET_TYPE_FILTER, ALL_TYPE);
+    private @NonNull TickerAdapter setupFiltersAndGetAdapter(
+        @NonNull ImageView searchIcon,
+        @NonNull EditText searchInput,
+        @NonNull LinearLayout searchBarContainer
+    ) {
+        @NonNull final SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        @NonNull final String assetTypeFilter = sharedPref.getString(PREF_ASSET_TYPE_FILTER, ALL_TYPE);
         investmentType = sharedPref.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
         marketCapThreshold = getSafeBigDecimalPrefs(this, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         ageInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
 
-        ArrayAdapter<CharSequence> assetTypeFilterAdapter = new ArrayAdapter<>(this,
+        @NonNull final TickerAdapter tickerAdapter = new TickerAdapter(
+            assetTypeFilter,
+            investmentType,
+            marketCapThreshold,
+            dailyDollarVolumeThreshold,
+            ageInSecondsThreshold,
+            ticker -> {
+                try {
+                    @NonNull String symbol = ticker.getSymbol();
+                    if (symbol.isEmpty()) throw new Exception("Empty Symbol");
+                    String url = "https://finance.yahoo.com/quote/" + symbol;
+                    customTabsUtils.launchUrl(
+                        this,
+                        Uri.parse(url),
+                        ContextCompat.getColor(this, R.color.black),
+                        true
+                    );
+                } catch (Exception ignored) {
+                    Toast.makeText(getApplicationContext(), "Can't open the link", Toast.LENGTH_LONG).show();
+                }
+            },
+            ticker -> {
+                String name = ticker.getName(true);
+                if (name != null && !name.isEmpty()) {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    ClipData clip = ClipData.newPlainText("Ticker", name);
+                    clipboard.setPrimaryClip(clip);
+
+                    Toast.makeText(this, "Copied to clipboard.", Toast.LENGTH_SHORT).show();
+                }
+                return true;
+            }
+        );
+
+        @NonNull ArrayAdapter<CharSequence> assetTypeFilterAdapter = new ArrayAdapter<>(this,
             R.layout.spinner_item,
             new String[]{ALL_TYPE, CRYPTOCURRENCY_TYPE, STOCK_TYPE}
         );
         assetTypeFilterAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+
+        @NonNull Spinner assetTypeFilterSpinner = findViewById(R.id.assetTypeFilterSpinner);
         assetTypeFilterSpinner.setAdapter(assetTypeFilterAdapter);
         assetTypeFilterSpinner.setSelection(assetTypeFilterAdapter.getPosition(assetTypeFilter));
-
-        adapter.setAssetTypeFilter(assetTypeFilter);
-        adapter.setInvestmentType(investmentType);
-        adapter.setMarketCapThreshold(marketCapThreshold);
-        adapter.setDailyDollarVolumeThreshold(dailyDollarVolumeThreshold);
-        adapter.setAgeInSecondsThreshold(ageInSecondsThreshold);
-
         assetTypeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             @Override
@@ -516,13 +589,24 @@ public class MainActivity extends AppCompatActivity {
                 editor.putString(PREF_ASSET_TYPE_FILTER, newAssetTypeFilter);
                 editor.apply();
 
-                adapter.setAssetTypeFilter(newAssetTypeFilter);
+                tickerAdapter.setAssetTypeFilter(newAssetTypeFilter);
             }
 
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                tickerAdapter.setSearchQuery(s.toString());
+            }
+            @Override
+            public void afterTextChanged(Editable s) { }
+        });
         searchIcon.setOnClickListener(v -> {
             if (searchBarContainer.getVisibility() == View.GONE) {
                 searchBarContainer.setVisibility(View.VISIBLE);
@@ -535,17 +619,8 @@ public class MainActivity extends AppCompatActivity {
                 searchInput.setText("");
             }
         });
-        searchInput.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                adapter.setSearchQuery(s.toString());
-            }
-            @Override
-            public void afterTextChanged(Editable s) { }
-        });
+
+        return tickerAdapter;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -623,8 +698,11 @@ public class MainActivity extends AppCompatActivity {
         return parent;
     }
 
+    private AlertDialog configurationsDialog;
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void showConfigurationsDialog() {
+        if (configurationsDialog != null && configurationsDialog.isShowing()) return;
+
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_configurations, null);
 
         MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
@@ -643,7 +721,7 @@ public class MainActivity extends AppCompatActivity {
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
         ageInSecondsThresholdInput.setText(ageInSecondsThreshold.toPlainString());
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        configurationsDialog = new AlertDialog.Builder(this)
             .setTitle(getResources().getText(R.string.edit_configurations))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
@@ -709,10 +787,10 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("Cancel", null)
             .create();
 
-        Window dialogWindow = dialog.getWindow();
+        Window dialogWindow = configurationsDialog.getWindow();
         if (dialogWindow != null) {
             dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
         }
-        dialog.show();
+        configurationsDialog.show();
     }
 }

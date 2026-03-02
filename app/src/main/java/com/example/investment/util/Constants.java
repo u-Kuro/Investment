@@ -109,6 +109,8 @@ public class Constants {
 
     // Notification Messages
     public static final String OUTDATED_TICKER_NOTIFICATION_SUBTEXT = "OUTDATED";
+    public static final String PASSIVE_NOTIFICATION_SUBTEXT = "PASSIVE";
+    public static final String MOMENTUM_NOTIFICATION_SUBTEXT = "MOMENTUM";
 
     // Ticker Defaults
     public static final int SAVED_LEADING_TICKERS_COUNT = 4;

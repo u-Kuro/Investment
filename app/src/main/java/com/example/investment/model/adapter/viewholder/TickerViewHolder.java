@@ -31,17 +31,18 @@ import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 public class TickerViewHolder extends RecyclerView.ViewHolder {
-    private final TextView nameText;
-    private final ImageView typeIconImage;
-    private final TextView marketCapText;
-    private final TextView lastPriceText;
-    private final TextView percentageIncreasePerDayText;
-    private final TextView dailyDollarVolumeText;
-    private final TextView upperBandText;
-    private final TextView timeSpanText;
-    private TickerData currentTicker;
+    private @NonNull final TextView nameText;
+    private @NonNull final ImageView typeIconImage;
+    private @NonNull final TextView marketCapText;
+    private @NonNull final TextView lastPriceText;
+    private @NonNull final TextView percentageIncreasePerDayText;
+    private @NonNull final TextView dailyDollarVolumeText;
+    private @NonNull final TextView upperBandText;
+    private @NonNull final TextView timeSpanText;
+    private @NonNull final OnTickerClickListener clickListener;
+    private @NonNull final OnTickerLongClickListener longClickListener;
 
-    public TickerViewHolder(@NonNull View itemView, OnTickerClickListener listener, OnTickerLongClickListener longListener) {
+    public TickerViewHolder(@NonNull View itemView, @NonNull OnTickerClickListener listener, @NonNull OnTickerLongClickListener longListener) {
         super(itemView);
         nameText = itemView.findViewById(R.id.nameText);
         typeIconImage = itemView.findViewById(R.id.typeIconImage);
@@ -54,18 +55,14 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         upperBandText = itemView.findViewById(R.id.upperBandText);
         timeSpanText = itemView.findViewById(R.id.timeSpanText);
 
-        if (listener != null) {
-            itemView.setOnClickListener(v -> listener.onTickerClick(currentTicker));
-        }
-
-        if (longListener != null) {
-            itemView.setOnLongClickListener(v -> longListener.onTickerLongClick(currentTicker));
-        }
+        clickListener = listener;
+        longClickListener = longListener;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.S)
     public void bind(TickerData ticker, @NonNull String investmentType) {
-        currentTicker = ticker;
+        itemView.setOnClickListener(v -> clickListener.onTickerClick(ticker));
+        itemView.setOnLongClickListener(v -> longClickListener.onTickerLongClick(ticker));
 
         final long currentTimeMillis = System.currentTimeMillis();
         final boolean isDataStale = ticker.areAllFixedHistoricalDataStale(currentTimeMillis);
