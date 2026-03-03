@@ -29,9 +29,9 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/typeIconImage">
+                app:layout_constraintRight_toLeftOf="@id/typeIconImageView">
                 <TextView
-                    android:id="@+id/nameText"
+                    android:id="@+id/nameTextView"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textSize="18sp"
@@ -41,7 +41,7 @@
             </HorizontalScrollView>
 
             <ImageView
-                android:id="@+id/typeIconImage"
+                android:id="@+id/typeIconImageView"
                 android:src="@drawable/crypto"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
@@ -63,7 +63,7 @@
             android:useDefaultMargins="true">
 
             <TextView
-                android:id="@+id/marketCapText"
+                android:id="@+id/marketCapTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -73,10 +73,10 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/lastPriceText" />
+                app:layout_constraintRight_toLeftOf="@id/lastPriceTextView" />
 
             <TextView
-                android:id="@+id/lastPriceText"
+                android:id="@+id/lastPriceTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -86,11 +86,11 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/marketCapText"
-                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDayText" />
+                app:layout_constraintLeft_toRightOf="@id/marketCapTextView"
+                app:layout_constraintRight_toLeftOf="@id/percentageIncreasePerDayTextView" />
 
             <TextView
-                android:id="@+id/percentageIncreasePerDayText"
+                android:id="@+id/percentageIncreasePerDayTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -100,7 +100,7 @@
                 android:ellipsize="end"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/lastPriceText"
+                app:layout_constraintLeft_toRightOf="@id/lastPriceTextView"
                 app:layout_constraintRight_toRightOf="parent" />
 
         </GridLayout>
@@ -114,7 +114,7 @@
             android:useDefaultMargins="true">
 
             <TextView
-                android:id="@+id/dailyDollarVolumeText"
+                android:id="@+id/dailyDollarVolumeTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -125,10 +125,10 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintLeft_toLeftOf="parent"
-                app:layout_constraintRight_toLeftOf="@id/upperBandText" />
+                app:layout_constraintRight_toLeftOf="@id/upperBandTextView" />
 
             <TextView
-                android:id="@+id/upperBandText"
+                android:id="@+id/upperBandTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -138,11 +138,11 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/dailyDollarVolumeText"
-                app:layout_constraintRight_toLeftOf="@id/timeSpanText" />
+                app:layout_constraintLeft_toRightOf="@id/dailyDollarVolumeTextView"
+                app:layout_constraintRight_toLeftOf="@id/timeSpanTextView" />
 
             <TextView
-                android:id="@+id/timeSpanText"
+                android:id="@+id/timeSpanTextView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_columnWeight="1"
@@ -152,7 +152,7 @@
                 android:ellipsize="start"
                 app:layout_constraintTop_toTopOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintLeft_toRightOf="@id/upperBandText"
+                app:layout_constraintLeft_toRightOf="@id/upperBandTextView"
                 app:layout_constraintRight_toRightOf="parent" />
 
         </GridLayout>

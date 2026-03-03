@@ -1,7 +1,6 @@
 package com.example.investment.repository;
 
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
-import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
@@ -16,25 +15,21 @@ import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static com.example.investment.util.NetworkUtils.getThrottleDelay;
-import static com.example.investment.util.FileUtils.loadObject;
-import static com.example.investment.util.FileUtils.saveObject;
 import static com.example.investment.util.BigDecimalUtils.safeLog;
 import static java.math.MathContext.DECIMAL128;
 
-import android.content.Context;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.model.ticker.TickerData.FixedHistoricalData;
-import com.example.investment.util.Logger;
-import com.example.investment.model.TickerDataRecord;
 import com.example.investment.model.listener.TickerUpdateListener;
+import com.example.investment.util.Logger;
 import com.example.investment.util.UrlBuilder;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -55,73 +50,55 @@ public class YahooFinanceRepository {
     private record FetchSymbolsResult(@NonNull String type, BigDecimal marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
+
     @NonNull private static final OkHttpClient client = new OkHttpClient();
     @NonNull private static final BigDecimal TWO = new BigDecimal("2");
     @NonNull private static final BigDecimal FOUR = new BigDecimal("4");
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public void updateTickers(Context context, boolean isFullRefresh, TickerUpdateListener listener) {
-        List<TickerData> tickersList = new ArrayList<>();
-        Map<String, TickerData> oldTickersMap = new HashMap<>();
-        Set<String> deletedTickersSet = new HashSet<>();
+    public void updateTickers(
+        @Nullable List<TickerData> oldTickers,
+        boolean isFullRefresh,
+        @NonNull TickerUpdateListener listener
+    ) {
+        List<TickerData> result = new ArrayList<>();
+        boolean effectiveFullRefresh = isFullRefresh || oldTickers == null;
+        Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers, effectiveFullRefresh);
+        Set<String> deletedSymbols = new HashSet<>();
 
         try {
             listener.onTickersProgress(0, 0);
 
-            // Get new tickers from screeners
-            Map<String, FetchSymbolsResult> newSymbolsMap = fetchTickers(listener);
+            Map<String, FetchSymbolsResult> newSymbolsMap = fetchSymbols(listener);
 
-            // Load old ticker data record if doing partial refresh
-            if (!isFullRefresh) {
-                List<TickerData> oldTickersList = getTickersData(context);
-                if (oldTickersList != null) {
-                    for (TickerData ticker : oldTickersList) {
-                        oldTickersMap.put(ticker.getSymbol(), ticker);
-                    }
-
-                    // Find deleted tickers
-                    if (!oldTickersMap.isEmpty()) {
-                        deletedTickersSet = getDeletedTickers(oldTickersMap, newSymbolsMap);
-                    }
-                } else {
-                    isFullRefresh = true;
-                }
+            if (!effectiveFullRefresh) {
+                deletedSymbols = getDeletedSymbols(oldTickersMap, newSymbolsMap);
             }
 
             int total = newSymbolsMap.size();
             int current = 0;
 
-            for (Map.Entry<String, FetchSymbolsResult> newSymbolEntry : newSymbolsMap.entrySet()) {
+            for (Map.Entry<String, FetchSymbolsResult> entry : newSymbolsMap.entrySet()) {
                 if (Thread.currentThread().isInterrupted()) {
                     throw new InterruptedException("Thread interrupted in main ticker loop");
                 }
 
-                @NonNull String symbol = newSymbolEntry.getKey();
-                TickerData oldTicker = oldTickersMap.get(symbol);
+                @NonNull String symbol = entry.getKey();
+                @Nullable TickerData oldTicker = oldTickersMap.get(symbol);
+
                 try {
-                    // Fetch and process data
-                    TickerData ticker = processTickerData(
-                        newSymbolEntry,
-                        oldTicker,
-                        isFullRefresh
-                    );
-
-                    // If ticker update succeeded, put its new data in the list
-                    tickersList.add(ticker);
-                    listener.onTickerUpdate(tickersList);
+                    result.add(processTickerData(entry, oldTicker, effectiveFullRefresh));
+                    listener.onTickerUpdate(result);
                     listener.onTickersProgress(++current, total);
-
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
                     return;
                 } catch (Exception e) {
                     Logger.error("Error processing " + symbol, e);
-
-                    // If ticker update failed, put back its old data in the list
                     if (oldTicker != null) {
-                        tickersList.add(oldTicker);
-                        listener.onTickerUpdate(tickersList);
+                        result.add(oldTicker);
+                        listener.onTickerUpdate(result);
                     }
                     listener.onTickersProgress(++current, total);
                 }
@@ -136,42 +113,190 @@ public class YahooFinanceRepository {
             return;
         }
 
-        // Delete missing tickers
-        Set<String> finalDeletedTickersSet = deletedTickersSet;
-        tickersList.removeIf(tickerData -> finalDeletedTickersSet.contains(tickerData.getSymbol()));
+        final Set<String> finalDeletedSymbols = deletedSymbols;
+        result.removeIf(ticker -> finalDeletedSymbols.contains(ticker.getSymbol()));
 
-        if (tickersList.isEmpty()) {
+        if (result.isEmpty()) {
             listener.onError();
         } else {
-            try {
-                long updateTime = System.currentTimeMillis();
-                saveTickerDataRecord(context, tickersList, updateTime);
-                listener.onFinish(tickersList, updateTime);
-            } catch (Exception e) {
-                Logger.error("Error saving data", e);
-                listener.onError();
-            }
+            listener.onFinish(result, System.currentTimeMillis());
         }
     }
 
+    // Symbol Fetching
+    private Map<String, FetchSymbolsResult> fetchSymbols(@NonNull TickerUpdateListener listener) throws Exception {
+        Map<String, FetchSymbolsResult> symbols = new HashMap<>();
+
+        for (String screener : new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS }) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Thread interrupted while fetching symbols");
+            }
+
+            int retryCount = 0;
+            long startIndex = 0;
+            String prevFirstSymbol = null;
+
+            while (true) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedException("Thread interrupted during symbol pagination");
+                }
+
+                String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
+                    .addParam("count", String.valueOf(SCREENER_COUNT))
+                    .addParam("scrIds", screener)
+                    .addParam("sortField", "intradaymarketcap")
+                    .addParam("sortType", "DESC")
+                    .addParam("start", String.valueOf(startIndex))
+                    .build();
+
+                throttle();
+
+                try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
+                    JSONArray quotes = parseScreenerResponse(screener, response);
+                    int length = quotes.length();
+                    if (length < 1) break;
+
+                    String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
+                    if (firstSymbol.equals(prevFirstSymbol)) throw new Exception("Duplicate symbol found.");
+                    prevFirstSymbol = firstSymbol;
+
+                    for (int i = 0; i < length; i++) {
+                        try {
+                            JSONObject obj = quotes.getJSONObject(i);
+                            String symbol = obj.getString("symbol");
+                            @NonNull BigDecimal marketCap = new BigDecimal(obj.getString("marketCap"));
+                            if (!symbol.isEmpty() && marketCap.compareTo(BigDecimal.ZERO) > 0) {
+                                symbols.put(
+                                    symbol,
+                                    new FetchSymbolsResult(
+                                        SCREENER_CRYPTO.equals(screener) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE,
+                                        marketCap
+                                    )
+                                );
+                            }
+                        } catch (Exception e) {
+                            Logger.error(e.getMessage(), e);
+                        }
+                    }
+
+                    retryCount = 0;
+                    startIndex += length;
+                    listener.onSymbolsProgress(symbols.size());
+
+                } catch (InterruptedException e) {
+                    throw e;
+                } catch (Exception e) {
+                    if (retryCount >= MAX_FETCH_RETRY_COUNT) throw e;
+                    retryCount++;
+                }
+            }
+        }
+
+        return symbols;
+    }
+
+    private JSONArray parseScreenerResponse(@NonNull String screener, @NonNull Response response) throws Exception {
+        if (!response.isSuccessful()) throw new Exception("Unexpected " + screener + " response: " + response);
+        ResponseBody body = response.body();
+        if (body == null) throw new Exception("Empty response body");
+        return new JSONObject(body.string())
+            .getJSONObject("finance")
+            .getJSONArray("result")
+            .getJSONObject(0)
+            .getJSONArray("quotes");
+    }
+
+    // Ticker Fetching
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private TickerData processTickerData(
-        Map.Entry<String, FetchSymbolsResult> newSymbolEntry,
-        TickerData oldTicker,
+    private FetchTickerResult fetchTickerWithInterval(
+        @NonNull String symbol,
+        @Nullable TickerData oldTicker,
         boolean isFullRefresh
     ) throws Exception {
+        List<FetchTickerAttempt> attempts = new ArrayList<>();
+        for (String interval : ASSET_INTERVALS) {
+            attempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL));
+            attempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL_ALT));
+        }
 
-        FetchSymbolsResult newSymbolEntryValue = newSymbolEntry.getValue();
-        @NonNull String symbol = newSymbolEntry.getKey();
+        for (int i = 0; i < attempts.size(); i++) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Thread interrupted during fetchTickerData");
+            }
 
-        FetchTickerResult fetchTickerResult = fetchTickerDataWithInterval(symbol, oldTicker, isFullRefresh);
-        @NonNull JSONObject result = fetchTickerResult.result;
-        @NonNull String interval = fetchTickerResult.interval;
+            FetchTickerAttempt attempt = attempts.get(i);
+            @NonNull String interval = attempt.interval();
+            boolean hasFixedHistoricalData;
+            @NonNull String period1;
 
-        final boolean SHOULD_UPDATE_ALL_DATA = isFullRefresh || oldTicker == null;
-        final boolean HAS_FIXED_HISTORICAL_DATA = fetchTickerResult.hasFixedHistoricalData;
+            if (isFullRefresh || oldTicker == null) {
+                period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
+                hasFixedHistoricalData = false;
+            } else {
+                FixedHistoricalData fixedData = oldTicker.getFixedHistoricalData(interval);
+                if (fixedData == null) {
+                    period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
+                    hasFixedHistoricalData = false;
+                } else {
+                    period1 = fixedData.updatedAtTimestampSeconds().toString();
+                    hasFixedHistoricalData = true;
+                }
+            }
 
-        // Get arrays from API response (YFinance)
+            String url = new UrlBuilder(attempt.baseUrl())
+                .addPath(symbol)
+                .addParam("period1", period1)
+                .addParam("period2", String.valueOf((System.currentTimeMillis() / 1000L) + 2678400L))
+                .addParam("interval", interval)
+                .addParam("includePrePost", "true")
+                .addParam("events", "div|split|earn")
+                .addParam("lang", "en-US")
+                .addParam("region", "US")
+                .addParam("source", "cosaic")
+                .build();
+
+            throttle();
+
+            try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
+                if (!response.isSuccessful()) throw new Exception("Unexpected " + symbol + " response: " + response);
+                ResponseBody body = response.body();
+                if (body == null) throw new Exception("Empty response body");
+
+                JSONObject resultObj = new JSONObject(body.string())
+                    .getJSONObject("chart")
+                    .getJSONArray("result")
+                    .getJSONObject(0);
+
+                return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
+
+            } catch (InterruptedException e) {
+                throw e;
+            } catch (Exception e) {
+                if (i == attempts.size() - 1) throw e;
+            }
+        }
+
+        throw new Exception("Failed to fetch ticker data (no attempts succeeded)");
+    }
+
+    // Ticker Processing
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private TickerData processTickerData(
+        @NonNull Map.Entry<String, FetchSymbolsResult> entry,
+        @Nullable TickerData oldTicker,
+        boolean isFullRefresh
+    ) throws Exception {
+        @NonNull String symbol = entry.getKey();
+        @NonNull FetchSymbolsResult symbolResult = entry.getValue();
+
+        FetchTickerResult fetchResult = fetchTickerWithInterval(symbol, oldTicker, isFullRefresh);
+        @NonNull JSONObject result = fetchResult.result();
+        @NonNull String interval = fetchResult.interval();
+
+        final boolean shouldUpdateAllData = isFullRefresh || oldTicker == null;
+        final boolean hasFixedHistoricalData = fetchResult.hasFixedHistoricalData();
+
+        // Parse API arrays
         JSONArray apiTimestamps = result.getJSONArray("timestamp");
         JSONObject indicators = result.getJSONObject("indicators");
         JSONObject quote = indicators.getJSONArray("quote").getJSONObject(0);
@@ -180,13 +305,11 @@ public class YahooFinanceRepository {
         JSONArray apiOpens = quote.getJSONArray("open");
         JSONArray apiHighs = quote.getJSONArray("high");
         JSONArray apiLows = quote.getJSONArray("low");
-        // Convert since Cryptocurrency volume unit is in USD
-        JSONArray apiVolumes = quote.getJSONArray("volume");
-        if (newSymbolEntryValue.type.equals(CRYPTOCURRENCY_TYPE)) {
-            apiVolumes = convertCryptoVolumeToUnits(apiVolumes, apiCloses);
-        }
+        JSONArray apiVolumes = symbolResult.type().equals(CRYPTOCURRENCY_TYPE)
+            ? convertCryptoVolumeToUnits(quote.getJSONArray("volume"), apiCloses)
+            : quote.getJSONArray("volume");
 
-        // Initialize ticker data
+        // Initialize fields
         String name = null;
         String exchange = null;
         BigInteger firstTradeTimestampSeconds = null;
@@ -195,7 +318,7 @@ public class YahooFinanceRepository {
         BigDecimal adjustmentFactor = null;
         final @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap;
 
-        // Initialize fixed historical data
+        // Initialize running sums
         BigInteger updatedAtTimestampSeconds = null;
         @NonNull BigDecimal dpSumNum = BigDecimal.ZERO;
         @NonNull BigDecimal dpSumDen = BigDecimal.ZERO;
@@ -205,12 +328,9 @@ public class YahooFinanceRepository {
         @NonNull BigDecimal sumDollarVolLen = BigDecimal.ZERO;
         BigDecimal startPrice = null;
         BigInteger startPriceTimestampSeconds = null;
-
-        // Lag variable
         BigDecimal prevUpperBand = null;
 
-        // Update all data
-        if (SHOULD_UPDATE_ALL_DATA) {
+        if (shouldUpdateAllData) {
             try {
                 JSONObject meta = result.getJSONObject("meta");
                 try { name = meta.optString("longName", meta.getString("shortName")); } catch (Exception ignored) {}
@@ -225,21 +345,19 @@ public class YahooFinanceRepository {
             lastAdjustedClosePrice = oldTicker.getLastAdjustedClosePrice();
             adjustmentFactor = oldTicker.getAdjustmentFactor();
             fixedHistoricalDataMap = oldTicker.getFixedHistoricalDataMap();
-            if (HAS_FIXED_HISTORICAL_DATA) {
-                FixedHistoricalData fixedHistoricalData = oldTicker.getFixedHistoricalData(interval);
-                if (fixedHistoricalData == null) {
-                    throw new NullPointerException("Fixed historical data \""+interval+"\" is expected to be Non-Null");
-                }
-                updatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds();
-                dpSumNum = fixedHistoricalData.dpSumNum();
-                dpSumDen = fixedHistoricalData.dpSumDen();
-                dbSumNum = fixedHistoricalData.dbSumNum();
-                dbSumDen = fixedHistoricalData.dbSumDen();
-                sumDollarVol = fixedHistoricalData.sumDollarVol();
-                sumDollarVolLen = fixedHistoricalData.sumDollarVolLen();
-                startPrice = fixedHistoricalData.startPrice();
-                startPriceTimestampSeconds = fixedHistoricalData.startPriceTimestampSeconds();
-                // Fill lag variable
+
+            if (hasFixedHistoricalData) {
+                FixedHistoricalData fixedData = oldTicker.getFixedHistoricalData(interval);
+                if (fixedData == null) throw new NullPointerException("Fixed historical data \"" + interval + "\" expected non-null");
+                updatedAtTimestampSeconds = fixedData.updatedAtTimestampSeconds();
+                dpSumNum = fixedData.dpSumNum();
+                dpSumDen = fixedData.dpSumDen();
+                dbSumNum = fixedData.dbSumNum();
+                dbSumDen = fixedData.dbSumDen();
+                sumDollarVol = fixedData.sumDollarVol();
+                sumDollarVolLen = fixedData.sumDollarVolLen();
+                startPrice = fixedData.startPrice();
+                startPriceTimestampSeconds = fixedData.startPriceTimestampSeconds();
                 prevUpperBand = dpSumNum.divide(dpSumDen, DECIMAL128)
                     .multiply(
                         dbSumNum
@@ -250,9 +368,8 @@ public class YahooFinanceRepository {
             }
         }
 
-        // For full refresh: start from 0
-        // For incremental: skip first element to avoid duplicate
-        int startIndex = SHOULD_UPDATE_ALL_DATA ? 0 : 1;
+        // Last adjusted close + first trade date
+        int startIndex = shouldUpdateAllData ? 0 : 1;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
@@ -267,35 +384,34 @@ public class YahooFinanceRepository {
                     && bOpen.compareTo(BigDecimal.ZERO) > 0
                     && BigInteger.valueOf(System.currentTimeMillis()).compareTo(bTimestamp.multiply(THOUSAND_BI)) > 0
                 ) {
-                    // Track very first trade date
                     if (firstTradeTimestampSeconds == null || firstTradeTimestampSeconds.compareTo(bTimestamp) > 0) {
                         firstTradeOpenPrice = bOpen;
                         firstTradeTimestampSeconds = bTimestamp;
                     }
-
-                    // Always update last adjusted close and adjustment factor with the latest value
                     lastAdjustedClosePrice = bAdjClose;
                     adjustmentFactor = lastAdjustedClosePrice.divide(bClose, DECIMAL128);
                 }
-            } catch (Exception error) {
-                Logger.error(error.getMessage(), error);
+            } catch (Exception e) {
+                Logger.error(e.getMessage(), e);
             }
         }
 
-        // For fixed historical data only use non changing data (before last bar || length - 1)
+        // Fixed historical data (excludes last bar)
         for (int i = startIndex; i < apiHighs.length() - 1; i++) {
             try {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
 
-                // If timestamp is valid then its assumed to be updated even if other data are null
-                if (bTimestamp.compareTo(BigInteger.ZERO) > 0 && (updatedAtTimestampSeconds == null || bTimestamp.compareTo(updatedAtTimestampSeconds) > 0)) {
+                if (
+                    bTimestamp.compareTo(BigInteger.ZERO) > 0
+                    && (updatedAtTimestampSeconds == null || bTimestamp.compareTo(updatedAtTimestampSeconds) > 0)
+                ) {
                     updatedAtTimestampSeconds = bTimestamp;
 
-                    // Still, only add historical summed values if its valid (it's a skipped bar if either one is null)
                     @NonNull BigDecimal bVol = new BigDecimal(apiVolumes.getString(i));
                     try {
                         @NonNull BigDecimal bHigh = new BigDecimal(apiHighs.getString(i));
                         @NonNull BigDecimal bLow = new BigDecimal(apiLows.getString(i));
+
                         if (
                             bVol.compareTo(BigDecimal.ZERO) > 0
                             && bHigh.compareTo(BigDecimal.ZERO) > 0
@@ -304,128 +420,94 @@ public class YahooFinanceRepository {
                             @NonNull BigDecimal barRange = bHigh.subtract(bLow, DECIMAL128);
                             @NonNull BigDecimal midPoint = bHigh.add(bLow, DECIMAL128).divide(TWO, DECIMAL128);
 
-                            // Calculate DP increments
-                            @NonNull BigDecimal dpNumInc;
-                            @NonNull BigDecimal dDenInc;
-                            if (barRange.compareTo(BigDecimal.ZERO) > 0) {
-                                dDenInc = bVol.multiply(barRange, DECIMAL128);
-                            } else {
-                                dDenInc = bVol;
-                            }
-                            dpNumInc = dDenInc.multiply(midPoint, DECIMAL128);
-
+                            @NonNull BigDecimal dDenInc = barRange.compareTo(BigDecimal.ZERO) > 0
+                                ? bVol.multiply(barRange, DECIMAL128)
+                                : bVol;
+                            @NonNull BigDecimal dpNumInc = dDenInc.multiply(midPoint, DECIMAL128);
                             dpSumNum = dpSumNum.add(dpNumInc, DECIMAL128);
                             dpSumDen = dpSumDen.add(dDenInc, DECIMAL128);
 
-                            // Calculate DB increments
                             @NonNull BigDecimal densePrice = dpSumNum.divide(dpSumDen, DECIMAL128);
-                            @NonNull BigDecimal dbNumInc;
                             @NonNull BigDecimal pctDif;
 
                             if (barRange.compareTo(BigDecimal.ZERO) > 0) {
-                                // Calculate logarithmic ratio: ln((H+DP)/(L+DP))
                                 BigDecimal logRatio = BigDecimal.valueOf(
                                     safeLog(
                                         bHigh.add(densePrice, DECIMAL128)
                                         .divide(bLow.add(densePrice, DECIMAL128), DECIMAL128)
                                     )
                                 );
-
-                                // Calculate scaled term: 4DP * ln((H+DP)/(L+DP)) / (H-L)
                                 BigDecimal scaledLogTerm = FOUR
                                     .multiply(densePrice, DECIMAL128)
                                     .multiply(logRatio, DECIMAL128)
                                     .divide(barRange, DECIMAL128);
 
                                 if (densePrice.compareTo(bLow) < 0) {
-                                    // Case 1: All prices above dense price
-                                    pctDif = TWO.subtract(scaledLogTerm, DECIMAL128); // 2 - (4DP * ln((H+DP)/(L+DP)) / (H-L))
+                                    pctDif = TWO.subtract(scaledLogTerm, DECIMAL128);
                                 } else if (densePrice.compareTo(bHigh) > 0) {
-                                    // Case 2: All prices below dense price
-                                    pctDif = scaledLogTerm.subtract(TWO, DECIMAL128); // (4DP * ln((H+DP)/(L+DP)) / (H-L)) - 2
+                                    pctDif = scaledLogTerm.subtract(TWO, DECIMAL128);
                                 } else {
-                                    // Case 3: Dense price within range
-                                    // Formula: [2(H+L-2DP) + 4DP * ln(4DP² / ((H+DP) * (L+DP)))] / (H-L)
                                     pctDif = TWO
-                                        .multiply(
-                                            bHigh
-                                            .add(bLow, DECIMAL128)
-                                            .subtract(
-                                                TWO.multiply(densePrice, DECIMAL128), DECIMAL128
-                                            ), DECIMAL128
-                                        )
-                                        .add(
-                                            FOUR.multiply(densePrice, DECIMAL128)
-                                            .multiply(
-                                                BigDecimal.valueOf(
-                                                    safeLog(
-                                                        FOUR.multiply(densePrice, DECIMAL128).multiply(densePrice, DECIMAL128)
-                                                        .divide(
-                                                            bLow.add(densePrice, DECIMAL128)
-                                                            .multiply(bHigh.add(densePrice, DECIMAL128), DECIMAL128), DECIMAL128
-                                                        )
+                                    .multiply(
+                                        bHigh.add(bLow, DECIMAL128)
+                                        .subtract(TWO.multiply(densePrice, DECIMAL128), DECIMAL128),
+                                        DECIMAL128
+                                    )
+                                    .add(
+                                        FOUR.multiply(densePrice, DECIMAL128).multiply(
+                                            BigDecimal.valueOf(
+                                                safeLog(
+                                                    FOUR.multiply(densePrice, DECIMAL128).multiply(densePrice, DECIMAL128)
+                                                    .divide(
+                                                        bLow.add(densePrice, DECIMAL128)
+                                                        .multiply(bHigh.add(densePrice, DECIMAL128), DECIMAL128),
+                                                        DECIMAL128
                                                     )
-                                                ), DECIMAL128
-                                            ), DECIMAL128
-                                        )
-                                        .divide(barRange, DECIMAL128);
+                                                )
+                                            ),
+                                            DECIMAL128
+                                        ),
+                                        DECIMAL128
+                                    )
+                                    .divide(barRange, DECIMAL128);
                                 }
-                                dbNumInc = bVol.multiply(pctDif, DECIMAL128).multiply(barRange, DECIMAL128);
+                                dbSumNum = dbSumNum.add(bVol.multiply(pctDif, DECIMAL128).multiply(barRange, DECIMAL128), DECIMAL128);
                             } else {
-                                // Zero bar range
                                 pctDif = midPoint.subtract(densePrice, DECIMAL128).abs()
-                                    .divide(
-                                        midPoint.add(densePrice, DECIMAL128)
-                                        .divide(TWO, DECIMAL128), DECIMAL128
-                                    );
-                                dbNumInc = bVol.multiply(pctDif, DECIMAL128);
+                                    .divide(midPoint.add(densePrice, DECIMAL128).divide(TWO, DECIMAL128), DECIMAL128);
+                                dbSumNum = dbSumNum.add(bVol.multiply(pctDif, DECIMAL128), DECIMAL128);
                             }
-
-                            dbSumNum = dbSumNum.add(dbNumInc, DECIMAL128);
                             dbSumDen = dbSumDen.add(dDenInc, DECIMAL128);
 
-                            @NonNull BigDecimal upperBand = densePrice
-                                .multiply(
-                                    dbSumNum
-                                    .divide(dbSumDen, DECIMAL128)
-                                    .abs()
-                                    .add(BigDecimal.ONE), DECIMAL128
-                                );
-
-                            // Trend restarts
+                            @NonNull BigDecimal upperBand = densePrice.multiply(
+                                dbSumNum.divide(dbSumDen, DECIMAL128).abs().add(BigDecimal.ONE), DECIMAL128
+                            );
                             if (prevUpperBand != null && upperBand.compareTo(prevUpperBand) <= 0) {
                                 startPrice = upperBand;
                                 startPriceTimestampSeconds = bTimestamp;
                             }
-
                             prevUpperBand = upperBand;
                         }
-                    } catch (Exception error) {
-                        Logger.error(error.getMessage(), error);
+                    } catch (Exception e) {
+                        Logger.error(e.getMessage(), e);
                     }
 
-                    // For dollar volume
                     @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
-                    if (
-                        bClose.compareTo(BigDecimal.ZERO) > 0
-                        && bVol.compareTo(BigDecimal.ZERO) > 0
-                    ) {
-                        @NonNull BigDecimal dollarVolume = bClose.multiply(bVol, DECIMAL128);
-
-                        sumDollarVol = sumDollarVol.add(dollarVolume, DECIMAL128);
+                    if (bClose.compareTo(BigDecimal.ZERO) > 0 && bVol.compareTo(BigDecimal.ZERO) > 0) {
+                        sumDollarVol = sumDollarVol.add(bClose.multiply(bVol, DECIMAL128), DECIMAL128);
                         sumDollarVolLen = sumDollarVolLen.add(BigDecimal.ONE, DECIMAL128);
                     }
                 }
-            } catch (Exception error) {
-                Logger.error(error.getMessage(), error);
+            } catch (Exception e) {
+                Logger.error(e.getMessage(), e);
             }
         }
 
-        // Final Validation
+        // Validate before building TickerData
         if (
-            firstTradeTimestampSeconds == null || firstTradeOpenPrice == null || lastAdjustedClosePrice == null
-            || adjustmentFactor == null || adjustmentFactor.compareTo(BigDecimal.ZERO) <= 0
-            // Checks for Historical Data
+            firstTradeTimestampSeconds == null || firstTradeOpenPrice == null
+            || lastAdjustedClosePrice == null || adjustmentFactor == null
+            || adjustmentFactor.compareTo(BigDecimal.ZERO) <= 0
             || updatedAtTimestampSeconds == null
             || dpSumNum.compareTo(BigDecimal.ZERO) == 0 || dpSumDen.compareTo(BigDecimal.ZERO) == 0
             || dbSumNum.compareTo(BigDecimal.ZERO) == 0 || dbSumDen.compareTo(BigDecimal.ZERO) == 0
@@ -436,29 +518,24 @@ public class YahooFinanceRepository {
             throw new Exception("Invalid History: Insufficient valid data points.");
         }
 
-        // Add/Update historical data for the interval
-        fixedHistoricalDataMap.put(
-            interval,
-            new FixedHistoricalData(
-                updatedAtTimestampSeconds,
-                dpSumNum,
-                dpSumDen,
-                dbSumNum,
-                dbSumDen,
-                sumDollarVol,
-                sumDollarVolLen,
-                startPrice,
-                startPriceTimestampSeconds
-            )
-        );
+        fixedHistoricalDataMap.put(interval, new FixedHistoricalData(
+            updatedAtTimestampSeconds,
+            dpSumNum,
+            dpSumDen,
+            dbSumNum,
+            dbSumDen,
+            sumDollarVol,
+            sumDollarVolLen,
+            startPrice,
+            startPriceTimestampSeconds
+        ));
 
-        // Create and return TickerData
         return new TickerData(
             symbol,
-            newSymbolEntryValue.type,
+            symbolResult.type(),
             name,
             exchange,
-            newSymbolEntryValue.marketCap,
+            symbolResult.marketCap(),
             firstTradeTimestampSeconds,
             firstTradeOpenPrice,
             lastAdjustedClosePrice,
@@ -467,237 +544,49 @@ public class YahooFinanceRepository {
         );
     }
 
-    private Set<String> getDeletedTickers(Map<String, TickerData> oldTickersMap, Map<String, FetchSymbolsResult> newTickers) {
+    // Helpers
+    @NonNull
+    private Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers, boolean effectiveFullRefresh) {
+        if (effectiveFullRefresh || oldTickers == null) return new HashMap<>();
+        Map<String, TickerData> map = new HashMap<>();
+        for (TickerData ticker : oldTickers) map.put(ticker.getSymbol(), ticker);
+        return map;
+    }
+    @NonNull
+    private Set<String> getDeletedSymbols(
+        @NonNull Map<String, TickerData> oldTickersMap,
+        @NonNull Map<String, FetchSymbolsResult> newSymbolsMap
+    ) {
         Set<String> deleted = new HashSet<>();
-        for (Map.Entry<String, TickerData> oldTickerEntry : oldTickersMap.entrySet()) {
-            String oldSymbol = oldTickerEntry.getKey();
-            if (!newTickers.containsKey(oldSymbol)) {
-                deleted.add(oldSymbol);
-            }
+        for (String symbol : oldTickersMap.keySet()) {
+            if (!newSymbolsMap.containsKey(symbol)) deleted.add(symbol);
         }
         return deleted;
     }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveTickerDataRecord(@NonNull Context context, @NonNull List<TickerData> tickers, long updateTime) throws IOException {
-        TickerDataRecord tickerDataRecord = new TickerDataRecord(new ArrayList<>(tickers), updateTime);
-        saveObject(context, FILE_RECORD_TICKERS, tickerDataRecord);
-    }
-
-    public List<TickerData> getTickersData(@NonNull Context context) {
-        try {
-            TickerDataRecord tickerDataRecord = (TickerDataRecord) loadObject(context, FILE_RECORD_TICKERS);
-            return tickerDataRecord != null ? tickerDataRecord.tickers() : null;
-        } catch (IOException | ClassNotFoundException e) {
-            Logger.error("Error getting tickers", e);
-            return null;
-        }
-    }
-
-    public long getLastUpdateTime(@NonNull Context context) {
-        try {
-            TickerDataRecord tickerDataRecord = (TickerDataRecord) loadObject(context, FILE_RECORD_TICKERS);
-            return tickerDataRecord != null ? tickerDataRecord.timestamp() : 0;
-        } catch (IOException | ClassNotFoundException e) {
-            Logger.error("Error loading tickers last update timestamp", e);
-            return 0;
-        }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    private FetchTickerResult fetchTickerDataWithInterval(String symbol, TickerData oldTicker, boolean isFullRefresh) throws Exception {
-
-        List<FetchTickerAttempt> fetchTickerAttempts = new ArrayList<>();
-        for (String interval : ASSET_INTERVALS) {
-            fetchTickerAttempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL));
-            fetchTickerAttempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL_ALT));
-        }
-
-        for (int i = 0; i < fetchTickerAttempts.size(); i++) {
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Thread interrupted during fetchTickerData");
-            }
-
-            FetchTickerAttempt fetchTickerAttempt = fetchTickerAttempts.get(i);
-            final @NonNull String interval = fetchTickerAttempt.interval;
-            final @NonNull String baseUrl = fetchTickerAttempt.baseUrl;
-            final @NonNull String oldUpdatedAtTimestampSeconds;
-            final boolean hasFixedHistoricalData;
-            if (isFullRefresh || oldTicker == null) {
-                oldUpdatedAtTimestampSeconds = FIRST_TRADE_TIMESTAMP_SECONDS;
-                hasFixedHistoricalData = false;
-            } else {
-                FixedHistoricalData fixedHistoricalData = oldTicker.getFixedHistoricalData(interval);
-                if (fixedHistoricalData == null) {
-                    oldUpdatedAtTimestampSeconds = FIRST_TRADE_TIMESTAMP_SECONDS;
-                    hasFixedHistoricalData = false;
-                } else {
-                    oldUpdatedAtTimestampSeconds = fixedHistoricalData.updatedAtTimestampSeconds().toString();
-                    hasFixedHistoricalData = true;
-                }
-            }
-
-            String url = new UrlBuilder(baseUrl)
-                .addPath(symbol)
-                .addParam("period1", oldUpdatedAtTimestampSeconds)
-                .addParam("period2", String.valueOf((System.currentTimeMillis() / 1000L) + 2678400L))
-                .addParam("interval", interval)
-                .addParam("includePrePost", "true")
-                .addParam("events", "div|split|earn")
-                .addParam("lang", "en-US")
-                .addParam("region", "US")
-                .addParam("source", "cosaic")
-                .build();
-
-            Request request = new Request.Builder().url(url).build();
-
-            try {
-                //noinspection BusyWait
-                Thread.sleep(getThrottleDelay(MINIMUM_REQUEST_TIMEOUT_MILLISECONDS));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw e;
-            }
-
-            try (Response response = client.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    throw new Exception("Unexpected " + symbol + " response: " + response);
-                }
-
-                ResponseBody body = response.body();
-                if (body == null) {
-                    throw new Exception("Empty response body");
-                }
-
-                // Read and parse response
-                JSONObject resultObj = new JSONObject(body.string())
-                    .getJSONObject("chart")
-                    .getJSONArray("result")
-                    .getJSONObject(0);
-
-                return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
-
-            } catch (InterruptedException e) {
-                throw e;
-            } catch (Exception e) {
-                if (i == fetchTickerAttempts.size() - 1) {
-                    throw e;
-                }
-            }
-        }
-
-        throw new Exception("Failed to fetch ticker data (no fetchTickerAttempts performed)");
-    }
-    private Map<String, FetchSymbolsResult> fetchTickers(TickerUpdateListener listener) throws Exception {
-        Map<String, FetchSymbolsResult> symbols = new HashMap<>();
-
-        String[] screeners = new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS };
-
-        for (String screener : screeners) {
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Thread interrupted while fetching symbols");
-            }
-
-            int retryCount = 0;
-            long start_index = 0;
-            String prevFirstSymbol = null;
-
-            while (true) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("Thread interrupted during symbol pagination");
-                }
-
-                String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
-                    .addParam("count", String.valueOf(SCREENER_COUNT))
-                    .addParam("scrIds", screener)
-                    .addParam("sortField", "intradaymarketcap")
-                    .addParam("sortType", "DESC")
-                    .addParam("start", String.valueOf(start_index))
-                    .build();
-
-                Request request = new Request.Builder().url(url).build();
-
-                try {
-                    //noinspection BusyWait
-                    Thread.sleep(getThrottleDelay(MINIMUM_REQUEST_TIMEOUT_MILLISECONDS));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw e;
-                }
-
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        throw new Exception("Unexpected " + screener + " response: " + response);
-                    }
-
-                    ResponseBody body = response.body();
-                    if (body == null) {
-                        throw new Exception("Empty response body");
-                    }
-
-                    JSONArray quotes = new JSONObject(body.string())
-                        .getJSONObject("finance")
-                        .getJSONArray("result")
-                        .getJSONObject(0)
-                        .getJSONArray("quotes");
-
-                    int length = quotes.length();
-                    if (length < 1) break;
-
-                    String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
-                    if (firstSymbol.equals(prevFirstSymbol)) {
-                        throw new Exception("Duplicate symbol was found.");
-                    }
-                    prevFirstSymbol = firstSymbol;
-
-                    for (int i = 0; i < length; i++) {
-                        try {
-                            JSONObject object = quotes.getJSONObject(i);
-                            String symbol = object.getString("symbol");
-                            @NonNull BigDecimal marketCap = new BigDecimal(object.getString("marketCap"));
-                            if (!symbol.isEmpty() && marketCap.compareTo(BigDecimal.ZERO) > 0) {
-                                symbols.put(symbol, new FetchSymbolsResult(SCREENER_CRYPTO.equals(screener) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE, marketCap));
-                            }
-                        } catch (Exception error) {
-                            Logger.error(error.getMessage(), error);
-                        }
-                    }
-
-                    retryCount = 0;
-                    start_index += length;
-
-                    listener.onSymbolsProgress(symbols.size());
-                } catch (InterruptedException e) {
-                    throw e;
-                } catch (Exception e) {
-                    if (retryCount >= MAX_FETCH_RETRY_COUNT) {
-                        throw e;
-                    } else {
-                        retryCount++;
-                    }
-                }
-            }
-        }
-
-        return symbols;
-    }
-
-    private JSONArray convertCryptoVolumeToUnits(JSONArray apiVolumes, JSONArray apiCloses) {
-        JSONArray convertedVolumes = new JSONArray();
+    @NonNull
+    private JSONArray convertCryptoVolumeToUnits(@NonNull JSONArray apiVolumes, @NonNull JSONArray apiCloses) {
+        JSONArray converted = new JSONArray();
         for (int i = 0; i < apiVolumes.length(); i++) {
             try {
-                @NonNull BigDecimal bVol = new BigDecimal(apiVolumes.getString(i));
-                @NonNull BigDecimal bClose = new BigDecimal(apiCloses.getString(i));
-                if (bVol.compareTo(BigDecimal.ZERO) > 0 && bClose.compareTo(BigDecimal.ZERO) > 0) {
-                    convertedVolumes.put(bVol.divide(bClose, DECIMAL128).toPlainString());
+                @NonNull BigDecimal vol = new BigDecimal(apiVolumes.getString(i));
+                @NonNull BigDecimal close = new BigDecimal(apiCloses.getString(i));
+                if (vol.compareTo(BigDecimal.ZERO) > 0 && close.compareTo(BigDecimal.ZERO) > 0) {
+                    converted.put(vol.divide(close, DECIMAL128).toPlainString());
                 } else {
-                    convertedVolumes.put(JSONObject.NULL);
+                    converted.put(JSONObject.NULL);
                 }
             } catch (Exception ignored) {
-                convertedVolumes.put(JSONObject.NULL);
+                converted.put(JSONObject.NULL);
             }
         }
-
-        return convertedVolumes;
+        return converted;
+    }
+    private void throttle() throws InterruptedException {
+        try {
+            Thread.sleep(getThrottleDelay(MINIMUM_REQUEST_TIMEOUT_MILLISECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        }
     }
 }

@@ -2,14 +2,13 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
+import static com.example.investment.util.Constants.BACKGROUND_THREAD;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA;
 import static com.example.investment.util.Constants.CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA;
 import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
-import static com.example.investment.util.Constants.FILE_RECORD_MOMENTUM_LEADING_TICKERS;
-import static com.example.investment.util.Constants.FILE_RECORD_PASSIVE_LEADING_TICKERS;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RISK;
 import static com.example.investment.util.Constants.CHANNEL_ID_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.CHANNEL_ID_NEW_LEADING_ASSET;
@@ -46,8 +45,7 @@ import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.SAVED_LEADING_TICKERS_COUNT;
 import static com.example.investment.util.Constants.THOUSAND_BI;
-import static com.example.investment.util.FileUtils.loadObject;
-import static com.example.investment.util.FileUtils.saveObject;
+import static com.example.investment.util.Constants.UI_THREAD;
 import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
 import static com.example.investment.util.NotificationUtils.showGroupSummary;
 import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
@@ -76,9 +74,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -87,16 +82,12 @@ public class TickerService extends Service {
     public static final String FULL_DATA_REFRESH_ACTION = "Full";
     public static final String INCREMENTAL_DATA_REFRESH_ACTION = "Incremental";
 
-    private TickerDataLoader dataLoader;
-    private final ExecutorService executorService = Executors.newFixedThreadPool(1);
-    private Future<?> future;
-    private String dataRefreshType = null;
-
+    private TickerDataLoader tickerDataLoader;
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     public void onCreate() {
         super.onCreate();
-        dataLoader = TickerDataLoader.getInstance();
+        tickerDataLoader = TickerDataLoader.getInstance();
 
         try {
             startForeground(
@@ -111,25 +102,24 @@ public class TickerService extends Service {
         }
     }
 
+
+    private String dataRefreshType = null;
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             String action = intent.getAction();
             if (STOP_SERVICE_ACTION.equals(action)) {
+                UI_THREAD.post(() -> {
+                    MainActivity activity = MainActivity.getInstanceActivity();
+                    if (activity != null) {
+                        activity.updateCancel();
+                    }
+                });
                 stopForeground(true);
                 stopSelf();
-                MainActivity activity = MainActivity.getInstanceActivity();
-                if (activity != null) {
-                    activity.updateError();
-                }
             } else if (FULL_DATA_REFRESH_ACTION.equals(action)) {
-                if (dataRefreshType == null || INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-                    if (INCREMENTAL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
-                        if (future != null && !future.isDone()) {
-                            future.cancel(true);
-                        }
-                    }
+                if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     dataRefreshType = FULL_DATA_REFRESH_ACTION;
                     updateTickers(FULL_DATA_REFRESH_ACTION);
                 }
@@ -143,31 +133,16 @@ public class TickerService extends Service {
         return START_NOT_STICKY;
     }
 
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
-
-    @Override
-    public void onDestroy() {
-        executorService.shutdownNow();
-        if (future != null) {
-            future.cancel(true);
-        }
-        super.onDestroy();
-    }
-
+    private final Object UPDATE_TICKERS_TASK_ID = new Object();
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers(@NonNull final String dataRefreshType) {
-        future = executorService.submit(() -> dataLoader.updateTickers(
+        BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui -> tickerDataLoader.updateTickers(
             getApplicationContext(),
             dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
             new TickerUpdateListener() {
                 private final AtomicBoolean isFinished = new AtomicBoolean(false);
-
                 @Override
-                public void onSymbolsProgress(int current) {
+                public void onSymbolsProgress(final int current) {
                     if (isFinished.get()) return;
 
                     if (current > 0) {
@@ -190,13 +165,16 @@ public class TickerService extends Service {
                             )
                         );
                     }
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateSymbolsProgress(current, dataRefreshType);
-                    }
+
+                    ui.post(() -> {
+                        MainActivity activity = MainActivity.getInstanceActivity();
+                        if (activity != null) {
+                           activity.updateSymbolsProgress(current, dataRefreshType);
+                        }
+                    });
                 }
                 @Override
-                public void onTickersProgress(int current, int total) {
+                public void onTickersProgress(final int current, final int total) {
                     if (isFinished.get()) return;
 
                     if (total > 0) {
@@ -227,36 +205,43 @@ public class TickerService extends Service {
                             )
                         );
                     }
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateTickersProgress(current, total, dataRefreshType);
-                    }
+
+                    ui.post(() -> {
+                        MainActivity activity = MainActivity.getInstanceActivity();
+                        if (activity != null) {
+                            activity.updateTickersProgress(current, total, dataRefreshType);
+                        }
+                    });
                 }
 
                 @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
                 @Override
-                public void onTickerUpdate(@NonNull List<TickerData> tickers) {
+                public void onTickerUpdate(final @NonNull List<TickerData> tickers) {
                     if (isFinished.get()) return;
 
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateTickerList(tickers);
-                    }
+                    ui.post(() -> {
+                        MainActivity activity = MainActivity.getInstanceActivity();
+                        if (activity != null) {
+                            activity.updateTickerList(tickers);
+                        }
+                    });
                 }
 
                 @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
                 @Override
-                public void onFinish(@NonNull List<TickerData> tickers, long updateTime) {
+                public void onFinish(@NonNull List<TickerData> tickers, final long updateTime) {
                     isFinished.set(true);
 
                     if (!tickers.isEmpty()) {
                         processChangesOfTickers(tickers);
                     }
 
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateFinished(updateTime);
-                    }
+                    ui.post(() -> {
+                        MainActivity activity = MainActivity.getInstanceActivity();
+                        if (activity != null) {
+                            activity.updateFinished(updateTime);
+                        }
+                    });
 
                     TickerService.this.stopForeground(true);
                     TickerService.this.stopSelf();
@@ -267,10 +252,12 @@ public class TickerService extends Service {
                 public void onError() {
                     isFinished.set(true);
 
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateError();
-                    }
+                    ui.post(() -> {
+                        MainActivity activity = MainActivity.getInstanceActivity();
+                        if (activity != null) {
+                            activity.updateError();
+                        }
+                    });
 
                     TickerService.this.stopForeground(true);
                     TickerService.this.stopSelf();
@@ -303,7 +290,6 @@ public class TickerService extends Service {
         notifyDeletedLeadingTickers(investmentType, tickers, savedLeadingTickers);
 
         // Sort and get leading tickers for specific investment
-        tickers.sort((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)));
         List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t -> {
                 TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = t.getNewestFixedHistoricalDataWithInterval();
@@ -323,6 +309,7 @@ public class TickerService extends Service {
                     ).equals(PRICE_ABOVE)
                 );
             })
+            .sorted((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)))
             .toList();
         List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
 
@@ -645,30 +632,22 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveLeadingTickers(@NonNull String investmentType, List<TickerData> newLeadingTickers) {
-        try {
-            saveObject(
-                getApplicationContext(),
-                investmentType.equals(MOMENTUM_INVESTMENT_TYPE)
-                ? FILE_RECORD_MOMENTUM_LEADING_TICKERS : FILE_RECORD_PASSIVE_LEADING_TICKERS,
-                new ArrayList<>(newLeadingTickers)
-            );
-        } catch (Exception e) {
-            Logger.error(investmentType + ": Error saving leading tickers", e);
-        }
+    private void saveLeadingTickers(String investmentType, List<TickerData> tickers) {
+        tickerDataLoader.saveLeadingTickers(getApplicationContext(), investmentType, tickers);
+    }
+    private List<TickerData> getSavedLeadingTickers(String investmentType) {
+        return tickerDataLoader.getLeadingTickers(getApplicationContext(), investmentType);
     }
 
-    private List<TickerData> getSavedLeadingTickers(@NonNull String investmentType) {
-        try {
-            //noinspection unchecked
-            return (List<TickerData>) loadObject(
-                getApplicationContext(),
-                investmentType.equals(MOMENTUM_INVESTMENT_TYPE)
-                ? FILE_RECORD_MOMENTUM_LEADING_TICKERS : FILE_RECORD_PASSIVE_LEADING_TICKERS
-            );
-        } catch (Exception e) {
-            Logger.error(investmentType + ": Error loading leading tickers", e);
-            return null;
-        }
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    @Override
+    public void onDestroy() {
+        BACKGROUND_THREAD.cancelAll();
+        super.onDestroy();
     }
 }

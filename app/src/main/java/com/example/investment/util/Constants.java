@@ -1,5 +1,8 @@
 package com.example.investment.util;
 
+import android.os.Handler;
+import android.os.Looper;
+
 import androidx.annotation.NonNull;
 
 import java.math.BigDecimal;
@@ -7,6 +10,16 @@ import java.math.BigInteger;
 import java.util.Map;
 
 public class Constants {
+    // Runnable Tasks Handlers
+    public static final Handler UI_THREAD = new Handler(Looper.getMainLooper());
+    public static final SafeSingleTaskRunner RENDER_THREAD = new SafeSingleTaskRunner();
+    public static final SafeSingleTaskRunner EVENT_THREAD = new SafeSingleTaskRunner();
+    public static final SafeSingleTaskRunner DEFERRED_THREAD = new SafeSingleTaskRunner();
+    public static final SafeSingleTaskRunner BACKGROUND_THREAD = new SafeSingleTaskRunner();
+    public static void ASSERT_MAIN_THREAD() {
+        if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("This method must be called on the main thread.");
+    }
+
     // File Data Records
     public static final String FILE_RECORD_TICKERS = "tickers.ser";
     public static final String FILE_RECORD_PASSIVE_LEADING_TICKERS = "passive_leading_tickers.ser";
