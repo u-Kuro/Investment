@@ -58,6 +58,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.lifecycle.Lifecycle;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
@@ -142,7 +143,6 @@ public class MainActivity extends AppCompatActivity {
         adapter = setupFiltersAndGetAdapter(searchIcon, searchInput, searchBarContainer);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setHasFixedSize(true);
 
         swipeRefreshLayout.setOnRefreshListener(() -> {
             if (isManuallyUpdated || dataRefreshType != null) {
@@ -230,7 +230,8 @@ public class MainActivity extends AppCompatActivity {
     }
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void autoLoadTickerDataRecord(final boolean isInitialLoad, final boolean isCancelled) {
-        final TickerDataLoader dataLoader = this.tickerDataLoader;
+        final TickerDataLoader finalDataLoader = this.tickerDataLoader;
+        final TickerAdapter tickerAdapter = this.adapter;
 
         // Initial load shouldn't be cancelled
         if (isInitialLoad) {
@@ -239,12 +240,12 @@ public class MainActivity extends AppCompatActivity {
 
             EVENT_THREAD.execute(ui -> {
                 try {
-                    final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this);
-                    final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this);
+                    final long lastUpdateTime = finalDataLoader.getLastUpdateTime(MainActivity.this);
+                    final List<TickerData> tickers = finalDataLoader.getTickers(MainActivity.this);
                     ui.post(() -> {
                         updateLastUpdateTime(lastUpdateTime);
                         if (tickers != null && !tickers.isEmpty()) {
-                            updateTickerList(tickers, () -> {
+                            tickerAdapter.setInitialTickers(tickers, () -> {
                                 if (lastUpdateTime == 0 || tickers.isEmpty()) {
                                     updateTickers(false, true);
                                 } else {
@@ -275,8 +276,8 @@ public class MainActivity extends AppCompatActivity {
             final SafeSingleTaskRunner THREAD_RUNNER = isCancelled ? EVENT_THREAD : DEFERRED_THREAD;
             THREAD_RUNNER.replaceUniqueTask(AUTO_LOAD_TASK_ID, ui -> {
                 try {
-                    final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this);
-                    final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this);
+                    final long lastUpdateTime = finalDataLoader.getLastUpdateTime(MainActivity.this);
+                    final List<TickerData> tickers = finalDataLoader.getTickers(MainActivity.this);
                     ui.post(() -> {
                         updateLastUpdateTime(lastUpdateTime);
                         if (tickers != null && !tickers.isEmpty()) {
@@ -377,14 +378,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void updateTickerList(List<TickerData> tickers) {
+    public void updateTickerList(@NonNull List<TickerData> tickers) {
         ASSERT_MAIN_THREAD();
         adapter.setTickers(tickers);
-    }
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void updateTickerList(List<TickerData> tickers, Runnable callback) {
-        ASSERT_MAIN_THREAD();
-        adapter.setTickers(tickers, callback);
     }
 
     public void updateTickersProgress(int current, int total, final String dataRefreshType) {
@@ -488,11 +484,21 @@ public class MainActivity extends AppCompatActivity {
 
     public static MainActivity getInstanceActivity() {
         ASSERT_MAIN_THREAD();
-        if (weakActivity != null) {
-            return weakActivity.get();
-        } else {
+
+        if (weakActivity == null) {
             return null;
         }
+
+        MainActivity activity = weakActivity.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            return null;
+        }
+
+        if (activity.isActivityNotCreated()) {
+            return null;
+        }
+
+        return activity;
     }
 
     private void requestNotificationPermission() {
@@ -628,6 +634,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (isActivityNotCreated()) return;
         if (hasFocus && dataRefreshType == null) {
             DEFERRED_THREAD.replaceUniqueTask(ON_WINDOW_FOCUS_CHANGE_TASK_ID, ui -> {
                 long lastUpdateTime = tickerDataLoader.getLastUpdateTime(MainActivity.this.getApplicationContext());
@@ -793,5 +800,9 @@ public class MainActivity extends AppCompatActivity {
             dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
         }
         configurationsDialog.show();
+    }
+
+    private boolean isActivityNotCreated() {
+        return !getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.CREATED);
     }
 }

@@ -74,23 +74,19 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     }
 
     private final Object SET_TICKERS_TASK_ID = new Object();
+    private Runnable pendingInitialCallback = null;
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void setInitialTickers(final @NonNull List<TickerData> newTickers, final @NonNull Runnable initialCallback) {
+        pendingInitialCallback = initialCallback;
+        setTickers(newTickers);
+    }
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setTickers(final @NonNull List<TickerData> newTickers) {
         EVENT_THREAD.replaceUniqueTask(SET_TICKERS_TASK_ID, ui -> {
             final @NonNull List<TickerData> newOriginalTickers = List.copyOf(newTickers);
             ui.post(() -> {
                 originalTickers = newOriginalTickers;
-                updateShownTickers(null);
-            });
-        });
-    }
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void setTickers(final @NonNull List<TickerData> newTickers, Runnable callback) {
-        EVENT_THREAD.replaceUniqueTask(SET_TICKERS_TASK_ID, ui -> {
-            final @NonNull List<TickerData> newOriginalTickers = List.copyOf(newTickers);
-            ui.post(() -> {
-                originalTickers = newOriginalTickers;
-                updateShownTickers(callback);
+                updateShownTickers();
             });
         });
     }
@@ -98,37 +94,37 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setAssetTypeFilter(@NonNull String assetTypeFilter) {
         this.assetTypeFilter = assetTypeFilter;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setInvestmentType(@NonNull String investmentType) {
         this.investmentType = investmentType;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setMarketCapThreshold(@NonNull BigDecimal marketCapThreshold) {
         this.marketCapThreshold = marketCapThreshold;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setDailyDollarVolumeThreshold(@NonNull BigDecimal dailyDollarVolumeThreshold) {
         this.dailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setAgeInSecondsThreshold(@NonNull BigDecimal ageInSecondsThreshold) {
         this.ageInSecondsThreshold = ageInSecondsThreshold;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     public void setSearchQuery(String query) {
         this.searchQuery = query;
-        updateShownTickers(null);
+        updateShownTickers();
     }
 
     private String cleanString(String string) {
@@ -139,7 +135,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     final Object UPDATE_SHOWN_TICKERS_TASK_ID = new Object();
     final Object UPDATE_SHOWN_TICKERS_SNAPSHOT_TASK_ID = new Object();
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void updateShownTickers(Runnable callback) {
+    private void updateShownTickers() {
         EVENT_THREAD.replaceUniqueTask(UPDATE_SHOWN_TICKERS_SNAPSHOT_TASK_ID, () -> {
             @NonNull final List<TickerData> finalOriginalTickers = List.copyOf(originalTickers);
             @NonNull final List<TickerData> finalOldShownTickers = List.copyOf(shownTickers);
@@ -210,8 +206,10 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                     this.shownTickers = newShownTickers;
                     this.oldInvestmentType = finalInvestmentType;
                     diffResult.dispatchUpdatesTo(TickerAdapter.this);
-                    if (callback != null) {
-                        callback.run();
+
+                    if (pendingInitialCallback != null) {
+                        pendingInitialCallback.run();
+                        pendingInitialCallback = null;
                     }
                 });
             });
