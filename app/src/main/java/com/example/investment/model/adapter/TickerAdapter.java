@@ -2,6 +2,7 @@ package com.example.investment.model.adapter;
 
 import static com.example.investment.util.Constants.ALL_TYPE;
 import static com.example.investment.util.Constants.EVENT_THREAD;
+import static com.example.investment.util.SafeSingleTaskRunner.ensureActive;
 
 import android.os.Build;
 import android.view.LayoutInflater;
@@ -138,6 +139,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private void updateShownTickers() {
         EVENT_THREAD.replaceUniqueTask(UPDATE_SHOWN_TICKERS_SNAPSHOT_TASK_ID, () -> {
             @NonNull final List<TickerData> finalOriginalTickers = List.copyOf(originalTickers);
+            ensureActive();
             @NonNull final List<TickerData> finalOldShownTickers = List.copyOf(shownTickers);
             @NonNull final String finalInvestmentType = investmentType;
             final String finalOldInvestmentType = this.oldInvestmentType;
@@ -194,6 +196,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                     .sorted((a, b) -> b.getPercentageIncreasePerDay(finalInvestmentType).compareTo(a.getPercentageIncreasePerDay(finalInvestmentType)))
                     .toList();
 
+                ensureActive();
                 final @NonNull DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(
                     new TickerDiffCallback(
                         finalOldInvestmentType, finalOldShownTickers,

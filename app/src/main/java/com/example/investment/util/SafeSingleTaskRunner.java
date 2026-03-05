@@ -12,9 +12,14 @@ import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 public class SafeSingleTaskRunner {
-    @FunctionalInterface
-    public interface UI { void post(Runnable callback); }
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
+    public static void ensureActive() {
+        if (Thread.currentThread().isInterrupted()) throw new RuntimeException(new InterruptedException());
+    }
+    @FunctionalInterface
+    public interface UI {
+        void post(Runnable callback);
+    }
 
     // For unique tasks
     private final Map<Object, Future<?>> currentUniqueTasks = new ConcurrentHashMap<>();
@@ -23,13 +28,17 @@ public class SafeSingleTaskRunner {
         final Object newUniqueTaskId = new Object();
         cancelAndReplaceCurrentUniqueTaskId(id, newUniqueTaskId);
 
-        final UI ui = callback -> UI_THREAD.post(() -> {
+        final UI ui = callback -> {
             if (currentUniqueTaskIds.get(id) != newUniqueTaskId) return;
-            callback.run();
-        });
+            UI_THREAD.post(() -> {
+                if (currentUniqueTaskIds.get(id) != newUniqueTaskId) return;
+                callback.run();
+            });
+        };
 
         currentUniqueTasks.put(id, executor.submit(() -> {
             try {
+                if (currentUniqueTaskIds.get(id) != newUniqueTaskId) return;
                 task.accept(ui);
             } catch (Exception e) {
                 handleException(e);
@@ -47,6 +56,7 @@ public class SafeSingleTaskRunner {
 
         currentUniqueTasks.put(id, executor.submit(() -> {
             try {
+                if (currentUniqueTaskIds.get(id) != newUniqueTaskId) return;
                 task.run();
             } catch (Exception e) {
                 handleException(e);
@@ -80,13 +90,17 @@ public class SafeSingleTaskRunner {
         final Object newTaskId = new Object();
         cancelAndReplaceCurrentTaskId(newTaskId);
 
-        final UI ui = callback -> UI_THREAD.post(() -> {
+        final UI ui = callback -> {
             if (currentTaskId != newTaskId) return;
-            callback.run();
-        });
+            UI_THREAD.post(() -> {
+                if (currentTaskId != newTaskId) return;
+                callback.run();
+            });
+        };
 
         currentTask = executor.submit(() -> {
             try {
+                if (currentTaskId != newTaskId) return;
                 task.accept(ui);
             } catch (Exception e) {
                 handleException(e);

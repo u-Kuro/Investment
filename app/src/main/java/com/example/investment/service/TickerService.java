@@ -136,10 +136,11 @@ public class TickerService extends Service {
     private final Object UPDATE_TICKERS_TASK_ID = new Object();
     @RequiresApi(api = Build.VERSION_CODES.O)
     private void updateTickers(@NonNull final String dataRefreshType) {
-        BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui -> tickerDataLoader.updateTickers(
-            getApplicationContext(),
-            dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
-            new TickerUpdateListener() {
+        BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui ->
+            tickerDataLoader.updateTickers(
+                getApplicationContext(),
+                dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
+                new TickerUpdateListener() {
                 private final AtomicBoolean isFinished = new AtomicBoolean(false);
                 @Override
                 public void onSymbolsProgress(final int current) {
@@ -263,7 +264,8 @@ public class TickerService extends Service {
                     TickerService.this.stopSelf();
                 }
             }
-        ));
+            )
+        );
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
