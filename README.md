@@ -1,9 +1,23 @@
-# 📊 Investment Screener
-> A system that automatically pulls the price history of every large-cap stock and cryptocurrency, runs proprietary signal math on that history, allowing real-time notification for investment opportunities.
+
+<div align="center">
+
+  <img src="./images/logo.webp" alt="Logo"/>
+
+  # Investment Screener
+
+  <a href="https://github.com/u-Kuro/Investment/releases/download/v1.0.0/Investment.apk">
+    <img src="./images/android-download.svg" alt="Download"/>
+  </a>    
+</div>
 
 ---
 
-## What Data Is Collected
+# What Is It
+A system that automatically pulls the price history of every large-cap stock and cryptocurrency, runs proprietary signal math on that history, allowing real-time notification for investment opportunities.
+
+---
+
+# What Data Is Collected
 
 Every refresh cycle pulls two types of assets from Yahoo Finance:
 
@@ -37,23 +51,25 @@ Every refresh cycle pulls two types of assets from Yahoo Finance:
 
 ---
 
-## Signals Computed From the Raw Data
+# Signals Computed From the Raw Data
 
-![Indicator Screenshot](./screenshots/indicator-preview.png)
+<div align="center">
+  <img src="./images/indicator-preview.png">
+</div>
 
-### Fair Value Price
+## Fair Value Price
 
 Rather than using the most recent close as the reference price, the app computes a **volume-weighted, range-weighted average** across the asset's entire history. Bars where more money changed hands — and where price moved across a wider range — carry more weight.
 
 This produces a single price level representing where the bulk of all trading activity has historically concentrated. It adjusts automatically as new bars arrive.
 
-### Upper and Lower Bands
+## Upper and Lower Bands
 
 Using the same historical data, the app measures how far price has typically strayed from the fair value price — again weighted by traded volume and bar width. This produces a symmetric upper band and lower band around fair value.
 
 These bands are not fixed percentages. They widen for volatile assets with erratic price history and narrow for stable ones. They also adapt as new price data comes in.
 
-### Price State — The Core Signal
+## Price State (The Core Signal)
 
 Every asset is classified into one of three states at any moment:
 
@@ -63,7 +79,7 @@ Every asset is classified into one of three states at any moment:
 | 🟡 **In Range** | Current price sits between the lower and upper band | Price is within fair value — neither cheap nor stretched |
 | 🔴 **Below Range** | Current price is below the lower band, or growth rate is zero/negative | Price is below where most historical trading occurred, or the trend is flat/declining |
 
-### Growth Rate (% per day)
+## Growth Rate (% per day)
 
 Measures how much the asset has returned from a contextual starting point to today, normalised to a daily rate so assets of any age can be compared on the same scale.
 
@@ -74,13 +90,13 @@ Two modes use different starting points:
 | **Passive** | The asset's very first trading day (IPO / launch) | Total lifetime return per day |
 | **Momentum** | The last point where the upper band stopped making new highs | Return since the current trend began |
 
-### Average Daily Dollar Volume
+## Average Daily Dollar Volume
 
 A liquidity measure — the average dollar value traded per day, calculated from the full price history and normalised to daily terms regardless of which interval (weekly, monthly, etc.) was used. Used to filter out assets that would be difficult to enter or exit without moving the market.
 
 ---
 
-## Filters Applied Before Surfacing Results
+# Filters Applied Before Surfacing Results
 
 | Filter | Default | What Gets Excluded |
 |---|---|---|
@@ -92,7 +108,7 @@ All three thresholds are adjustable by the user in the app's settings dialog.
 
 ---
 
-## How Data Stays Fresh
+# How Data Stays Fresh
 
 Each cached signal record tracks the timestamp of the last bar it processed. On incremental refreshes, the API is asked only for bars newer than that timestamp. The running totals used in the signal math are updated by appending new bars, not by recalculating from scratch.
 
@@ -107,7 +123,7 @@ A background worker re-runs this update automatically on a schedule. If the app 
 
 ---
 
-## Investment Strategy Modes
+# Investment Strategy Modes
 
 | Mode | What Gets Ranked | Best For |
 |---|---|---|
@@ -118,10 +134,9 @@ The top 4 assets under each mode are saved as the active watchlist and drive all
 
 ---
 
-## Android Application Preview
-
+# Android Application Preview
 <div>
-  <img src="./screenshots/android-preview-1.png" style="width:250px;">
-  <img src="./screenshots/android-preview-2.png" style="width:250px;">
-  <img src="./screenshots/android-preview-3.png" style="width:250px;">
+  <img src="./images/android-preview-1.png" style="width:250px;">
+  <img src="./images/android-preview-2.png" style="width:250px;">
+  <img src="./images/android-preview-3.png" style="width:250px;">
 </div>
