@@ -121,7 +121,7 @@ The top 4 assets under each mode are saved as the active watchlist and drive all
 ## Android Application Preview
 
 <div>
-  <img src="./screenshots/android-preview-1.png" style="width:200px;">
-  <img src="./screenshots/android-preview-2.png" style="width:200px;">
-  <img src="./screenshots/android-preview-3.png" style="width:200px;">
+  <img src="./screenshots/android-preview-1.png" style="width:250px;">
+  <img src="./screenshots/android-preview-2.png" style="width:250px;">
+  <img src="./screenshots/android-preview-3.png" style="width:250px;">
 </div>
