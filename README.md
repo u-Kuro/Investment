@@ -65,16 +65,6 @@ Using the same historical data, the app measures how far price has typically str
 
 These bands are not fixed percentages. They widen for volatile assets with erratic price history and narrow for stable ones. They also adapt as new price data comes in.
 
-## Price State (The Core Signal)
-
-Every asset is classified into one of three states at any moment:
-
-| State | Condition | Interpretation |
-|---|---|---|
-| 🟢 **Above Range** | Current price is above the upper band, and the growth rate is positive | Price has cleared its historical resistance ceiling with upward momentum |
-| 🟡 **In Range** | Current price sits between the lower and upper band | Price is within fair value — neither cheap nor stretched |
-| 🔴 **Below Range** | Current price is below the lower band, or growth rate is zero/negative | Price is below where most historical trading occurred, or the trend is flat/declining |
-
 ## Growth Rate (% per day)
 
 Measures how much the asset has returned from a contextual starting point to today, normalised to a daily rate so assets of any age can be compared on the same scale.
@@ -85,6 +75,16 @@ Two modes use different starting points:
 |---|---|---|
 | **Passive** | The asset's very first trading day (IPO / launch) | Total lifetime return per day |
 | **Momentum** | The last point where the upper band stopped making new highs | Return since the current trend began |
+
+## Price State (The Core Signal)
+
+Every asset is classified into one of three states at any moment:
+
+| State | Condition | Interpretation |
+|---|---|---|
+| 🟢 **Above Range** | Current price is above the upper band, and the growth rate is positive | Price has cleared its historical resistance ceiling with upward momentum |
+| 🟡 **In Range** | Current price sits between the lower and upper band | Price is within fair value — neither cheap nor stretched |
+| 🔴 **Below Range** | Current price is below the lower band, or growth rate is zero/negative | Price is below where most historical trading occurred, or the trend is flat/declining |
 
 ## Average Daily Dollar Volume
 
