@@ -142,12 +142,12 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
             ensureActive();
             @NonNull final List<TickerData> finalOldShownTickers = List.copyOf(shownTickers);
             @NonNull final String finalInvestmentType = investmentType;
-            final String finalOldInvestmentType = this.oldInvestmentType;
-            @NonNull final String finalAssetTypeFilter = this.assetTypeFilter;
-            final String finalSearchQuery = this.searchQuery;
-            @NonNull final BigDecimal finalMarketCapThreshold = this.marketCapThreshold;
-            @NonNull final BigDecimal filterDailyDollarVolumeThreshold = this.dailyDollarVolumeThreshold;
-            @NonNull final BigDecimal finalAgeInSecondsThreshold = this.ageInSecondsThreshold;
+            final String finalOldInvestmentType = oldInvestmentType;
+            @NonNull final String finalAssetTypeFilter = assetTypeFilter;
+            final String finalSearchQuery = searchQuery;
+            @NonNull final BigDecimal finalMarketCapThreshold = marketCapThreshold;
+            @NonNull final BigDecimal filterDailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
+            @NonNull final BigDecimal finalAgeInSecondsThreshold = ageInSecondsThreshold;
 
             EVENT_THREAD.replaceUniqueTask(UPDATE_SHOWN_TICKERS_TASK_ID, ui -> {
                 final @NonNull List<TickerData> newShownTickers = finalOriginalTickers.stream()
@@ -202,12 +202,12 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
                         finalOldInvestmentType, finalOldShownTickers,
                         finalInvestmentType, newShownTickers
                     ),
-                    false
+                    !finalInvestmentType.equals(finalOldInvestmentType) // Item sort changes
                 );
 
                 ui.post(() -> {
-                    this.shownTickers = newShownTickers;
-                    this.oldInvestmentType = finalInvestmentType;
+                    shownTickers = newShownTickers;
+                    oldInvestmentType = finalInvestmentType;
                     diffResult.dispatchUpdatesTo(TickerAdapter.this);
 
                     if (pendingInitialCallback != null) {

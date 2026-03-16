@@ -43,10 +43,14 @@ public class SafeSingleTaskRunner {
             } catch (Exception e) {
                 handleException(e);
             } finally {
-                ui.post(() -> {
-                    currentUniqueTaskIds.remove(id);
-                    currentUniqueTasks.remove(id);
-                });
+                if (currentUniqueTaskIds.get(id) == newUniqueTaskId) {
+                    ui.post(() -> {
+                        if (currentUniqueTaskIds.get(id) == newUniqueTaskId) {
+                            currentUniqueTaskIds.remove(id);
+                            currentUniqueTasks.remove(id);
+                        }
+                    });
+                }
             }
         }));
     }
@@ -61,8 +65,10 @@ public class SafeSingleTaskRunner {
             } catch (Exception e) {
                 handleException(e);
             } finally {
-                currentUniqueTaskIds.remove(id);
-                currentUniqueTasks.remove(id);
+                if (currentUniqueTaskIds.get(id) == newUniqueTaskId) {
+                    currentUniqueTaskIds.remove(id);
+                    currentUniqueTasks.remove(id);
+                }
             }
         }));
     }
