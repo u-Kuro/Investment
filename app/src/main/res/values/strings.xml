@@ -13,7 +13,7 @@
     <string name="market_cap_threshold">Market Cap Threshold</string>
     <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
     <string name="age_in_seconds_threshold">Age Threshold (Seconds)</string>
-    <string name="edit_configurations">Edit Configurations</string>
+    <string name="investment_configurations">Investment Configurations</string>
     <string name="search">Search</string>
     <string name="search_hint">Search symbols, exchanges, or names…</string>
 </resources>

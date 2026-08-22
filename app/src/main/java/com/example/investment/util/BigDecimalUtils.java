@@ -1,11 +1,8 @@
 package com.example.investment.util;
 
-import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.THOUSAND_BD;
 
-import android.content.Context;
 import android.content.SharedPreferences;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
@@ -70,14 +67,12 @@ public class BigDecimalUtils {
         }
     }
 
-    public static BigDecimal getSafeBigDecimalPrefs(@NonNull Context context, String key, String defaultValue) {
+    public static BigDecimal getSafeBigDecimalPrefs(@NonNull SharedPreferences sharedPreferences, String key, String defaultValue) {
         try {
-            SharedPreferences sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             String value = sharedPreferences.getString(key, null);
             if (value == null) return new BigDecimal(defaultValue);
             return new BigDecimal(value);
         } catch (Exception e) {
-            Toast.makeText(context, "Invalid " + key + ": using default", Toast.LENGTH_LONG).show();
             return new BigDecimal(defaultValue);
         }
     }

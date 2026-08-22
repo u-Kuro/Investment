@@ -2,6 +2,7 @@ package com.example.investment.service;
 
 import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 
+import static com.example.investment.util.Constants.ALL_TYPE;
 import static com.example.investment.util.Constants.BACKGROUND_THREAD;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET;
@@ -37,7 +38,9 @@ import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
 import static com.example.investment.util.Constants.OUTDATED_TICKER_NOTIFICATION_SUBTEXT;
 import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PASSIVE_NOTIFICATION_SUBTEXT;
+import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_ASSET_TYPE;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
@@ -53,7 +56,9 @@ import static com.example.investment.util.NotificationUtils.showLowPriorityServi
 import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -280,10 +285,12 @@ public class TickerService extends Service {
         @NonNull String investmentType,
         List<TickerData> tickers
     ) {
-        // Get new leading tickers
-        @NonNull BigDecimal marketCapThreshold = getSafeBigDecimalPrefs(this, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        @NonNull BigDecimal dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
-        @NonNull BigDecimal ageInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+        // Get saved investment configurations
+        @NonNull SharedPreferences sharedPreferences = this.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        @NonNull String assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
+        @NonNull BigDecimal marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        @NonNull BigDecimal dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        @NonNull BigDecimal ageInSecondsThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
 
         // Get saved leading tickers
         List<TickerData> savedLeadingTickers = getSavedLeadingTickers(investmentType);
@@ -296,18 +303,20 @@ public class TickerService extends Service {
             .filter(t -> {
                 TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = t.getNewestFixedHistoricalDataWithInterval();
                 return (
+                    // Asset type is invested
+                    (assetType.equals(ALL_TYPE) || assetType.equals(t.getType()))
                     // Market cap is above or equal to threshold
-                    t.getMarketCap().compareTo(marketCapThreshold) >= 0
+                    && t.getMarketCap().compareTo(marketCapThreshold) >= 0
                     // Daily dollar volume is above or equal to threshold
                     && t.getDailyDollarVolume(newestFixedHistoricalDataRecord).compareTo(dailyDollarVolumeThreshold) >= 0
                     // Age is above or equal to threshold
                     && t.getAgeInSeconds().compareTo(ageInSecondsThreshold) >= 0
                     // Asset price is trending above
                     && t.getPriceState(
-                    investmentType,
-                    Optional.ofNullable(newestFixedHistoricalDataRecord)
-                        .map(TickerData.FixedHistoricalRecord::fixedHistoricalData)
-                        .orElse(null)
+                        investmentType,
+                        Optional.ofNullable(newestFixedHistoricalDataRecord)
+                            .map(TickerData.FixedHistoricalRecord::fixedHistoricalData)
+                            .orElse(null)
                     ).equals(PRICE_ABOVE)
                 );
             })

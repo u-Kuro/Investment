@@ -24,7 +24,7 @@ import java.util.List;
 public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private @NonNull List<TickerData> shownTickers = List.of();
     private @NonNull List<TickerData> originalTickers = List.of();
-    private @NonNull String assetTypeFilter;
+    private @NonNull String listViewAssetType;
     private @NonNull String investmentType;
     private String oldInvestmentType;
     private @NonNull BigDecimal marketCapThreshold;
@@ -35,7 +35,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     private @NonNull final OnTickerLongClickListener longClickListener;
 
     public TickerAdapter(
-        @NonNull String assetTypeFilter,
+        @NonNull String listViewAssetType,
         @NonNull String investmentType,
         @NonNull BigDecimal marketCapThreshold,
         @NonNull BigDecimal dailyDollarVolumeThreshold,
@@ -43,7 +43,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
         @NonNull OnTickerClickListener clickListener,
         @NonNull OnTickerLongClickListener longClickListener
     ) {
-        this.assetTypeFilter = assetTypeFilter;
+        this.listViewAssetType = listViewAssetType;
         this.investmentType = investmentType;
         this.marketCapThreshold = marketCapThreshold;
         this.dailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
@@ -93,8 +93,8 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    public void setAssetTypeFilter(@NonNull String assetTypeFilter) {
-        this.assetTypeFilter = assetTypeFilter;
+    public void setListViewAssetType(@NonNull String listViewAssetType) {
+        this.listViewAssetType = listViewAssetType;
         updateShownTickers();
     }
 
@@ -143,7 +143,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
             @NonNull final List<TickerData> finalOldShownTickers = List.copyOf(shownTickers);
             @NonNull final String finalInvestmentType = investmentType;
             final String finalOldInvestmentType = oldInvestmentType;
-            @NonNull final String finalAssetTypeFilter = assetTypeFilter;
+            @NonNull final String finalListViewAssetType = listViewAssetType;
             final String finalSearchQuery = searchQuery;
             @NonNull final BigDecimal finalMarketCapThreshold = marketCapThreshold;
             @NonNull final BigDecimal filterDailyDollarVolumeThreshold = dailyDollarVolumeThreshold;
@@ -152,7 +152,7 @@ public class TickerAdapter extends RecyclerView.Adapter<TickerViewHolder> {
             EVENT_THREAD.replaceUniqueTask(UPDATE_SHOWN_TICKERS_TASK_ID, ui -> {
                 final @NonNull List<TickerData> newShownTickers = finalOriginalTickers.stream()
                     .filter(ticker -> {
-                        boolean typeMatch = ALL_TYPE.equals(finalAssetTypeFilter) || finalAssetTypeFilter.equals(ticker.getType());
+                        boolean typeMatch = ALL_TYPE.equals(finalListViewAssetType) || finalListViewAssetType.equals(ticker.getType());
                         if (!typeMatch) return false;
 
                         boolean searchMatch = true;

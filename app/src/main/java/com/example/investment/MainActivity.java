@@ -13,10 +13,11 @@ import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_ASSET_TYPE;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_INVESTMENT_TYPE;
-import static com.example.investment.util.Constants.PREF_ASSET_TYPE_FILTER;
+import static com.example.investment.util.Constants.PREF_LIST_VIEW_ASSET_TYPE;
 import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
 import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.ASSERT_MAIN_THREAD;
@@ -103,6 +104,7 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private TickerAdapter adapter;
 
+    private @NonNull String assetType = ALL_TYPE;
     private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
     private @NonNull BigDecimal marketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
     private @NonNull BigDecimal dailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
@@ -196,8 +198,8 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        ImageView editConfigurationsImage = findViewById(R.id.editConfigurationsImage);
-        editConfigurationsImage.setOnClickListener(v -> showConfigurationsDialog());
+        ImageView investmentConfigurationsImage = findViewById(R.id.investmentConfigurationsImage);
+        investmentConfigurationsImage.setOnClickListener(v -> showConfigurationsDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -233,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
         final TickerDataLoader finalDataLoader = this.tickerDataLoader;
         final TickerAdapter tickerAdapter = this.adapter;
 
-        // Initial load shouldn't be cancelled
+        // Initial load shouldn't be canceled
         if (isInitialLoad) {
             swipeRefreshLayout.setRefreshing(true);
             Toast.makeText(this, "Please wait...", Toast.LENGTH_LONG).show();
@@ -535,15 +537,16 @@ public class MainActivity extends AppCompatActivity {
         @NonNull EditText searchInput,
         @NonNull LinearLayout searchBarContainer
     ) {
-        @NonNull final SharedPreferences sharedPref = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        @NonNull final String assetTypeFilter = sharedPref.getString(PREF_ASSET_TYPE_FILTER, ALL_TYPE);
-        investmentType = sharedPref.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
-        marketCapThreshold = getSafeBigDecimalPrefs(this, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
-        dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(this, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
-        ageInSecondsThreshold = getSafeBigDecimalPrefs(this, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+        @NonNull final SharedPreferences sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        @NonNull final String listViewAssetType = sharedPreferences.getString(PREF_LIST_VIEW_ASSET_TYPE, ALL_TYPE);
+        assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
+        investmentType = sharedPreferences.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
+        marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
+        dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+        ageInSecondsThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
 
         @NonNull final TickerAdapter tickerAdapter = new TickerAdapter(
-            assetTypeFilter,
+            listViewAssetType,
             investmentType,
             marketCapThreshold,
             dailyDollarVolumeThreshold,
@@ -576,26 +579,26 @@ public class MainActivity extends AppCompatActivity {
             }
         );
 
-        @NonNull ArrayAdapter<CharSequence> assetTypeFilterAdapter = new ArrayAdapter<>(this,
+        @NonNull ArrayAdapter<CharSequence> listViewAssetTypeAdapter = new ArrayAdapter<>(this,
             R.layout.spinner_item,
             new String[]{ALL_TYPE, CRYPTOCURRENCY_TYPE, STOCK_TYPE}
         );
-        assetTypeFilterAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+        listViewAssetTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
 
-        @NonNull Spinner assetTypeFilterSpinner = findViewById(R.id.assetTypeFilterSpinner);
-        assetTypeFilterSpinner.setAdapter(assetTypeFilterAdapter);
-        assetTypeFilterSpinner.setSelection(assetTypeFilterAdapter.getPosition(assetTypeFilter));
-        assetTypeFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @NonNull Spinner listTypeAssetTypeSpinner = findViewById(R.id.listViewAssetTypeSpinner);
+        listTypeAssetTypeSpinner.setAdapter(listViewAssetTypeAdapter);
+        listTypeAssetTypeSpinner.setSelection(listViewAssetTypeAdapter.getPosition(listViewAssetType));
+        listTypeAssetTypeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                @NonNull String newAssetTypeFilter = parent.getSelectedItem().toString();
+                @NonNull String newListViewAssetType = parent.getSelectedItem().toString();
 
                 SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
-                editor.putString(PREF_ASSET_TYPE_FILTER, newAssetTypeFilter);
+                editor.putString(PREF_LIST_VIEW_ASSET_TYPE, newListViewAssetType);
                 editor.apply();
 
-                tickerAdapter.setAssetTypeFilter(newAssetTypeFilter);
+                tickerAdapter.setListViewAssetType(newListViewAssetType);
             }
 
             @Override
@@ -713,6 +716,14 @@ public class MainActivity extends AppCompatActivity {
 
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_configurations, null);
 
+        MaterialAutoCompleteTextView assetTypeSpinner = dialogView.findViewById(R.id.assetTypeSpinner);
+        ArrayAdapter<CharSequence> assetTypeAdapter = new ArrayAdapter<>(this,
+                R.layout.auto_complete_text_view_spinner_item,
+                new String[]{ALL_TYPE, CRYPTOCURRENCY_TYPE, STOCK_TYPE}
+        );
+        assetTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+        assetTypeSpinner.setAdapter(assetTypeAdapter);
+
         MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
         ArrayAdapter<CharSequence> investmentTypeAdapter = new ArrayAdapter<>(this,
             R.layout.auto_complete_text_view_spinner_item,
@@ -720,23 +731,28 @@ public class MainActivity extends AppCompatActivity {
         );
         investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
         investmentTypeSpinner.setAdapter(investmentTypeAdapter);
+
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
         EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
         EditText ageInSecondsThresholdInput = dialogView.findViewById(R.id.ageInSecondsThresholdInput);
 
+        assetTypeSpinner.setText(assetType, false);
         investmentTypeSpinner.setText(investmentType, false);
         marketCapThresholdInput.setText(marketCapThreshold.toPlainString());
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
         ageInSecondsThresholdInput.setText(ageInSecondsThreshold.toPlainString());
 
         configurationsDialog = new AlertDialog.Builder(this)
-            .setTitle(getResources().getText(R.string.edit_configurations))
+            .setTitle(getResources().getText(R.string.investment_configurations))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
 
-                    // Investment Type
+                    @NonNull String newAssetType = assetTypeSpinner.getText().toString();
+                    assetType = newAssetType;
+                    editor.putString(PREF_ASSET_TYPE, assetType);
+
                     @NonNull String newInvestmentType = investmentTypeSpinner.getText().toString();
                     investmentType = newInvestmentType;
                     adapter.setInvestmentType(investmentType);
