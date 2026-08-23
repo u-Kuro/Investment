@@ -3,8 +3,6 @@ package com.example.investment.util;
 import android.os.Handler;
 import android.os.Looper;
 
-import androidx.annotation.NonNull;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Map;
@@ -30,6 +28,7 @@ public class Constants {
     public static final String PREF_LIST_VIEW_ASSET_TYPE = "List View Asset Type";
     public static final String PREF_ASSET_TYPE = "Asset Type";
     public static final String PREF_INVESTMENT_TYPE = "Investment Type";
+    public static final String PREF_NUMBER_OF_TOP_HOLDINGS = "Number of Top Holdings";
     public static final String PREF_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
     public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
     public static final String PREF_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
@@ -43,8 +42,8 @@ public class Constants {
     // Yahoo Finance Screener Parameters
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
     public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
-    public static final long SCREENER_COUNT = 250;
-    public static final String FIRST_TRADE_TIMESTAMP_SECONDS = "-11607782632"; // March 1602
+    public static final int MAX_SCREENER_COUNT = 250;
+    public static final BigInteger FIRST_TRADE_TIMESTAMP_SECONDS = BigInteger.valueOf(-11_607_782_632L); // March 1602
 
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
@@ -59,26 +58,26 @@ public class Constants {
     public static final String MOMENTUM_INVESTMENT_TYPE = "Momentum Investing";
 
     // BigDecimal Constants
-    public static final BigDecimal THOUSAND_BD = new BigDecimal("1000");
-    public static final BigInteger THOUSAND_BI = new BigInteger("1000");
-    public static final BigInteger DAYS_PER_WEEK = new BigInteger("7");
-    public static final BigInteger MILLIS_PER_DAY = new BigInteger("86400000");
+    public static final BigDecimal THOUSAND_BD = BigDecimal.valueOf(1_000);
+    public static final BigInteger THOUSAND_BI = BigInteger.valueOf(1_000);
+    public static final BigInteger DAYS_PER_WEEK = BigInteger.valueOf(7);
+    public static final BigInteger MILLIS_PER_DAY = BigInteger.valueOf(86_400_000);
 
     // Asset Intervals
     public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
     public static final Map<String, BigInteger> ASSET_DURATION_UNTIL_NEXT_UPDATE_MS = Map.ofEntries(
         // Interval time * 2 until Next Update
         // Periodic worker's buffer handles DST shifts and Leap Seconds (1hr + 2s)
-        Map.entry("1d", new BigInteger("172800000")), // 1 + 1 Days to Milliseconds
-        Map.entry("1wk", new BigInteger("1209600000")), // 7 + 7
-        Map.entry("1mo", new BigInteger("5356800000")), // 31 + 31  (July 1 to Aug 31)
-        Map.entry("3mo", new BigInteger("15897600000")) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
+        Map.entry("1d", BigInteger.valueOf(172_800_000)), // 1 + 1 Days to Milliseconds
+        Map.entry("1wk", BigInteger.valueOf(1_209_600_000)), // 7 + 7
+        Map.entry("1mo", BigInteger.valueOf(5_356_800_000L)), // 31 + 31  (July 1 to Aug 31)
+        Map.entry("3mo", BigInteger.valueOf(15_897_600_000L)) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
     );
     public static final Map<String, BigDecimal> ASSET_DURATION_DAYS = Map.ofEntries(
         Map.entry("1d", BigDecimal.ONE), // 1
-        Map.entry("1wk", new BigDecimal(DAYS_PER_WEEK)), // 7
-        Map.entry("1mo", new BigDecimal("31")), // 31 (July)
-        Map.entry("3mo", new BigDecimal("92")) // 31 + 31 + 30 (July 1 to September 30)
+        Map.entry("1wk", BigDecimal.valueOf(DAYS_PER_WEEK.intValue())), // 7
+        Map.entry("1mo", BigDecimal.valueOf(31)), // 31 (July)
+        Map.entry("3mo", BigDecimal.valueOf(92)) // 31 + 31 + 30 (July 1 to September 30)
     );
     public static final BigInteger PERIODIC_WORKER_UPDATE_BUFFER_MS = MILLIS_PER_DAY; // 1D
 
@@ -127,12 +126,12 @@ public class Constants {
     public static final String MOMENTUM_NOTIFICATION_SUBTEXT = "MOMENTUM";
 
     // Ticker Defaults
-    public static final int SAVED_LEADING_TICKERS_COUNT = 4;
+    public static final int DEFAULT_NUMBER_OF_TOP_HOLDINGS = 4;
 
     // Filter Defaults
-    public static final @NonNull String DEFAULT_MARKET_CAP_THRESHOLD = "10000000000"; // $ 10 Billion
-    public static final @NonNull String DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD = "1000000"; // $ 1 Million
-    public static final @NonNull String DEFAULT_AGE_IN_SECONDS_THRESHOLD = "157680000"; // 5 Years
+    public static final BigDecimal DEFAULT_MARKET_CAP_THRESHOLD = BigDecimal.valueOf(10_000_000_000L); // $ 10 Billion
+    public static final BigDecimal DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD = BigDecimal.valueOf(1_000_000); // $ 1 Million
+    public static final BigDecimal DEFAULT_AGE_IN_SECONDS_THRESHOLD = BigDecimal.valueOf(157_680_000); // 5 Years
 
     // Request Defaults
     public static final int MAX_FETCH_RETRY_COUNT = 3;

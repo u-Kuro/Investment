@@ -8,6 +8,7 @@ import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.DEFERRED_THREAD;
 import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
@@ -19,6 +20,7 @@ import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREF_LIST_VIEW_ASSET_TYPE;
 import static com.example.investment.util.BigDecimalUtils.getSafeBigDecimalPrefs;
+import static com.example.investment.util.Constants.PREF_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.ASSERT_MAIN_THREAD;
 import static com.example.investment.util.Constants.EVENT_THREAD;
@@ -78,6 +80,7 @@ import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 
 import java.lang.ref.WeakReference;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -106,9 +109,10 @@ public class MainActivity extends AppCompatActivity {
 
     private @NonNull String assetType = ALL_TYPE;
     private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
-    private @NonNull BigDecimal marketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
-    private @NonNull BigDecimal dailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
-    private @NonNull BigDecimal ageInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+    private int numberOfTopHoldings = DEFAULT_NUMBER_OF_TOP_HOLDINGS;
+    private @NonNull BigDecimal marketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
+    private @NonNull BigDecimal dailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
+    private @NonNull BigDecimal ageInSecondsThreshold = DEFAULT_AGE_IN_SECONDS_THRESHOLD;
 
     private TickerDataLoader tickerDataLoader;
     private final Object AUTO_LOAD_TASK_ID = new Object();
@@ -541,6 +545,7 @@ public class MainActivity extends AppCompatActivity {
         @NonNull final String listViewAssetType = sharedPreferences.getString(PREF_LIST_VIEW_ASSET_TYPE, ALL_TYPE);
         assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
         investmentType = sharedPreferences.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
+        numberOfTopHoldings = sharedPreferences.getInt(PREF_NUMBER_OF_TOP_HOLDINGS, DEFAULT_NUMBER_OF_TOP_HOLDINGS);
         marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         ageInSecondsThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
@@ -732,12 +737,14 @@ public class MainActivity extends AppCompatActivity {
         investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
         investmentTypeSpinner.setAdapter(investmentTypeAdapter);
 
+        EditText numberOfTopHoldingsInput = dialogView.findViewById(R.id.numberOfTopHoldingsInput);
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
         EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
         EditText ageInSecondsThresholdInput = dialogView.findViewById(R.id.ageInSecondsThresholdInput);
 
         assetTypeSpinner.setText(assetType, false);
         investmentTypeSpinner.setText(investmentType, false);
+        numberOfTopHoldingsInput.setText(String.format(Locale.ROOT, "%d", numberOfTopHoldings));
         marketCapThresholdInput.setText(marketCapThreshold.toPlainString());
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
         ageInSecondsThresholdInput.setText(ageInSecondsThreshold.toPlainString());
@@ -758,10 +765,26 @@ public class MainActivity extends AppCompatActivity {
                     adapter.setInvestmentType(investmentType);
                     editor.putString(PREF_INVESTMENT_TYPE, investmentType);
 
+                    @NonNull String newNumberOfTopHoldingsString = numberOfTopHoldingsInput.getText().toString().trim();
+                    @NonNull BigInteger newNumberOfTopHoldings;
+                    if (newNumberOfTopHoldingsString.isEmpty()) {
+                        newNumberOfTopHoldings = BigInteger.valueOf(DEFAULT_NUMBER_OF_TOP_HOLDINGS);
+                    } else {
+                        newNumberOfTopHoldings = new BigInteger(newNumberOfTopHoldingsString);
+                    }
+                    if (newNumberOfTopHoldings.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0) {
+                        Toast.makeText(this, String.format(Locale.ROOT, "Number of Top Holdings Should Be Less Than %d", Integer.MAX_VALUE), Toast.LENGTH_SHORT).show();
+                    } else if (newNumberOfTopHoldings.compareTo(BigInteger.ONE) < 0) {
+                        Toast.makeText(this, "Number of Top Holdings Should Be Greater Than 0", Toast.LENGTH_SHORT).show();
+                    } else {
+                        numberOfTopHoldings = newNumberOfTopHoldings.intValue();
+                        editor.putInt(PREF_NUMBER_OF_TOP_HOLDINGS, numberOfTopHoldings);
+                    }
+
                     String newMarketCapThresholdString = marketCapThresholdInput.getText().toString().trim();
                     @NonNull BigDecimal newMarketCapThreshold;
                     if (newMarketCapThresholdString.isEmpty()) {
-                        newMarketCapThreshold = new BigDecimal(DEFAULT_MARKET_CAP_THRESHOLD);
+                        newMarketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
                     } else {
                         newMarketCapThreshold = new BigDecimal(newMarketCapThresholdString);
                     }
@@ -776,7 +799,7 @@ public class MainActivity extends AppCompatActivity {
                     String newDailyDollarVolumeThresholdString = dailyDollarVolumeThresholdInput.getText().toString().trim();
                     @NonNull BigDecimal newDailyDollarVolumeThreshold;
                     if (newDailyDollarVolumeThresholdString.isEmpty()) {
-                        newDailyDollarVolumeThreshold = new BigDecimal(DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
+                        newDailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
                     } else {
                         newDailyDollarVolumeThreshold = new BigDecimal(newDailyDollarVolumeThresholdString);
                     }
@@ -791,7 +814,7 @@ public class MainActivity extends AppCompatActivity {
                     String newAgeInSecondsThresholdString = ageInSecondsThresholdInput.getText().toString().trim();
                     @NonNull BigDecimal newAgeInSecondsThreshold;
                     if (newAgeInSecondsThresholdString.isEmpty()) {
-                        newAgeInSecondsThreshold = new BigDecimal(DEFAULT_AGE_IN_SECONDS_THRESHOLD);
+                        newAgeInSecondsThreshold = DEFAULT_AGE_IN_SECONDS_THRESHOLD;
                     } else {
                         newAgeInSecondsThreshold = new BigDecimal(newAgeInSecondsThresholdString);
                     }

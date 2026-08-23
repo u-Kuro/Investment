@@ -64,6 +64,28 @@
         app:endIconMode="clear_text">
 
         <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/numberOfTopHoldingsInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:hint="@string/number_of_top_holdings"
+            android:textColorHint="@color/off_white"
+            android:textColor="@color/white"
+            android:background="@color/transparent"
+            android:inputType="number"
+            android:maxLines="1"
+            android:paddingHorizontal="16dp"
+            android:importantForAutofill="no" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp"
+        app:endIconMode="clear_text">
+
+        <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/marketCapThresholdInput"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

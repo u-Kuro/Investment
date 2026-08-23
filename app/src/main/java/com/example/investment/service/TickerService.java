@@ -43,10 +43,11 @@ import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOL
 import static com.example.investment.util.Constants.PREF_ASSET_TYPE;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
 import static com.example.investment.util.Constants.PRICE_BELOW;
 import static com.example.investment.util.Constants.PRICE_BETWEEN;
-import static com.example.investment.util.Constants.SAVED_LEADING_TICKERS_COUNT;
+import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.UI_THREAD;
 import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
@@ -76,7 +77,6 @@ import com.example.investment.util.Logger;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -155,7 +155,6 @@ public class TickerService extends Service {
                         showLowPriorityServiceNotification(
                             TickerService.this,
                             String.format(
-                                Locale.US,
                                 getString(R.string.fetching_tickers_found),
                                 dataRefreshType,
                                 current
@@ -165,7 +164,6 @@ public class TickerService extends Service {
                         showLowPriorityServiceNotification(
                             TickerService.this,
                             String.format(
-                                Locale.US,
                                 getString(R.string.fetching_tickers),
                                 dataRefreshType
                             )
@@ -189,7 +187,6 @@ public class TickerService extends Service {
                             showLowPriorityServiceNotification(
                                 TickerService.this,
                                 String.format(
-                                    Locale.US,
                                     getString(R.string.processing_tickers),
                                     progress,
                                     dataRefreshType
@@ -205,7 +202,6 @@ public class TickerService extends Service {
                         showLowPriorityServiceNotification(
                             TickerService.this,
                             String.format(
-                                Locale.US,
                                 getString(R.string.fetching_tickers),
                                 dataRefreshType
                             )
@@ -288,6 +284,7 @@ public class TickerService extends Service {
         // Get saved investment configurations
         @NonNull SharedPreferences sharedPreferences = this.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         @NonNull String assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
+        int numberOfTopHoldings = sharedPreferences.getInt(PREF_NUMBER_OF_TOP_HOLDINGS, DEFAULT_NUMBER_OF_TOP_HOLDINGS);
         @NonNull BigDecimal marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         @NonNull BigDecimal dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
         @NonNull BigDecimal ageInSecondsThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
@@ -322,7 +319,7 @@ public class TickerService extends Service {
             })
             .sorted((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)))
             .toList();
-        List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), SAVED_LEADING_TICKERS_COUNT));
+        List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), numberOfTopHoldings));
 
         // Notify about updated leading tickers
         notifyUpdatedLeadingTickers(investmentType, currentLeadingTickers, savedLeadingTickers);
@@ -442,7 +439,6 @@ public class TickerService extends Service {
         String channelName = CHANNEL_NAME_NEW_LEADING_ASSET;
         String title = "Invest Now";
         String content = String.format(
-            Locale.US,
             "%s | Leads for investment, check now.",
             newLeadingTicker.getSymbol()
         );

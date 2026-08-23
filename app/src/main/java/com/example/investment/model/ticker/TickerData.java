@@ -235,8 +235,8 @@ public class TickerData implements Serializable {
             );
     }
 
-    private static final BigDecimal HUNDRED = new BigDecimal("100");
-    private static final BigDecimal MILLIS_PER_DAY = new BigDecimal("86400000");
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    private static final BigDecimal MILLIS_PER_DAY = BigDecimal.valueOf(86_400_000);
     public @NonNull BigDecimal getPercentageIncreasePerDay(@NonNull String investmentType) {
         @NonNull BigInteger startPriceTimestampSeconds;
         @NonNull BigDecimal startPrice;

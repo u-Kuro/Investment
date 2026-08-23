@@ -14,11 +14,11 @@ public class BigDecimalUtils {
     private static final int SIGNIFICANT_DIGITS = 5;
     private record BigDecimalRange(BigDecimal value, String suffix) {}
     private static final BigDecimalRange[] BIG_DECIMAL_RANGES = {
-        new BigDecimalRange(new BigDecimal("1000000000000000000"), "Qi"),   // Quintillion
-        new BigDecimalRange(new BigDecimal("1000000000000000"), "Q"),       // Quadrillion
-        new BigDecimalRange(new BigDecimal("1000000000000"), "T"),          // Trillion
-        new BigDecimalRange(new BigDecimal("1000000000"), "B"),             // Billion
-        new BigDecimalRange(new BigDecimal("1000000"), "M"),                // Million
+        new BigDecimalRange(BigDecimal.valueOf(1_000_000_000_000_000_000L), "Qi"),   // Quintillion
+        new BigDecimalRange(BigDecimal.valueOf(1_000_000_000_000_000L), "Q"),       // Quadrillion
+        new BigDecimalRange(BigDecimal.valueOf(1_000_000_000_000L), "T"),          // Trillion
+        new BigDecimalRange(BigDecimal.valueOf(1_000_000_000), "B"),             // Billion
+        new BigDecimalRange(BigDecimal.valueOf(1_000_000), "M"),                // Million
         new BigDecimalRange(THOUSAND_BD, "K")                                   // Thousand
     };
     private static final BigDecimalRange DEFAULT_RANGE = new BigDecimalRange(BigDecimal.ONE, "");
@@ -67,13 +67,13 @@ public class BigDecimalUtils {
         }
     }
 
-    public static BigDecimal getSafeBigDecimalPrefs(@NonNull SharedPreferences sharedPreferences, String key, String defaultValue) {
+    public static @NonNull BigDecimal getSafeBigDecimalPrefs(@NonNull SharedPreferences sharedPreferences, String key, @NonNull BigDecimal defaultValue) {
         try {
             String value = sharedPreferences.getString(key, null);
-            if (value == null) return new BigDecimal(defaultValue);
+            if (value == null) return defaultValue;
             return new BigDecimal(value);
         } catch (Exception e) {
-            return new BigDecimal(defaultValue);
+            return defaultValue;
         }
     }
 

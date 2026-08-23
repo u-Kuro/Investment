@@ -5,7 +5,7 @@ import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.SCREENER_COUNT;
+import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -52,8 +52,8 @@ public class YahooFinanceRepository {
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
 
     @NonNull private static final OkHttpClient client = new OkHttpClient();
-    @NonNull private static final BigDecimal TWO = new BigDecimal("2");
-    @NonNull private static final BigDecimal FOUR = new BigDecimal("4");
+    @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
+    @NonNull private static final BigDecimal FOUR = BigDecimal.valueOf(4);
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateTickers(
@@ -133,7 +133,7 @@ public class YahooFinanceRepository {
             }
 
             int retryCount = 0;
-            long startIndex = 0;
+            BigInteger startIndex = BigInteger.ZERO;
             String prevFirstSymbol = null;
 
             while (true) {
@@ -142,11 +142,11 @@ public class YahooFinanceRepository {
                 }
 
                 String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
-                    .addParam("count", String.valueOf(SCREENER_COUNT))
+                    .addParam("count", Integer.toString(MAX_SCREENER_COUNT))
                     .addParam("scrIds", screener)
                     .addParam("sortField", "intradaymarketcap")
                     .addParam("sortType", "DESC")
-                    .addParam("start", String.valueOf(startIndex))
+                    .addParam("start", startIndex.toString())
                     .build();
 
                 throttle();
@@ -180,7 +180,7 @@ public class YahooFinanceRepository {
                     }
 
                     retryCount = 0;
-                    startIndex += length;
+                    startIndex = startIndex.add(BigInteger.valueOf(length));
                     listener.onSymbolsProgress(symbols.size());
 
                 } catch (InterruptedException e) {
@@ -227,7 +227,7 @@ public class YahooFinanceRepository {
             FetchTickerAttempt attempt = attempts.get(i);
             @NonNull String interval = attempt.interval();
             boolean hasFixedHistoricalData;
-            @NonNull String period1;
+            @NonNull BigInteger period1;
 
             if (isFullRefresh || oldTicker == null) {
                 period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
@@ -238,15 +238,15 @@ public class YahooFinanceRepository {
                     period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
                     hasFixedHistoricalData = false;
                 } else {
-                    period1 = fixedData.updatedAtTimestampSeconds().toString();
+                    period1 = fixedData.updatedAtTimestampSeconds();
                     hasFixedHistoricalData = true;
                 }
             }
 
             String url = new UrlBuilder(attempt.baseUrl())
                 .addPath(symbol)
-                .addParam("period1", period1)
-                .addParam("period2", String.valueOf((System.currentTimeMillis() / 1000L) + 2678400L))
+                .addParam("period1", period1.toString())
+                .addParam("period2", Long.toString((System.currentTimeMillis() / 1000L) + 2678400L))
                 .addParam("interval", interval)
                 .addParam("includePrePost", "true")
                 .addParam("events", "div|split|earn")

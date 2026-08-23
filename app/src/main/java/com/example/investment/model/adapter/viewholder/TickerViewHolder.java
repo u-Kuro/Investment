@@ -199,11 +199,11 @@ public class TickerViewHolder extends RecyclerView.ViewHolder {
         return seconds + (seconds == 1 ? " second" : " seconds");
     }
 
-    private static final BigInteger SECONDS_PER_MINUTE = new BigInteger("60");
-    private static final BigInteger SECONDS_PER_HOUR = new BigInteger("3600");
-    private static final BigInteger SECONDS_PER_DAY = new BigInteger("86400");
-    private static final BigInteger AVG_SECONDS_PER_MONTH = new BigInteger("2629800"); // 30.44 days
-    private static final BigInteger AVG_SECONDS_PER_YEAR = new BigInteger("31557600"); // 365.25 days
+    private static final BigInteger SECONDS_PER_MINUTE = BigInteger.valueOf(60);
+    private static final BigInteger SECONDS_PER_HOUR = BigInteger.valueOf(3_600);
+    private static final BigInteger SECONDS_PER_DAY = BigInteger.valueOf(86_400);
+    private static final BigInteger AVG_SECONDS_PER_MONTH = BigInteger.valueOf(2_629_800); // 30.44 days
+    private static final BigInteger AVG_SECONDS_PER_YEAR = BigInteger.valueOf(31_557_600); // 365.25 days
     @RequiresApi(api = Build.VERSION_CODES.S)
     public static String getTimeAgo(@NonNull BigInteger timestampSeconds, long currentTimeMillis) {
         try {

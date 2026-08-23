@@ -109,14 +109,14 @@ public class DateUtils {
     }
 
     // Time constants as BigDecimal
-    private static final BigInteger BI_MARKET_OPEN_HOUR = new BigInteger("9");
-    private static final BigInteger BI_MARKET_OPEN_MINUTE = new BigInteger("30");
-    private static final BigInteger BI_MARKET_CLOSE_HOUR = new BigInteger("16");
-    private static final BigInteger MILLIS_PER_MINUTE = new BigInteger("60000");
-    private static final BigInteger MILLIS_PER_HOUR = new BigInteger("3600000");
+    private static final BigInteger BI_MARKET_OPEN_HOUR = BigInteger.valueOf(9);
+    private static final BigInteger BI_MARKET_OPEN_MINUTE = BigInteger.valueOf(30);
+    private static final BigInteger BI_MARKET_CLOSE_HOUR = BigInteger.valueOf(16);
+    private static final BigInteger MILLIS_PER_MINUTE = BigInteger.valueOf(60_000);
+    private static final BigInteger MILLIS_PER_HOUR = BigInteger.valueOf(3_600_000);
 
     // Unix epoch started on Thursday, January 1, 1970
-    private static final BigInteger EPOCH_DAY_OF_WEEK = new BigInteger("4"); // Thursday = 4 (Sunday = 0)
+    private static final BigInteger EPOCH_DAY_OF_WEEK = BigInteger.valueOf(4); // Thursday = 4 (Sunday = 0)
     @RequiresApi(api = Build.VERSION_CODES.S)
     private static BigInteger calculateMarketActiveMillisBD(BigInteger startMs, BigInteger endMs) {
         if (startMs.compareTo(endMs) >= 0) {

@@ -10,6 +10,7 @@
     <string name="stop_processing">Stop Processing</string>
     <string name="asset_type">Asset Type</string>
     <string name="investment_type">Investment Type</string>
+    <string name="number_of_top_holdings">Number of Top Holdings</string>
     <string name="market_cap_threshold">Market Cap Threshold</string>
     <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
     <string name="age_in_seconds_threshold">Age Threshold (Seconds)</string>
