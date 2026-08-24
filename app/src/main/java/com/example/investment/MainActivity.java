@@ -107,8 +107,8 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private TickerAdapter adapter;
 
-    private @NonNull String assetType = ALL_TYPE;
     private @NonNull String investmentType = PASSIVE_INVESTMENT_TYPE;
+    private @NonNull String assetType = ALL_TYPE;
     private int numberOfTopHoldings = DEFAULT_NUMBER_OF_TOP_HOLDINGS;
     private @NonNull BigDecimal marketCapThreshold = DEFAULT_MARKET_CAP_THRESHOLD;
     private @NonNull BigDecimal dailyDollarVolumeThreshold = DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
@@ -543,8 +543,8 @@ public class MainActivity extends AppCompatActivity {
     ) {
         @NonNull final SharedPreferences sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         @NonNull final String listViewAssetType = sharedPreferences.getString(PREF_LIST_VIEW_ASSET_TYPE, ALL_TYPE);
-        assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
         investmentType = sharedPreferences.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
+        assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
         numberOfTopHoldings = sharedPreferences.getInt(PREF_NUMBER_OF_TOP_HOLDINGS, DEFAULT_NUMBER_OF_TOP_HOLDINGS);
         marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
         dailyDollarVolumeThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_DAILY_DOLLAR_VOLUME_THRESHOLD, DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD);
@@ -721,6 +721,14 @@ public class MainActivity extends AppCompatActivity {
 
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_configurations, null);
 
+        MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
+        ArrayAdapter<CharSequence> investmentTypeAdapter = new ArrayAdapter<>(this,
+                R.layout.auto_complete_text_view_spinner_item,
+                new String[]{PASSIVE_INVESTMENT_TYPE, MOMENTUM_INVESTMENT_TYPE}
+        );
+        investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
+        investmentTypeSpinner.setAdapter(investmentTypeAdapter);
+
         MaterialAutoCompleteTextView assetTypeSpinner = dialogView.findViewById(R.id.assetTypeSpinner);
         ArrayAdapter<CharSequence> assetTypeAdapter = new ArrayAdapter<>(this,
                 R.layout.auto_complete_text_view_spinner_item,
@@ -729,21 +737,13 @@ public class MainActivity extends AppCompatActivity {
         assetTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
         assetTypeSpinner.setAdapter(assetTypeAdapter);
 
-        MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
-        ArrayAdapter<CharSequence> investmentTypeAdapter = new ArrayAdapter<>(this,
-            R.layout.auto_complete_text_view_spinner_item,
-            new String[]{PASSIVE_INVESTMENT_TYPE, MOMENTUM_INVESTMENT_TYPE}
-        );
-        investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
-        investmentTypeSpinner.setAdapter(investmentTypeAdapter);
-
         EditText numberOfTopHoldingsInput = dialogView.findViewById(R.id.numberOfTopHoldingsInput);
         EditText marketCapThresholdInput = dialogView.findViewById(R.id.marketCapThresholdInput);
         EditText dailyDollarVolumeThresholdInput = dialogView.findViewById(R.id.dailyDollarVolumeThresholdInput);
         EditText ageInSecondsThresholdInput = dialogView.findViewById(R.id.ageInSecondsThresholdInput);
 
-        assetTypeSpinner.setText(assetType, false);
         investmentTypeSpinner.setText(investmentType, false);
+        assetTypeSpinner.setText(assetType, false);
         numberOfTopHoldingsInput.setText(String.format(Locale.ROOT, "%d", numberOfTopHoldings));
         marketCapThresholdInput.setText(marketCapThreshold.toPlainString());
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
@@ -756,14 +756,14 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
 
-                    @NonNull String newAssetType = assetTypeSpinner.getText().toString();
-                    assetType = newAssetType;
-                    editor.putString(PREF_ASSET_TYPE, assetType);
-
                     @NonNull String newInvestmentType = investmentTypeSpinner.getText().toString();
                     investmentType = newInvestmentType;
                     adapter.setInvestmentType(investmentType);
                     editor.putString(PREF_INVESTMENT_TYPE, investmentType);
+
+                    @NonNull String newAssetType = assetTypeSpinner.getText().toString();
+                    assetType = newAssetType;
+                    editor.putString(PREF_ASSET_TYPE, assetType);
 
                     @NonNull String newNumberOfTopHoldingsString = numberOfTopHoldingsInput.getText().toString().trim();
                     @NonNull BigInteger newNumberOfTopHoldings;

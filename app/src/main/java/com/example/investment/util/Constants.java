@@ -26,8 +26,8 @@ public class Constants {
     // Preferences
     public static final String PREFS_NAME = "Investment Shared Preferences";
     public static final String PREF_LIST_VIEW_ASSET_TYPE = "List View Asset Type";
-    public static final String PREF_ASSET_TYPE = "Asset Type";
     public static final String PREF_INVESTMENT_TYPE = "Investment Type";
+    public static final String PREF_ASSET_TYPE = "Asset Type";
     public static final String PREF_NUMBER_OF_TOP_HOLDINGS = "Number of Top Holdings";
     public static final String PREF_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
     public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";

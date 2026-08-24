@@ -42,6 +42,7 @@ import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_ASSET_TYPE;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
+import static com.example.investment.util.Constants.PREF_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.PRICE_ABOVE;
@@ -86,13 +87,16 @@ public class TickerService extends Service {
     public static final String STOP_SERVICE_ACTION = "stop_service";
     public static final String FULL_DATA_REFRESH_ACTION = "Full";
     public static final String INCREMENTAL_DATA_REFRESH_ACTION = "Incremental";
+    private static SharedPreferences sharedPreferences;
+    private static TickerDataLoader tickerDataLoader;
 
-    private TickerDataLoader tickerDataLoader;
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     public void onCreate() {
         super.onCreate();
+
         tickerDataLoader = TickerDataLoader.getInstance();
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
         try {
             startForeground(
@@ -106,7 +110,6 @@ public class TickerService extends Service {
             stopSelf();
         }
     }
-
 
     private String dataRefreshType = null;
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -234,9 +237,7 @@ public class TickerService extends Service {
                 public void onFinish(@NonNull List<TickerData> tickers, final long updateTime) {
                     isFinished.set(true);
 
-                    if (!tickers.isEmpty()) {
-                        processChangesOfTickers(tickers);
-                    }
+                    processChangedTickers(new ArrayList<>(tickers));
 
                     ui.post(() -> {
                         MainActivity activity = MainActivity.getInstanceActivity();
@@ -251,8 +252,10 @@ public class TickerService extends Service {
 
                 @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
                 @Override
-                public void onError() {
+                public void onError(@Nullable List<TickerData> oldTickers) {
                     isFinished.set(true);
+
+                    processUnchangedTickers(oldTickers);
 
                     ui.post(() -> {
                         MainActivity activity = MainActivity.getInstanceActivity();
@@ -270,19 +273,9 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void processChangesOfTickers(List<TickerData> tickers) {
-        // Check and notify both type of investment
-        processChangesOfTickers(PASSIVE_INVESTMENT_TYPE, new ArrayList<>(tickers));
-        processChangesOfTickers(MOMENTUM_INVESTMENT_TYPE, new ArrayList<>(tickers));
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void processChangesOfTickers(
-        @NonNull String investmentType,
-        List<TickerData> tickers
-    ) {
+    private void processChangedTickers(@NonNull List<TickerData> tickers) {
         // Get saved investment configurations
-        @NonNull SharedPreferences sharedPreferences = this.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        @NonNull String investmentType = sharedPreferences.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
         @NonNull String assetType = sharedPreferences.getString(PREF_ASSET_TYPE, ALL_TYPE);
         int numberOfTopHoldings = sharedPreferences.getInt(PREF_NUMBER_OF_TOP_HOLDINGS, DEFAULT_NUMBER_OF_TOP_HOLDINGS);
         @NonNull BigDecimal marketCapThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_MARKET_CAP_THRESHOLD, DEFAULT_MARKET_CAP_THRESHOLD);
@@ -290,13 +283,13 @@ public class TickerService extends Service {
         @NonNull BigDecimal ageInSecondsThreshold = getSafeBigDecimalPrefs(sharedPreferences, PREF_AGE_IN_SECONDS_THRESHOLD, DEFAULT_AGE_IN_SECONDS_THRESHOLD);
 
         // Get saved leading tickers
-        List<TickerData> savedLeadingTickers = getSavedLeadingTickers(investmentType);
+        @Nullable List<TickerData> savedLeadingTickers = getSavedLeadingTickers(investmentType);
 
         // Notify about deleted leading tickers
         notifyDeletedLeadingTickers(investmentType, tickers, savedLeadingTickers);
 
         // Sort and get leading tickers for specific investment
-        List<TickerData> validNewLeadingTickers = tickers.stream()
+        @NonNull List<TickerData> validNewLeadingTickers = tickers.stream()
             .filter(t -> {
                 TickerData.FixedHistoricalRecord newestFixedHistoricalDataRecord = t.getNewestFixedHistoricalDataWithInterval();
                 return (
@@ -319,7 +312,7 @@ public class TickerService extends Service {
             })
             .sorted((a, b) -> b.getPercentageIncreasePerDay(investmentType).compareTo(a.getPercentageIncreasePerDay(investmentType)))
             .toList();
-        List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), numberOfTopHoldings));
+        @NonNull List<TickerData> currentLeadingTickers = validNewLeadingTickers.subList(0, Math.min(validNewLeadingTickers.size(), numberOfTopHoldings));
 
         // Notify about updated leading tickers
         notifyUpdatedLeadingTickers(investmentType, currentLeadingTickers, savedLeadingTickers);
@@ -329,7 +322,24 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyUpdatedLeadingTickers(@NonNull String investmentType, @NonNull List<TickerData> currentLeadingTickers, List<TickerData> savedLeadingTickers) {
+    private void processUnchangedTickers(@Nullable List<TickerData> oldTickers) {
+        // Get saved investment configurations
+        @NonNull String investmentType = sharedPreferences.getString(PREF_INVESTMENT_TYPE, PASSIVE_INVESTMENT_TYPE);
+
+        // Get saved leading tickers
+        @Nullable List<TickerData> savedLeadingTickers = getSavedLeadingTickers(investmentType);
+
+        // Notify any unexpected loss of leading tickers in old tickers data
+        if (oldTickers != null) {
+            notifyDeletedLeadingTickers(investmentType, new ArrayList<>(oldTickers), savedLeadingTickers);
+        }
+
+        // Notify any outdated leading tickers
+        notifyOutdatedLeadingTickers(investmentType, savedLeadingTickers);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void notifyUpdatedLeadingTickers(@NonNull String investmentType, @NonNull List<TickerData> currentLeadingTickers, @Nullable List<TickerData> savedLeadingTickers) {
         if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) {
             for (TickerData currentLeadingTicker : currentLeadingTickers) {
                 if (currentLeadingTicker == null) continue;
@@ -365,6 +375,19 @@ public class TickerService extends Service {
                 } else {
                     notifyNewLeadingTicker(investmentType, currentLeadingTicker, isDataStale);
                 }
+            }
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    private void notifyOutdatedLeadingTickers(@NonNull String investmentType, @Nullable List<TickerData> savedLeadingTickers) {
+        if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) return;
+
+        for (TickerData savedLeadingTicker : savedLeadingTickers) {
+            if (savedLeadingTicker == null) continue;
+            boolean isDataStale = savedLeadingTicker.areAllFixedHistoricalDataStale();
+            if (isDataStale) {
+                notifyOutdatedLeadingTicker(investmentType, savedLeadingTicker);
             }
         }
     }
@@ -583,16 +606,16 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void notifyDeletedLeadingTickers(@NonNull String investmentType, @NonNull List<TickerData> tickers, List<TickerData> savedLeadingTickers) {
+    private void notifyDeletedLeadingTickers(@NonNull String investmentType, @NonNull List<TickerData> tickers, @Nullable List<TickerData> savedLeadingTickers) {
         if (savedLeadingTickers == null || savedLeadingTickers.isEmpty()) return;
 
-        Set<String> newTickersSymbols = tickers.stream()
+        Set<String> tickersSymbols = tickers.stream()
             .map(TickerData::getSymbol)
             .collect(Collectors.toSet());
 
         for (TickerData savedLeadingTicker : savedLeadingTickers) {
             if (savedLeadingTicker == null) continue;
-            if (!newTickersSymbols.contains(savedLeadingTicker.getSymbol())) {
+            if (!tickersSymbols.contains(savedLeadingTicker.getSymbol())) {
                 notifyDeletedLeadingTicker(investmentType, savedLeadingTicker);
             }
         }
@@ -639,10 +662,10 @@ public class TickerService extends Service {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveLeadingTickers(String investmentType, List<TickerData> tickers) {
+    private void saveLeadingTickers(@NonNull String investmentType, @NonNull List<TickerData> tickers) {
         tickerDataLoader.saveLeadingTickers(getApplicationContext(), investmentType, tickers);
     }
-    private List<TickerData> getSavedLeadingTickers(String investmentType) {
+    private @Nullable List<TickerData> getSavedLeadingTickers(String investmentType) {
         return tickerDataLoader.getLeadingTickers(getApplicationContext(), investmentType);
     }
 

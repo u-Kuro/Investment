@@ -34,10 +34,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -61,19 +59,14 @@ public class YahooFinanceRepository {
         boolean isFullRefresh,
         @NonNull TickerUpdateListener listener
     ) {
-        List<TickerData> result = new ArrayList<>();
+        @NonNull List<TickerData> result = new ArrayList<>();
         boolean effectiveFullRefresh = isFullRefresh || oldTickers == null;
-        Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers, effectiveFullRefresh);
-        Set<String> deletedSymbols = new HashSet<>();
+        @NonNull Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers, effectiveFullRefresh);
 
         try {
             listener.onTickersProgress(0, 0);
 
             Map<String, FetchSymbolsResult> newSymbolsMap = fetchSymbols(listener);
-
-            if (!effectiveFullRefresh) {
-                deletedSymbols = getDeletedSymbols(oldTickersMap, newSymbolsMap);
-            }
 
             int total = newSymbolsMap.size();
             int current = 0;
@@ -109,15 +102,12 @@ public class YahooFinanceRepository {
             return;
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);
-            listener.onError();
+            listener.onError(oldTickers);
             return;
         }
 
-        final Set<String> finalDeletedSymbols = deletedSymbols;
-        result.removeIf(ticker -> finalDeletedSymbols.contains(ticker.getSymbol()));
-
         if (result.isEmpty()) {
-            listener.onError();
+            listener.onError(oldTickers);
         } else {
             listener.onFinish(result, System.currentTimeMillis());
         }
@@ -545,26 +535,13 @@ public class YahooFinanceRepository {
     }
 
     // Helpers
-    @NonNull
-    private Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers, boolean effectiveFullRefresh) {
-        if (effectiveFullRefresh || oldTickers == null) return new HashMap<>();
+    private @NonNull Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers, boolean effectiveFullRefresh) {
         Map<String, TickerData> map = new HashMap<>();
+        if (effectiveFullRefresh || oldTickers == null) return map;
         for (TickerData ticker : oldTickers) map.put(ticker.getSymbol(), ticker);
         return map;
     }
-    @NonNull
-    private Set<String> getDeletedSymbols(
-        @NonNull Map<String, TickerData> oldTickersMap,
-        @NonNull Map<String, FetchSymbolsResult> newSymbolsMap
-    ) {
-        Set<String> deleted = new HashSet<>();
-        for (String symbol : oldTickersMap.keySet()) {
-            if (!newSymbolsMap.containsKey(symbol)) deleted.add(symbol);
-        }
-        return deleted;
-    }
-    @NonNull
-    private JSONArray convertCryptoVolumeToUnits(@NonNull JSONArray apiVolumes, @NonNull JSONArray apiCloses) {
+    private @NonNull JSONArray convertCryptoVolumeToUnits(@NonNull JSONArray apiVolumes, @NonNull JSONArray apiCloses) {
         JSONArray converted = new JSONArray();
         for (int i = 0; i < apiVolumes.length(); i++) {
             try {

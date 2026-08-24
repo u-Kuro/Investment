@@ -48,7 +48,7 @@ public class TickerDataLoader {
         boolean isFullRefresh,
         @NonNull TickerUpdateListener listener
     ) {
-        List<TickerData> oldTickers = isFullRefresh ? null : getTickers(context);
+        @Nullable List<TickerData> oldTickers = isFullRefresh ? null : getTickers(context);
 
         repository.updateTickers(oldTickers, isFullRefresh, new TickerUpdateListener() {
             @Override
@@ -66,16 +66,17 @@ public class TickerDataLoader {
             @Override
             public void onFinish(@NonNull List<TickerData> tickers, long updateTime) {
                 try {
+                    if (tickers.isEmpty()) throw new IllegalStateException("Tickers must not be empty.");
                     saveAndCache(context, tickers, updateTime);
                     listener.onFinish(tickers, updateTime);
                 } catch (Exception e) {
                     Logger.error("Error saving ticker record", e);
-                    listener.onError();
+                    listener.onError(oldTickers);
                 }
             }
             @Override
-            public void onError() {
-                listener.onError();
+            public void onError(@Nullable List<TickerData> oldTickers) {
+                listener.onError(oldTickers);
             }
         });
     }
