@@ -1,6 +1,7 @@
 package com.example.investment.repository;
 
 import static com.example.investment.util.Constants.FILE_RECORD_PROXIES;
+import static com.example.investment.util.Constants.PROXY_COOLDOWN_MILLISECONDS;
 import static com.example.investment.util.Constants.PROXY_LIST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.PROXY_LIST_URLS;
 import static com.example.investment.util.Constants.PROXY_REFRESH_MILLISECONDS;
@@ -24,7 +25,11 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -40,20 +45,58 @@ public class ProxyRepository {
         .build();
 
     @NonNull private final List<InetSocketAddress> addresses = new ArrayList<>();
+    // Routes that answered before
+    @NonNull private final Set<Proxy> provenCandidates = new HashSet<>();
+    // Routes that failed, left out until the time here passes
+    @NonNull private final Map<Proxy, Long> cooldownUntilMilliseconds = new HashMap<>();
     private boolean isLoaded = false;
     private long nextFetchAtMilliseconds = 0;
 
     // Candidates
-    // Every proxy plus the own IP, shuffled, so a single request can go around all of them
+    // Routes that worked before go first, then the untried ones, each shuffled, so the load is still spread
+    // Failed routes are left out for a while, a dead proxy costs a whole timeout on every request
+    // The own IP is one of the candidates too
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public synchronized @NonNull List<Proxy> getCandidates(@NonNull Context context) {
         refreshIfNeeded(context);
 
-        @NonNull List<Proxy> candidates = new ArrayList<>();
-        for (InetSocketAddress address : addresses) candidates.add(new Proxy(Proxy.Type.SOCKS, address));
-        candidates.add(Proxy.NO_PROXY);
-        Collections.shuffle(candidates);
+        long now = System.currentTimeMillis();
+        cooldownUntilMilliseconds.values().removeIf(until -> until <= now);
+
+        @NonNull List<Proxy> proven = new ArrayList<>();
+        @NonNull List<Proxy> untried = new ArrayList<>();
+        for (InetSocketAddress address : addresses) {
+            @NonNull Proxy proxy = new Proxy(Proxy.Type.SOCKS, address);
+            if (cooldownUntilMilliseconds.containsKey(proxy)) continue;
+            if (provenCandidates.contains(proxy)) {
+                proven.add(proxy);
+            } else {
+                untried.add(proxy);
+            }
+        }
+        if (provenCandidates.contains(Proxy.NO_PROXY)) {
+            proven.add(Proxy.NO_PROXY);
+        } else {
+            untried.add(Proxy.NO_PROXY);
+        }
+
+        Collections.shuffle(proven);
+        Collections.shuffle(untried);
+        @NonNull List<Proxy> candidates = new ArrayList<>(proven);
+        candidates.addAll(untried);
         return candidates;
+    }
+
+    public synchronized void reportSuccess(@NonNull Proxy proxy) {
+        cooldownUntilMilliseconds.remove(proxy);
+        provenCandidates.add(proxy);
+    }
+
+    public synchronized void reportFailure(@NonNull Proxy proxy) {
+        provenCandidates.remove(proxy);
+        // The own IP is the last resort, it never leaves the list
+        if (Proxy.NO_PROXY.equals(proxy)) return;
+        cooldownUntilMilliseconds.put(proxy, System.currentTimeMillis() + PROXY_COOLDOWN_MILLISECONDS);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -70,11 +113,21 @@ public class ProxyRepository {
             @NonNull List<InetSocketAddress> fetched = fetchProxies();
             addresses.clear();
             addresses.addAll(fetched);
+            dropUnlistedCandidates();
             saveObject(context, FILE_RECORD_PROXIES, new ProxyDataRecord(new ArrayList<>(addresses), now));
         } catch (Exception e) {
             // The cached proxies, if any, stay in use
             Logger.error("Error refreshing proxies", e);
         }
+    }
+
+    // A route that left the list is never asked for again, so what is remembered about it can go
+    private void dropUnlistedCandidates() {
+        @NonNull Set<Proxy> listed = new HashSet<>();
+        for (InetSocketAddress address : addresses) listed.add(new Proxy(Proxy.Type.SOCKS, address));
+        listed.add(Proxy.NO_PROXY);
+        provenCandidates.retainAll(listed);
+        cooldownUntilMilliseconds.keySet().retainAll(listed);
     }
 
     // Proxy Fetching

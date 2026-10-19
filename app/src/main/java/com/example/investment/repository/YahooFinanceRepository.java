@@ -33,6 +33,7 @@ import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.util.Logger;
 import com.example.investment.util.UrlBuilder;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.Proxy;
@@ -306,7 +307,7 @@ public class YahooFinanceRepository {
             .getJSONObject(0);
     }
 
-    // Request Routing (every candidate once in random order, the own IP being one of them)
+    // Request Routing (every candidate once, the ones that worked before first, the own IP being one of them)
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private <T> T fetchResponse(
         @NonNull Context context,
@@ -324,13 +325,17 @@ public class YahooFinanceRepository {
             }
 
             try {
-                return send(candidate, url, parser);
+                T result = send(candidate, url, parser);
+                proxyRepository.reportSuccess(candidate);
+                return result;
             } catch (NoDataException e) {
                 lastError = e;
                 if (++noDataAnswers >= NO_DATA_CONFIRMATION_COUNT) throw e;
             } catch (Exception e) {
                 // Dead proxies are expected, a lost network is not worth going around the rest
                 if (isOffline(context)) throw new OfflineException("Network connection lost");
+                // Only the route itself failing counts against it, an answer that cannot be read (a symbol without data) says nothing about it
+                if (e instanceof IOException && !Thread.currentThread().isInterrupted()) proxyRepository.reportFailure(candidate);
                 lastError = e;
             }
         }
@@ -346,6 +351,9 @@ public class YahooFinanceRepository {
         @NonNull OkHttpClient proxyClient = client.newBuilder().proxy(proxy).build();
         try (Response response = proxyClient.newCall(new Request.Builder().url(url).build()).execute()) {
             if (response.code() == 404) throw new NoDataException("Unexpected response: " + response);
+            // Throttled or blocked, this route is of no use for a while
+            if (response.code() == 429 || response.code() == 403) throw new IOException("Unexpected response: " + response);
+
             return parser.parse(response);
         }
     }
