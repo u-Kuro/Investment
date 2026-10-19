@@ -7,8 +7,6 @@ import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILL
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.NO_DATA_CONFIRMATION_COUNT;
 import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.REQUEST_READ_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -73,8 +71,6 @@ public class YahooFinanceRepository {
     }
 
     @NonNull private static final OkHttpClient client = new OkHttpClient.Builder()
-        .connectTimeout(REQUEST_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
-        .readTimeout(REQUEST_READ_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .callTimeout(REQUEST_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .build();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
