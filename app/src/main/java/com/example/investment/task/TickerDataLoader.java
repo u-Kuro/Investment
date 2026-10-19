@@ -42,7 +42,7 @@ public class TickerDataLoader {
         TickerDataRecord record = loadRecord(context);
         return record != null ? record.timestamp() : 0;
     }
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     public void updateTickers(
         @NonNull Context context,
         boolean isFullRefresh,
@@ -50,7 +50,7 @@ public class TickerDataLoader {
     ) {
         @Nullable List<TickerData> oldTickers = isFullRefresh ? null : getTickers(context);
 
-        repository.updateTickers(oldTickers, isFullRefresh, new TickerUpdateListener() {
+        repository.updateTickers(context, oldTickers, isFullRefresh, new TickerUpdateListener() {
             @Override
             public void onSymbolsProgress(int current) {
                 listener.onSymbolsProgress(current);

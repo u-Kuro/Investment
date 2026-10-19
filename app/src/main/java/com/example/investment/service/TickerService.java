@@ -51,6 +51,8 @@ import static com.example.investment.util.Constants.PRICE_BETWEEN;
 import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.UI_THREAD;
+import static com.example.investment.receiver.NetworkReceiver.retryOnNetworkAvailable;
+import static com.example.investment.util.NetworkUtils.isOffline;
 import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
 import static com.example.investment.util.NotificationUtils.showGroupSummary;
 import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
@@ -142,7 +144,7 @@ public class TickerService extends Service {
     }
 
     private final Object UPDATE_TICKERS_TASK_ID = new Object();
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     private void updateTickers(@NonNull final String dataRefreshType) {
         BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui ->
             tickerDataLoader.updateTickers(
@@ -254,6 +256,9 @@ public class TickerService extends Service {
                 @Override
                 public void onError(@Nullable List<TickerData> oldTickers) {
                     isFinished.set(true);
+
+                    // Without a network, an update is checked for again once there is one
+                    if (isOffline(TickerService.this)) retryOnNetworkAvailable(TickerService.this);
 
                     processUnchangedTickers(oldTickers);
 

@@ -2,16 +2,13 @@ package com.example.investment.repository;
 
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
-import static com.example.investment.util.Constants.DIRECT_COOLDOWN_MILLISECONDS;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
-import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.NO_DATA_CONFIRMATION_COUNT;
-import static com.example.investment.util.Constants.PROXY_CALL_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.PROXY_CONNECT_TIMEOUT_MILLISECONDS;
-import static com.example.investment.util.Constants.PROXY_MAX_ATTEMPTS;
-import static com.example.investment.util.Constants.PROXY_READ_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.REQUEST_READ_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -21,9 +18,11 @@ import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
 import static com.example.investment.util.NetworkUtils.getThrottleDelay;
+import static com.example.investment.util.NetworkUtils.isOffline;
 import static com.example.investment.util.BigDecimalUtils.safeLog;
 import static java.math.MathContext.DECIMAL128;
 
+import android.content.Context;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -66,16 +65,26 @@ public class YahooFinanceRepository {
             super(message);
         }
     }
+    // No network at all, going around the candidates would only waste time. The update is retried once there is one
+    private static class OfflineException extends Exception {
+        OfflineException(@NonNull String message) {
+            super(message);
+        }
+    }
 
-    @NonNull private static final OkHttpClient client = new OkHttpClient();
+    @NonNull private static final OkHttpClient client = new OkHttpClient.Builder()
+        .connectTimeout(REQUEST_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+        .readTimeout(REQUEST_READ_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+        .callTimeout(REQUEST_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+        .build();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
     @NonNull private static final BigDecimal FOUR = BigDecimal.valueOf(4);
 
     @NonNull private final ProxyRepository proxyRepository = new ProxyRepository();
-    private volatile long directAvailableAtMilliseconds = 0;
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     public void updateTickers(
+        @NonNull Context context,
         @Nullable List<TickerData> oldTickers,
         boolean isFullRefresh,
         @NonNull TickerUpdateListener listener
@@ -87,7 +96,7 @@ public class YahooFinanceRepository {
         try {
             listener.onTickersProgress(0, 0);
 
-            Map<String, FetchSymbolsResult> newSymbolsMap = fetchSymbols(listener);
+            Map<String, FetchSymbolsResult> newSymbolsMap = fetchSymbols(context, listener);
 
             int total = newSymbolsMap.size();
             int current = 0;
@@ -101,13 +110,15 @@ public class YahooFinanceRepository {
                 @Nullable TickerData oldTicker = oldTickersMap.get(symbol);
 
                 try {
-                    result.add(processTickerData(entry, oldTicker, effectiveFullRefresh));
+                    result.add(processTickerData(context, entry, oldTicker, effectiveFullRefresh));
                     listener.onTickerUpdate(result);
                     listener.onTickersProgress(++current, total);
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
                     return;
+                } catch (OfflineException e) {
+                    throw e;
                 } catch (Exception e) {
                     Logger.error("Error processing " + symbol, e);
                     if (oldTicker != null) {
@@ -135,7 +146,8 @@ public class YahooFinanceRepository {
     }
 
     // Symbol Fetching
-    private Map<String, FetchSymbolsResult> fetchSymbols(@NonNull TickerUpdateListener listener) throws Exception {
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private Map<String, FetchSymbolsResult> fetchSymbols(@NonNull Context context, @NonNull TickerUpdateListener listener) throws Exception {
         Map<String, FetchSymbolsResult> symbols = new HashMap<>();
 
         for (String screener : new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS }) {
@@ -143,7 +155,7 @@ public class YahooFinanceRepository {
                 throw new InterruptedException("Thread interrupted while fetching symbols");
             }
 
-            int retryCount = 0;
+            boolean useAlternativeUrl = false;
             BigInteger startIndex = BigInteger.ZERO;
             String prevFirstSymbol = null;
 
@@ -152,7 +164,7 @@ public class YahooFinanceRepository {
                     throw new InterruptedException("Thread interrupted during symbol pagination");
                 }
 
-                String url = new UrlBuilder(retryCount > 0 ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
+                String url = new UrlBuilder(useAlternativeUrl ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
                     .addParam("count", Integer.toString(MAX_SCREENER_COUNT))
                     .addParam("scrIds", screener)
                     .addParam("sortField", "intradaymarketcap")
@@ -163,7 +175,7 @@ public class YahooFinanceRepository {
                 throttle();
 
                 try {
-                    JSONArray quotes = fetchResponse(url, true, response -> parseScreenerResponse(screener, response));
+                    JSONArray quotes = fetchResponse(context, url, response -> parseScreenerResponse(screener, response));
                     int length = quotes.length();
 
                     String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
@@ -189,17 +201,18 @@ public class YahooFinanceRepository {
                         }
                     }
 
-                    retryCount = 0;
+                    useAlternativeUrl = false;
                     startIndex = startIndex.add(BigInteger.valueOf(length));
                     listener.onSymbolsProgress(symbols.size());
 
-                } catch (InterruptedException e) {
+                } catch (InterruptedException | OfflineException e) {
                     throw e;
                 } catch (Exception e) {
                     // An empty page after the first one is the end of the list, once another IP agrees (or there is none left to ask)
                     if (e instanceof NoDataException && startIndex.signum() > 0) break;
-                    if (retryCount >= MAX_FETCH_RETRY_COUNT) throw e;
-                    retryCount++;
+                    // Every candidate already had its turn, only the other host is left
+                    if (useAlternativeUrl) throw e;
+                    useAlternativeUrl = true;
                 }
             }
         }
@@ -221,8 +234,9 @@ public class YahooFinanceRepository {
     }
 
     // Ticker Fetching
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     private FetchTickerResult fetchTickerWithInterval(
+        @NonNull Context context,
         @NonNull String symbol,
         @Nullable TickerData oldTicker,
         boolean isFullRefresh
@@ -272,12 +286,11 @@ public class YahooFinanceRepository {
             throttle();
 
             try {
-                // Only full history (no fixed data yet) may use proxies, incremental updates are light enough to stay on the own IP
-                JSONObject resultObj = fetchResponse(url, !hasFixedHistoricalData, response -> parseChartResponse(symbol, response));
+                JSONObject resultObj = fetchResponse(context, url, response -> parseChartResponse(symbol, response));
 
                 return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
 
-            } catch (InterruptedException e) {
+            } catch (InterruptedException | OfflineException e) {
                 throw e;
             } catch (Exception e) {
                 if (i == attempts.size() - 1) throw e;
@@ -297,84 +310,54 @@ public class YahooFinanceRepository {
             .getJSONObject(0);
     }
 
-    // Request Routing (own IP first, then proxies one after another)
+    // Request Routing (every candidate once in random order, the own IP being one of them)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     private <T> T fetchResponse(
+        @NonNull Context context,
         @NonNull String url,
-        boolean useProxies,
         @NonNull ResponseParser<T> parser
     ) throws Exception {
+        if (isOffline(context)) throw new OfflineException("No network connection");
+
         @Nullable Exception lastError = null;
-        boolean directAnsweredNoData = false;
         int noDataAnswers = 0;
 
-        // Own IP, skipped for a while after it failed unless there is no proxy to fall back on
-        boolean shouldTryDirect = !useProxies
-            || System.currentTimeMillis() >= directAvailableAtMilliseconds
-            || !proxyRepository.hasProxies();
-        if (shouldTryDirect) {
-            try {
-                return send(client, url, parser);
-            } catch (NoDataException e) {
-                if (!useProxies) throw e;
-                directAnsweredNoData = true;
-                noDataAnswers++;
-                lastError = e;
-            } catch (Exception e) {
-                if (!useProxies) throw e;
-                directAvailableAtMilliseconds = System.currentTimeMillis() + DIRECT_COOLDOWN_MILLISECONDS;
-                lastError = e;
-            }
-        }
-
-        for (int attempt = 0; attempt < PROXY_MAX_ATTEMPTS; attempt++) {
+        for (Proxy candidate : proxyRepository.getCandidates(context)) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Thread interrupted while rotating proxies");
             }
 
-            @Nullable Proxy proxy = proxyRepository.getNextProxy();
-            if (proxy == null) break;
-
-            @NonNull OkHttpClient proxyClient = client.newBuilder()
-                .proxy(proxy)
-                .connectTimeout(PROXY_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
-                .readTimeout(PROXY_READ_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
-                .callTimeout(PROXY_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
-                .build();
-
             try {
-                T result = send(proxyClient, url, parser);
-                proxyRepository.markSuccess(proxy);
-                // Yahoo had data for the proxy but not for the own IP, so the own IP is throttled
-                if (directAnsweredNoData) directAvailableAtMilliseconds = System.currentTimeMillis() + DIRECT_COOLDOWN_MILLISECONDS;
-                return result;
+                return send(candidate, url, parser);
             } catch (NoDataException e) {
-                // The proxy itself worked, only Yahoo had nothing to say
-                proxyRepository.markSuccess(proxy);
                 lastError = e;
                 if (++noDataAnswers >= NO_DATA_CONFIRMATION_COUNT) throw e;
             } catch (Exception e) {
-                proxyRepository.markFailure(proxy);
+                // Dead proxies are expected, a lost network is not worth going around the rest
+                if (isOffline(context)) throw new OfflineException("Network connection lost");
                 lastError = e;
             }
         }
 
-        throw lastError != null ? lastError : new Exception("No proxy available");
+        throw lastError != null ? lastError : new Exception("No candidate available");
     }
 
     private <T> T send(
-        @NonNull OkHttpClient httpClient,
+        @NonNull Proxy proxy,
         @NonNull String url,
         @NonNull ResponseParser<T> parser
     ) throws Exception {
-        try (Response response = httpClient.newCall(new Request.Builder().url(url).build()).execute()) {
+        @NonNull OkHttpClient proxyClient = client.newBuilder().proxy(proxy).build();
+        try (Response response = proxyClient.newCall(new Request.Builder().url(url).build()).execute()) {
             if (response.code() == 404) throw new NoDataException("Unexpected response: " + response);
             return parser.parse(response);
         }
     }
 
     // Ticker Processing
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     private TickerData processTickerData(
+        @NonNull Context context,
         @NonNull Map.Entry<String, FetchSymbolsResult> entry,
         @Nullable TickerData oldTicker,
         boolean isFullRefresh
@@ -382,7 +365,7 @@ public class YahooFinanceRepository {
         @NonNull String symbol = entry.getKey();
         @NonNull FetchSymbolsResult symbolResult = entry.getValue();
 
-        FetchTickerResult fetchResult = fetchTickerWithInterval(symbol, oldTicker, isFullRefresh);
+        FetchTickerResult fetchResult = fetchTickerWithInterval(context, symbol, oldTicker, isFullRefresh);
         @NonNull JSONObject result = fetchResult.result();
         @NonNull String interval = fetchResult.interval();
 
