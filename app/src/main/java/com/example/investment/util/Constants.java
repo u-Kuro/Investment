@@ -48,6 +48,28 @@ public class Constants {
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
+    // Proxy Fallback (Screener and full ticker history only, own IP always goes first)
+    public static final String[] PROXY_LIST_URLS = {
+        "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json", // SOCKS5, refreshed every 5 Minutes
+        "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json", // Same file on a different host
+        "https://proxmint.com/api/free-proxies?sort=latency&page=1&pageSize=50&protocol=socks5" // Different provider, ranked locally anyway
+    };
+    public static final int PROXY_LIST_TIMEOUT_MILLISECONDS = 30_000;
+    public static final int PROXY_POOL_SIZE = 100; // Best proxies kept per refresh, one per IP
+    public static final int PROXY_MIN_POOL_SIZE = 10; // Refresh early when the pool shrinks below this
+    public static final double PROXY_MIN_UPTIME_PERCENT = 50;
+    public static final long PROXY_MAX_AGE_SECONDS = 3_600; // Stale rows are ignored when the list reports its check time
+    public static final long PROXY_CACHE_TTL_MILLISECONDS = 900_000; // 15 Minutes, 3 refresh cycles of the list
+    public static final long PROXY_REFRESH_COOLDOWN_MILLISECONDS = 120_000; // Minimum gap between list downloads, even failed ones
+    public static final int PROXY_MAX_CONSECUTIVE_FAILURES = 3; // Evicts a proxy from the pool
+    public static final long PROXY_EVICTION_MILLISECONDS = 3_600_000; // An evicted proxy is skipped on refreshes for 1 Hour
+    public static final int PROXY_MAX_ATTEMPTS = 30; // Different proxies tried for one request
+    public static final int PROXY_CONNECT_TIMEOUT_MILLISECONDS = 5_000;
+    public static final int PROXY_READ_TIMEOUT_MILLISECONDS = 15_000;
+    public static final int PROXY_CALL_TIMEOUT_MILLISECONDS = 90_000; // Full history through a slow proxy can be big
+    public static final long DIRECT_COOLDOWN_MILLISECONDS = 300_000; // Own IP is skipped this long after it fails while proxies are available
+    public static final int NO_DATA_CONFIRMATION_COUNT = 2; // Empty or not found answers from different IPs before believing them
+
     // Asset Types
     public static final String ALL_TYPE = "All";
     public static final String CRYPTOCURRENCY_TYPE = "Crypto";

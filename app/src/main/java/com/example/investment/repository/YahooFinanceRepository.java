@@ -2,10 +2,16 @@ package com.example.investment.repository;
 
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
+import static com.example.investment.util.Constants.DIRECT_COOLDOWN_MILLISECONDS;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MAX_FETCH_RETRY_COUNT;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
+import static com.example.investment.util.Constants.NO_DATA_CONFIRMATION_COUNT;
+import static com.example.investment.util.Constants.PROXY_CALL_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.PROXY_CONNECT_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.PROXY_MAX_ATTEMPTS;
+import static com.example.investment.util.Constants.PROXY_READ_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -32,10 +38,12 @@ import com.example.investment.util.UrlBuilder;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -48,10 +56,23 @@ public class YahooFinanceRepository {
     private record FetchSymbolsResult(@NonNull String type, BigDecimal marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
+    @FunctionalInterface
+    private interface ResponseParser<T> {
+        T parse(@NonNull Response response) throws Exception;
+    }
+    // Yahoo answered properly but with nothing in it (empty page, 404). A throttled IP gets the same answer, so it is never believed from a single IP
+    private static class NoDataException extends Exception {
+        NoDataException(@NonNull String message) {
+            super(message);
+        }
+    }
 
     @NonNull private static final OkHttpClient client = new OkHttpClient();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
     @NonNull private static final BigDecimal FOUR = BigDecimal.valueOf(4);
+
+    @NonNull private final ProxyRepository proxyRepository = new ProxyRepository();
+    private volatile long directAvailableAtMilliseconds = 0;
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void updateTickers(
@@ -141,10 +162,9 @@ public class YahooFinanceRepository {
 
                 throttle();
 
-                try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
-                    JSONArray quotes = parseScreenerResponse(screener, response);
+                try {
+                    JSONArray quotes = fetchResponse(url, true, response -> parseScreenerResponse(screener, response));
                     int length = quotes.length();
-                    if (length < 1) break;
 
                     String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
                     if (firstSymbol.equals(prevFirstSymbol)) throw new Exception("Duplicate symbol found.");
@@ -176,6 +196,8 @@ public class YahooFinanceRepository {
                 } catch (InterruptedException e) {
                     throw e;
                 } catch (Exception e) {
+                    // An empty page after the first one is the end of the list, once another IP agrees (or there is none left to ask)
+                    if (e instanceof NoDataException && startIndex.signum() > 0) break;
                     if (retryCount >= MAX_FETCH_RETRY_COUNT) throw e;
                     retryCount++;
                 }
@@ -189,11 +211,13 @@ public class YahooFinanceRepository {
         if (!response.isSuccessful()) throw new Exception("Unexpected " + screener + " response: " + response);
         ResponseBody body = response.body();
         if (body == null) throw new Exception("Empty response body");
-        return new JSONObject(body.string())
+        JSONArray quotes = new JSONObject(body.string())
             .getJSONObject("finance")
             .getJSONArray("result")
             .getJSONObject(0)
             .getJSONArray("quotes");
+        if (quotes.length() < 1) throw new NoDataException("Empty " + screener + " page");
+        return quotes;
     }
 
     // Ticker Fetching
@@ -247,15 +271,9 @@ public class YahooFinanceRepository {
 
             throttle();
 
-            try (Response response = client.newCall(new Request.Builder().url(url).build()).execute()) {
-                if (!response.isSuccessful()) throw new Exception("Unexpected " + symbol + " response: " + response);
-                ResponseBody body = response.body();
-                if (body == null) throw new Exception("Empty response body");
-
-                JSONObject resultObj = new JSONObject(body.string())
-                    .getJSONObject("chart")
-                    .getJSONArray("result")
-                    .getJSONObject(0);
+            try {
+                // Only full history (no fixed data yet) may use proxies, incremental updates are light enough to stay on the own IP
+                JSONObject resultObj = fetchResponse(url, !hasFixedHistoricalData, response -> parseChartResponse(symbol, response));
 
                 return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
 
@@ -267,6 +285,91 @@ public class YahooFinanceRepository {
         }
 
         throw new Exception("Failed to fetch ticker data (no attempts succeeded)");
+    }
+
+    private JSONObject parseChartResponse(@NonNull String symbol, @NonNull Response response) throws Exception {
+        if (!response.isSuccessful()) throw new Exception("Unexpected " + symbol + " response: " + response);
+        ResponseBody body = response.body();
+        if (body == null) throw new Exception("Empty response body");
+        return new JSONObject(body.string())
+            .getJSONObject("chart")
+            .getJSONArray("result")
+            .getJSONObject(0);
+    }
+
+    // Request Routing (own IP first, then proxies one after another)
+    private <T> T fetchResponse(
+        @NonNull String url,
+        boolean useProxies,
+        @NonNull ResponseParser<T> parser
+    ) throws Exception {
+        @Nullable Exception lastError = null;
+        boolean directAnsweredNoData = false;
+        int noDataAnswers = 0;
+
+        // Own IP, skipped for a while after it failed unless there is no proxy to fall back on
+        boolean shouldTryDirect = !useProxies
+            || System.currentTimeMillis() >= directAvailableAtMilliseconds
+            || !proxyRepository.hasProxies();
+        if (shouldTryDirect) {
+            try {
+                return send(client, url, parser);
+            } catch (NoDataException e) {
+                if (!useProxies) throw e;
+                directAnsweredNoData = true;
+                noDataAnswers++;
+                lastError = e;
+            } catch (Exception e) {
+                if (!useProxies) throw e;
+                directAvailableAtMilliseconds = System.currentTimeMillis() + DIRECT_COOLDOWN_MILLISECONDS;
+                lastError = e;
+            }
+        }
+
+        for (int attempt = 0; attempt < PROXY_MAX_ATTEMPTS; attempt++) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Thread interrupted while rotating proxies");
+            }
+
+            @Nullable Proxy proxy = proxyRepository.getNextProxy();
+            if (proxy == null) break;
+
+            @NonNull OkHttpClient proxyClient = client.newBuilder()
+                .proxy(proxy)
+                .connectTimeout(PROXY_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+                .readTimeout(PROXY_READ_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+                .callTimeout(PROXY_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
+                .build();
+
+            try {
+                T result = send(proxyClient, url, parser);
+                proxyRepository.markSuccess(proxy);
+                // Yahoo had data for the proxy but not for the own IP, so the own IP is throttled
+                if (directAnsweredNoData) directAvailableAtMilliseconds = System.currentTimeMillis() + DIRECT_COOLDOWN_MILLISECONDS;
+                return result;
+            } catch (NoDataException e) {
+                // The proxy itself worked, only Yahoo had nothing to say
+                proxyRepository.markSuccess(proxy);
+                lastError = e;
+                if (++noDataAnswers >= NO_DATA_CONFIRMATION_COUNT) throw e;
+            } catch (Exception e) {
+                proxyRepository.markFailure(proxy);
+                lastError = e;
+            }
+        }
+
+        throw lastError != null ? lastError : new Exception("No proxy available");
+    }
+
+    private <T> T send(
+        @NonNull OkHttpClient httpClient,
+        @NonNull String url,
+        @NonNull ResponseParser<T> parser
+    ) throws Exception {
+        try (Response response = httpClient.newCall(new Request.Builder().url(url).build()).execute()) {
+            if (response.code() == 404) throw new NoDataException("Unexpected response: " + response);
+            return parser.parse(response);
+        }
     }
 
     // Ticker Processing

@@ -106,7 +106,7 @@ public class TickerService extends Service {
             );
         } catch (Exception e) {
             Logger.error("Failed to Start Service", e);
-            stopForeground(true);
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
         }
     }
@@ -124,7 +124,7 @@ public class TickerService extends Service {
                         activity.updateCancel();
                     }
                 });
-                stopForeground(true);
+                stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelf();
             } else if (FULL_DATA_REFRESH_ACTION.equals(action)) {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
@@ -246,7 +246,7 @@ public class TickerService extends Service {
                         }
                     });
 
-                    TickerService.this.stopForeground(true);
+                    TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
                     TickerService.this.stopSelf();
                 }
 
@@ -264,7 +264,7 @@ public class TickerService extends Service {
                         }
                     });
 
-                    TickerService.this.stopForeground(true);
+                    TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
                     TickerService.this.stopSelf();
                 }
             }
