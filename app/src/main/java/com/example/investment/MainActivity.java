@@ -679,7 +679,7 @@ public class MainActivity extends AppCompatActivity {
             editText.requestFocus();
             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) {
-                imm.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
+                imm.showSoftInput(editText, 0);
             }
         });
     }

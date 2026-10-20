@@ -7,6 +7,7 @@ import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILL
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.NO_DATA_CONFIRMATION_COUNT;
 import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
+import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -72,6 +73,7 @@ public class YahooFinanceRepository {
     }
 
     @NonNull private static final OkHttpClient client = new OkHttpClient.Builder()
+        .connectTimeout(REQUEST_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .callTimeout(REQUEST_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .build();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
@@ -169,8 +171,6 @@ public class YahooFinanceRepository {
                     .addParam("start", startIndex.toString())
                     .build();
 
-                throttle();
-
                 try {
                     JSONArray quotes = fetchResponse(context, url, response -> parseScreenerResponse(screener, response));
                     int length = quotes.length();
@@ -220,7 +220,6 @@ public class YahooFinanceRepository {
     private JSONArray parseScreenerResponse(@NonNull String screener, @NonNull Response response) throws Exception {
         if (!response.isSuccessful()) throw new Exception("Unexpected " + screener + " response: " + response);
         ResponseBody body = response.body();
-        if (body == null) throw new Exception("Empty response body");
         JSONArray quotes = new JSONObject(body.string())
             .getJSONObject("finance")
             .getJSONArray("result")
@@ -280,8 +279,6 @@ public class YahooFinanceRepository {
                 .addParam("source", "cosaic")
                 .build();
 
-            throttle();
-
             try {
                 JSONObject resultObj = fetchResponse(context, url, response -> parseChartResponse(symbol, response));
 
@@ -300,14 +297,13 @@ public class YahooFinanceRepository {
     private JSONObject parseChartResponse(@NonNull String symbol, @NonNull Response response) throws Exception {
         if (!response.isSuccessful()) throw new Exception("Unexpected " + symbol + " response: " + response);
         ResponseBody body = response.body();
-        if (body == null) throw new Exception("Empty response body");
         return new JSONObject(body.string())
             .getJSONObject("chart")
             .getJSONArray("result")
             .getJSONObject(0);
     }
 
-    // Request Routing (every candidate once, the ones that worked before first, the own IP being one of them)
+    // Request Routing (every candidate once, the one unused for longest first, the real IP being one of them)
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private <T> T fetchResponse(
         @NonNull Context context,
@@ -323,6 +319,10 @@ public class YahooFinanceRepository {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Thread interrupted while rotating proxies");
             }
+
+            // Every try is a request of its own, so each one waits the throttle, a failed one included
+            throttle();
+            proxyRepository.reportUse(candidate);
 
             try {
                 T result = send(candidate, url, parser);

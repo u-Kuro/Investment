@@ -49,16 +49,20 @@ public class Constants {
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
-    // Proxies (every request goes around the ones that did not fail lately, own IP is one of the candidates)
+    // Proxies (every request goes to the IP unused for longest, the ones that failed lately are left out, real IP is one of the candidates)
     public static final String[] PROXY_LIST_URLS = {
-        "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json", // SOCKS5, refreshed every 5 Minutes
-        "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json" // Same file on a different host
+        "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json", // SOCKS5, refreshed every 5 Minutes
+        "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json" // Same file on a different host
     };
     public static final int PROXY_LIST_TIMEOUT_MILLISECONDS = 30_000; // 30 Seconds
     public static final long PROXY_REFRESH_MILLISECONDS = 300_000; // 5 Minutes
+    public static final int REQUEST_CONNECT_TIMEOUT_MILLISECONDS = 5_000; // 5 Seconds (For Proxies)
     public static final int REQUEST_CALL_TIMEOUT_MILLISECONDS = 30_000; // 30 Seconds
-    public static final long PROXY_COOLDOWN_MILLISECONDS = 600_000; // 10 Minutes, a failed proxy is left out for this long
-    public static final int NO_DATA_CONFIRMATION_COUNT = 2; // Empty or not found answers from different IPs before believing them
+    public static final long PROXY_COOLDOWN_MILLISECONDS = 600_000; // 10 Minutes
+    public static final long PROXY_MAX_COOLDOWN_MILLISECONDS = 3_600_000; // 1 Hour
+    public static final int PROXY_POOL_SIZE = 100;
+    public static final int PROXY_MAX_PORTS_PER_IP = 10;
+    public static final int NO_DATA_CONFIRMATION_COUNT = 2;
 
     // Asset Types
     public static final String ALL_TYPE = "All";
