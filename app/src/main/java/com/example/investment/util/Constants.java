@@ -49,7 +49,6 @@ public class Constants {
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
-    // Proxies (every request goes to the IP unused for longest, the ones that failed lately are left out, real IP is one of the candidates)
     public static final String[] PROXY_LIST_URLS = {
         "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json", // SOCKS5, refreshed every 5 Minutes
         "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json" // Same file on a different host
@@ -62,7 +61,6 @@ public class Constants {
     public static final long PROXY_MAX_COOLDOWN_MILLISECONDS = 3_600_000; // 1 Hour
     public static final int PROXY_POOL_SIZE = 100;
     public static final int PROXY_MAX_PORTS_PER_IP = 10;
-    public static final int NO_DATA_CONFIRMATION_COUNT = 2;
 
     // Asset Types
     public static final String ALL_TYPE = "All";

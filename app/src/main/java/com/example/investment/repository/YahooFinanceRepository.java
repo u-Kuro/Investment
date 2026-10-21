@@ -5,7 +5,6 @@ import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
-import static com.example.investment.util.Constants.NO_DATA_CONFIRMATION_COUNT;
 import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
@@ -59,27 +58,30 @@ public class YahooFinanceRepository {
     private interface ResponseParser<T> {
         T parse(@NonNull Response response) throws Exception;
     }
-    // Yahoo answered properly but with nothing in it (empty page, 404). A throttled IP gets the same answer, so it is never believed from a single IP
-    private static class NoDataException extends Exception {
-        NoDataException(@NonNull String message) {
-            super(message);
-        }
-    }
-    // No network at all, going around the candidates would only waste time. The update is retried once there is one
     private static class OfflineException extends Exception {
         OfflineException(@NonNull String message) {
             super(message);
         }
     }
-
-    @NonNull private static final OkHttpClient client = new OkHttpClient.Builder()
+    private static class NotFoundException extends Exception {
+        NotFoundException(@NonNull String message) {
+            super(message);
+        }
+    }
+    private static class NoDataException extends Exception {
+        NoDataException(@NonNull String message) {
+            super(message);
+        }
+    }
+    @NonNull private static final OkHttpClient client = new OkHttpClient.Builder().build();
+    @NonNull private static final OkHttpClient proxyClient = new OkHttpClient.Builder()
         .connectTimeout(REQUEST_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .callTimeout(REQUEST_CALL_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
         .build();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
     @NonNull private static final BigDecimal FOUR = BigDecimal.valueOf(4);
 
-    @NonNull private final ProxyRepository proxyRepository = new ProxyRepository();
+    @NonNull private static final ProxyRepository proxyRepository = new ProxyRepository();
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void updateTickers(
@@ -90,7 +92,7 @@ public class YahooFinanceRepository {
     ) {
         @NonNull List<TickerData> result = new ArrayList<>();
         boolean effectiveFullRefresh = isFullRefresh || oldTickers == null;
-        @NonNull Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers, effectiveFullRefresh);
+        @NonNull Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers);
 
         try {
             listener.onTickersProgress(0, 0);
@@ -108,10 +110,9 @@ public class YahooFinanceRepository {
                 @NonNull String symbol = entry.getKey();
                 @Nullable TickerData oldTicker = oldTickersMap.get(symbol);
 
+                @Nullable TickerData processed;
                 try {
-                    result.add(processTickerData(context, entry, oldTicker, effectiveFullRefresh));
-                    listener.onTickerUpdate(result);
-                    listener.onTickersProgress(++current, total);
+                    processed = processTickerData(context, entry, oldTicker, effectiveFullRefresh);
                 } catch (InterruptedException e) {
                     Logger.error("InterruptedException processing " + symbol, e);
                     Thread.currentThread().interrupt();
@@ -120,12 +121,14 @@ public class YahooFinanceRepository {
                     throw e;
                 } catch (Exception e) {
                     Logger.error("Error processing " + symbol, e);
-                    if (oldTicker != null) {
-                        result.add(oldTicker);
-                        listener.onTickerUpdate(result);
-                    }
-                    listener.onTickersProgress(++current, total);
+                    processed = oldTicker;
                 }
+
+                if (processed != null) {
+                    result.add(processed);
+                    listener.onTickerUpdate(result);
+                }
+                listener.onTickersProgress(++current, total);
             }
         } catch (InterruptedException e) {
             Logger.error("InterruptedException fetching ticker data", e);
@@ -172,7 +175,7 @@ public class YahooFinanceRepository {
                     .build();
 
                 try {
-                    JSONArray quotes = fetchResponse(context, url, response -> parseScreenerResponse(screener, response));
+                    JSONArray quotes = fetchResponse(context, url, this::parseScreenerResponse);
                     int length = quotes.length();
 
                     String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
@@ -202,11 +205,12 @@ public class YahooFinanceRepository {
                     startIndex = startIndex.add(BigInteger.valueOf(length));
                     listener.onSymbolsProgress(symbols.size());
 
-                } catch (InterruptedException | OfflineException e) {
+                } catch (InterruptedException | OfflineException | NotFoundException e) {
+                    throw e;
+                } catch (NoDataException e) {
+                    if (startIndex.signum() > 0) break;
                     throw e;
                 } catch (Exception e) {
-                    // An empty page after the first one is the end of the list, once another IP agrees (or there is none left to ask)
-                    if (e instanceof NoDataException && startIndex.signum() > 0) break;
                     // Every candidate already had its turn, only the other host is left
                     if (useAlternativeUrl) throw e;
                     useAlternativeUrl = true;
@@ -217,15 +221,13 @@ public class YahooFinanceRepository {
         return symbols;
     }
 
-    private JSONArray parseScreenerResponse(@NonNull String screener, @NonNull Response response) throws Exception {
-        if (!response.isSuccessful()) throw new Exception("Unexpected " + screener + " response: " + response);
-        ResponseBody body = response.body();
-        JSONArray quotes = new JSONObject(body.string())
+    private JSONArray parseScreenerResponse(@NonNull Response response) throws Exception {
+        JSONArray quotes = new JSONObject(response.body().string())
             .getJSONObject("finance")
             .getJSONArray("result")
             .getJSONObject(0)
             .getJSONArray("quotes");
-        if (quotes.length() < 1) throw new NoDataException("Empty " + screener + " page");
+        if (quotes.length() < 1) throw new NoDataException("Empty quotes");
         return quotes;
     }
 
@@ -280,11 +282,11 @@ public class YahooFinanceRepository {
                 .build();
 
             try {
-                JSONObject resultObj = fetchResponse(context, url, response -> parseChartResponse(symbol, response));
+                JSONObject resultObj = fetchResponse(context, url, this::parseChartResponse);
 
                 return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
 
-            } catch (InterruptedException | OfflineException e) {
+            } catch (InterruptedException | OfflineException | NotFoundException e) {
                 throw e;
             } catch (Exception e) {
                 if (i == attempts.size() - 1) throw e;
@@ -294,8 +296,7 @@ public class YahooFinanceRepository {
         throw new Exception("Failed to fetch ticker data (no attempts succeeded)");
     }
 
-    private JSONObject parseChartResponse(@NonNull String symbol, @NonNull Response response) throws Exception {
-        if (!response.isSuccessful()) throw new Exception("Unexpected " + symbol + " response: " + response);
+    private JSONObject parseChartResponse(@NonNull Response response) throws Exception {
         ResponseBody body = response.body();
         return new JSONObject(body.string())
             .getJSONObject("chart")
@@ -303,7 +304,6 @@ public class YahooFinanceRepository {
             .getJSONObject(0);
     }
 
-    // Request Routing (every candidate once, the one unused for longest first, the real IP being one of them)
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private <T> T fetchResponse(
         @NonNull Context context,
@@ -313,7 +313,8 @@ public class YahooFinanceRepository {
         if (isOffline(context)) throw new OfflineException("No network connection");
 
         @Nullable Exception lastError = null;
-        int noDataAnswers = 0;
+        @Nullable NoDataException noDataError = null;
+        @Nullable Proxy possibleThrottledCandidate = null;
 
         for (Proxy candidate : proxyRepository.getCandidates(context)) {
             if (Thread.currentThread().isInterrupted()) {
@@ -327,20 +328,34 @@ public class YahooFinanceRepository {
             try {
                 T result = send(candidate, url, parser);
                 proxyRepository.reportSuccess(candidate);
+                // Prior IP was being throttled, it needs to cooldown
+                if (possibleThrottledCandidate != null) {
+                    proxyRepository.reportFailure(possibleThrottledCandidate);
+                }
                 return result;
+            } catch (InterruptedException | NotFoundException e) {
+                throw e;
             } catch (NoDataException e) {
-                lastError = e;
-                if (++noDataAnswers >= NO_DATA_CONFIRMATION_COUNT) throw e;
+                if (noDataError != null) throw e;
+                possibleThrottledCandidate = candidate;
+                noDataError = e;
             } catch (Exception e) {
-                // Dead proxies are expected, a lost network is not worth going around the rest
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Thread interrupted");
                 if (isOffline(context)) throw new OfflineException("Network connection lost");
-                // Only the route itself failing counts against it, an answer that cannot be read (a symbol without data) says nothing about it
-                if (e instanceof IOException && !Thread.currentThread().isInterrupted()) proxyRepository.reportFailure(candidate);
+                proxyRepository.reportFailure(candidate);
                 lastError = e;
             }
         }
 
-        throw lastError != null ? lastError : new Exception("No candidate available");
+        if (noDataError != null) {
+            // Prior IP was possibly being throttled, it needs to cooldown
+            proxyRepository.reportFailure(possibleThrottledCandidate);
+            throw noDataError;
+        } else if (lastError != null) {
+            throw lastError;
+        } else {
+            throw new Exception("No candidate available");
+        }
     }
 
     private <T> T send(
@@ -348,11 +363,15 @@ public class YahooFinanceRepository {
         @NonNull String url,
         @NonNull ResponseParser<T> parser
     ) throws Exception {
-        @NonNull OkHttpClient proxyClient = client.newBuilder().proxy(proxy).build();
-        try (Response response = proxyClient.newCall(new Request.Builder().url(url).build()).execute()) {
-            if (response.code() == 404) throw new NoDataException("Unexpected response: " + response);
-            // Throttled or blocked, this route is of no use for a while
-            if (response.code() == 429 || response.code() == 403) throw new IOException("Unexpected response: " + response);
+        @NonNull OkHttpClient usedClient;
+        if (proxy.type() == Proxy.Type.DIRECT) {
+            usedClient = client;
+        } else {
+            usedClient = proxyClient.newBuilder().proxy(proxy).build();
+        }
+        try (Response response = usedClient.newCall(new Request.Builder().url(url).build()).execute()) {
+            if (response.code() == 404) throw new NotFoundException("Unexpected response: " + response);
+            if (!response.isSuccessful()) throw new IOException("Unexpected response: " + response);
 
             return parser.parse(response);
         }
@@ -360,7 +379,7 @@ public class YahooFinanceRepository {
 
     // Ticker Processing
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private TickerData processTickerData(
+    private @NonNull TickerData processTickerData(
         @NonNull Context context,
         @NonNull Map.Entry<String, FetchSymbolsResult> entry,
         @Nullable TickerData oldTicker,
@@ -413,7 +432,8 @@ public class YahooFinanceRepository {
         if (shouldUpdateAllData) {
             try {
                 JSONObject meta = result.getJSONObject("meta");
-                try { name = meta.optString("longName", meta.getString("shortName")); } catch (Exception ignored) {}
+                try { name = meta.getString("shortName"); } catch (Exception ignored) {}
+                try { name = meta.getString("longName"); } catch (Exception ignored) {}
                 try { exchange = meta.getString("fullExchangeName"); } catch (Exception ignored) {}
             } catch (Exception ignored) {}
             fixedHistoricalDataMap = new HashMap<>();
@@ -449,7 +469,7 @@ public class YahooFinanceRepository {
         }
 
         // Last adjusted close + first trade date
-        int startIndex = shouldUpdateAllData ? 0 : 1;
+        int startIndex = hasFixedHistoricalData ? 1 : 0;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
@@ -625,9 +645,9 @@ public class YahooFinanceRepository {
     }
 
     // Helpers
-    private @NonNull Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers, boolean effectiveFullRefresh) {
+    private @NonNull Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers) {
         Map<String, TickerData> map = new HashMap<>();
-        if (effectiveFullRefresh || oldTickers == null) return map;
+        if (oldTickers == null) return map;
         for (TickerData ticker : oldTickers) map.put(ticker.getSymbol(), ticker);
         return map;
     }
