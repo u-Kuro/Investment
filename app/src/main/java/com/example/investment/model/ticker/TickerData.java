@@ -50,7 +50,10 @@ public class TickerData implements Serializable {
         @NonNull BigDecimal sumDollarVol,
         @NonNull BigDecimal sumDollarVolLen,
         @NonNull BigDecimal startPrice,
-        @NonNull BigInteger startPriceTimestampSeconds
+        @NonNull BigInteger startPriceTimestampSeconds,
+        @NonNull BigDecimal lastBarClosePrice,
+        @NonNull BigDecimal lastBarVolume,
+        boolean hasFlatBars
     ) implements Serializable { @Serial private static final long serialVersionUID = 1L; }
 
     public TickerData(
