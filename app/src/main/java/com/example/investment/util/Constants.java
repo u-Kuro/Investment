@@ -49,11 +49,6 @@ public class Constants {
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
 
-    // Yahoo Finance Split Handling
-    public static final BigDecimal SPLIT_PRICE_TOLERANCE = new BigDecimal("0.001"); // 0.1%
-    public static final BigDecimal SPLIT_VOLUME_TOLERANCE = new BigDecimal("0.05"); // 5%
-    public static final BigDecimal FLAT_BAR_RELATIVE_RANGE = new BigDecimal("0.000001");
-
     public static final String[] PROXY_LIST_URLS = {
         "https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/socks5/data.json", // SOCKS5, refreshed every 5 Minutes
         "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/protocols/socks5/data.json" // Same file on a different host

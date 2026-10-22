@@ -3,15 +3,12 @@ package com.example.investment.repository;
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
-import static com.example.investment.util.Constants.FLAT_BAR_RELATIVE_RANGE;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
-import static com.example.investment.util.Constants.SPLIT_PRICE_TOLERANCE;
-import static com.example.investment.util.Constants.SPLIT_VOLUME_TOLERANCE;
 import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL;
@@ -41,7 +38,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.Proxy;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,8 +54,6 @@ public class YahooFinanceRepository {
     private record FetchSymbolsResult(@NonNull String type, BigDecimal marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
-    private record SplitEvent(@NonNull BigInteger date, @NonNull BigDecimal priceFactor) {}
-    private record SplitCheck(boolean refetch, @NonNull BigDecimal priceFactor) {}
     @FunctionalInterface
     private interface ResponseParser<T> {
         T parse(@SuppressWarnings("unused") @NonNull Response response) throws Exception;
@@ -433,9 +427,13 @@ public class YahooFinanceRepository {
         @NonNull BigDecimal sumDollarVolLen = BigDecimal.ZERO;
         BigDecimal startPrice = null;
         BigInteger startPriceTimestampSeconds = null;
+
+        // Initialize last requested historical bar
+        @NonNull BigDecimal lastBarOpenPrice = BigDecimal.ZERO;
+        @NonNull BigDecimal lastBarHighPrice = BigDecimal.ZERO;
+        @NonNull BigDecimal lastBarLowPrice = BigDecimal.ZERO;
         @NonNull BigDecimal lastBarClosePrice = BigDecimal.ZERO;
         @NonNull BigDecimal lastBarVolume = BigDecimal.ZERO;
-        boolean hasFlatBars = false;
         BigDecimal prevUpperBand = null;
 
         if (shouldUpdateAllData) {
@@ -464,21 +462,15 @@ public class YahooFinanceRepository {
             sumDollarVolLen = fixedData.sumDollarVolLen();
             startPrice = fixedData.startPrice();
             startPriceTimestampSeconds = fixedData.startPriceTimestampSeconds();
+            lastBarOpenPrice = fixedData.lastBarOpenPrice();
+            lastBarHighPrice = fixedData.lastBarHighPrice();
+            lastBarLowPrice = fixedData.lastBarLowPrice();
             lastBarClosePrice = fixedData.lastBarClosePrice();
             lastBarVolume = fixedData.lastBarVolume();
-            hasFlatBars = fixedData.hasFlatBars();
 
-            @NonNull SplitCheck splitCheck = checkSplit(result, apiTimestamps, apiCloses, apiVolumes, fixedData);
-            if (splitCheck.refetch()) return processTickerData(context, entry, null, true);
-
-            @NonNull BigDecimal priceFactor = splitCheck.priceFactor();
-            if (priceFactor.compareTo(BigDecimal.ONE) != 0) {
-                dpSumNum = dpSumNum.multiply(priceFactor, DECIMAL128);
-                startPrice = startPrice.multiply(priceFactor, DECIMAL128);
-                firstTradeOpenPrice = firstTradeOpenPrice.multiply(priceFactor, DECIMAL128);
-                lastAdjustedClosePrice = lastAdjustedClosePrice.multiply(priceFactor, DECIMAL128);
-                lastBarClosePrice = lastBarClosePrice.multiply(priceFactor, DECIMAL128);
-                lastBarVolume = lastBarVolume.divide(priceFactor, DECIMAL128);
+            // Pull full history if history changed (for example: split, data correction, etc.)
+            if (hasStoredHistoryChanged(apiTimestamps, apiOpens, apiHighs, apiLows, apiCloses, apiVolumes, fixedData)) {
+                return processTickerData(context, entry, null, true);
             }
 
             prevUpperBand = dpSumNum.divide(dpSumDen, DECIMAL128)
@@ -490,7 +482,7 @@ public class YahooFinanceRepository {
                 );
         }
 
-        // Last adjusted close + first trade date
+        // Get last adjusted close and first trade date
         int startIndex = hasFixedHistoricalData ? 1 : 0;
         for (int i = startIndex; i < apiAdjCloses.length(); i++) {
             try {
@@ -518,7 +510,7 @@ public class YahooFinanceRepository {
             }
         }
 
-        // Fixed historical data (excludes last bar)
+        // Fixed historical data (excludes ongoing bar at the end)
         for (int i = startIndex; i < apiHighs.length() - 1; i++) {
             try {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
@@ -528,8 +520,11 @@ public class YahooFinanceRepository {
                     && (updatedAtTimestampSeconds == null || bTimestamp.compareTo(updatedAtTimestampSeconds) > 0)
                 ) {
                     updatedAtTimestampSeconds = bTimestamp;
-                    lastBarClosePrice = BigDecimal.ZERO;
-                    lastBarVolume = BigDecimal.ZERO;
+                    lastBarOpenPrice = parseOrZero(apiOpens, i);
+                    lastBarHighPrice = parseOrZero(apiHighs, i);
+                    lastBarLowPrice = parseOrZero(apiLows, i);
+                    lastBarClosePrice = parseOrZero(apiCloses, i);
+                    lastBarVolume = parseOrZero(apiVolumes, i);
 
                     @NonNull BigDecimal bVol = new BigDecimal(apiVolumes.getString(i));
                     try {
@@ -543,7 +538,6 @@ public class YahooFinanceRepository {
                         ) {
                             @NonNull BigDecimal barRange = bHigh.subtract(bLow, DECIMAL128);
                             @NonNull BigDecimal midPoint = bHigh.add(bLow, DECIMAL128).divide(TWO, DECIMAL128);
-                            if (barRange.compareTo(midPoint.multiply(FLAT_BAR_RELATIVE_RANGE, DECIMAL128)) <= 0) hasFlatBars = true;
 
                             @NonNull BigDecimal dDenInc = barRange.compareTo(BigDecimal.ZERO) > 0
                                 ? bVol.multiply(barRange, DECIMAL128)
@@ -622,10 +616,6 @@ public class YahooFinanceRepository {
                         sumDollarVol = sumDollarVol.add(bClose.multiply(bVol, DECIMAL128), DECIMAL128);
                         sumDollarVolLen = sumDollarVolLen.add(BigDecimal.ONE, DECIMAL128);
                     }
-                    if (bClose.compareTo(BigDecimal.ZERO) > 0) {
-                        lastBarClosePrice = bClose;
-                        lastBarVolume = bVol;
-                    }
                 }
             } catch (Exception e) {
                 Logger.error(e.getMessage(), e);
@@ -657,9 +647,11 @@ public class YahooFinanceRepository {
             sumDollarVolLen,
             startPrice,
             startPriceTimestampSeconds,
+            lastBarOpenPrice,
+            lastBarHighPrice,
+            lastBarLowPrice,
             lastBarClosePrice,
-            lastBarVolume,
-            hasFlatBars
+            lastBarVolume
         ));
 
         return new TickerData(
@@ -676,83 +668,48 @@ public class YahooFinanceRepository {
         );
     }
 
-    // Split Handling
-    private @NonNull SplitCheck checkSplit(
-        @NonNull JSONObject result,
+    // Stored History Check
+    private boolean hasStoredHistoryChanged(
         @NonNull JSONArray apiTimestamps,
+        @NonNull JSONArray apiOpens,
+        @NonNull JSONArray apiHighs,
+        @NonNull JSONArray apiLows,
         @NonNull JSONArray apiCloses,
         @NonNull JSONArray apiVolumes,
         @NonNull FixedHistoricalData fixedData
     ) {
-        @NonNull SplitCheck noChange = new SplitCheck(false, BigDecimal.ONE);
-        @NonNull SplitCheck refetch = new SplitCheck(true, BigDecimal.ONE);
-
-        try {
-            @Nullable JSONObject events = result.optJSONObject("events");
-            @Nullable JSONObject splits = events == null ? null : events.optJSONObject("splits");
-            @Nullable JSONArray splitKeys = splits == null ? null : splits.names();
-            if (splitKeys == null) return noChange;
-
-            // Splits at or after the last fixed bar, the stored numbers may not reflect them yet
-            @NonNull List<SplitEvent> pendingSplits = new ArrayList<>();
-            for (int i = 0; i < splitKeys.length(); i++) {
-                @NonNull JSONObject split = splits.getJSONObject(splitKeys.getString(i));
-                @NonNull BigInteger date = new BigInteger(split.getString("date"));
-                if (date.compareTo(fixedData.updatedAtTimestampSeconds()) < 0) continue;
-
-                @NonNull BigDecimal numerator = new BigDecimal(split.getString("numerator"));
-                @NonNull BigDecimal denominator = new BigDecimal(split.getString("denominator"));
-                if (numerator.compareTo(BigDecimal.ZERO) <= 0 || denominator.compareTo(BigDecimal.ZERO) <= 0) return refetch;
-
-                pendingSplits.add(new SplitEvent(date, denominator.divide(numerator, DECIMAL128)));
-            }
-            if (pendingSplits.isEmpty()) return noChange;
-            pendingSplits.sort(Comparator.comparing(SplitEvent::date));
-
-            // The bar the stored numbers end at, as the response has it now
-            int barIndex = -1;
-            @NonNull String lastBarTimestamp = fixedData.updatedAtTimestampSeconds().toString();
-            for (int i = 0; i < apiTimestamps.length(); i++) {
+        // Find the last stored bar
+        int lastBarIndex = -1;
+        @NonNull String lastBarTimestamp = fixedData.updatedAtTimestampSeconds().toString();
+        for (int i = 0; i < apiTimestamps.length(); i++) {
+            try {
                 if (apiTimestamps.getString(i).equals(lastBarTimestamp)) {
-                    barIndex = i;
+                    lastBarIndex = i;
                     break;
                 }
-            }
-            if (barIndex < 0) return refetch;
-
-            @NonNull BigDecimal newClose = new BigDecimal(apiCloses.getString(barIndex));
-            @NonNull BigDecimal newVolume = BigDecimal.ZERO;
-            try { newVolume = new BigDecimal(apiVolumes.getString(barIndex)); } catch (Exception ignored) {}
-            if (newClose.compareTo(BigDecimal.ZERO) <= 0 || fixedData.lastBarClosePrice().compareTo(BigDecimal.ZERO) <= 0) return refetch;
-
-            // Same prices means nothing changed (already applied, or announced but not applied yet)
-            @NonNull BigDecimal measuredFactor = newClose.divide(fixedData.lastBarClosePrice(), DECIMAL128);
-            @NonNull BigDecimal priceFactor = BigDecimal.ONE;
-            int appliedSplits = 0;
-            while (isNotWithinTolerance(measuredFactor, priceFactor, SPLIT_PRICE_TOLERANCE)) {
-                if (appliedSplits == pendingSplits.size()) return refetch;
-                priceFactor = priceFactor.multiply(pendingSplits.get(appliedSplits++).priceFactor(), DECIMAL128);
-            }
-            if (appliedSplits == 0) return noChange;
-
-            // Flat bars weigh differently after a split, the stored sums can't be moved exactly
-            if (fixedData.hasFlatBars()) return refetch;
-
-            if (newVolume.compareTo(BigDecimal.ZERO) > 0 && fixedData.lastBarVolume().compareTo(BigDecimal.ZERO) > 0) {
-                @NonNull BigDecimal volumeFactor = newVolume.divide(fixedData.lastBarVolume(), DECIMAL128);
-                if (isNotWithinTolerance(volumeFactor, BigDecimal.ONE.divide(priceFactor, DECIMAL128), SPLIT_VOLUME_TOLERANCE)) return refetch;
-            }
-
-            return new SplitCheck(false, priceFactor);
-        } catch (Exception e) {
-            Logger.error(e.getMessage(), e);
-            return refetch;
+            } catch (Exception ignored) {}
         }
+
+        // Last bar is missing
+        if (lastBarIndex < 0) return true;
+
+        // Last bar changed some values (for example: split, data correction, etc.)
+        return (
+            parseOrZero(apiOpens, lastBarIndex).compareTo(fixedData.lastBarOpenPrice()) != 0
+            || parseOrZero(apiHighs, lastBarIndex).compareTo(fixedData.lastBarHighPrice()) != 0
+            || parseOrZero(apiLows, lastBarIndex).compareTo(fixedData.lastBarLowPrice()) != 0
+            || parseOrZero(apiCloses, lastBarIndex).compareTo(fixedData.lastBarClosePrice()) != 0
+            || parseOrZero(apiVolumes, lastBarIndex).compareTo(fixedData.lastBarVolume()) != 0
+        );
     }
 
     // Helpers
-    private boolean isNotWithinTolerance(@NonNull BigDecimal value, @NonNull BigDecimal expected, @NonNull BigDecimal tolerance) {
-        return value.divide(expected, DECIMAL128).subtract(BigDecimal.ONE).abs().compareTo(tolerance) > 0;
+    private @NonNull BigDecimal parseOrZero(@NonNull JSONArray array, int index) {
+        try {
+            return new BigDecimal(array.getString(index));
+        } catch (Exception ignored) {
+            return BigDecimal.ZERO;
+        }
     }
     private @NonNull Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers) {
         Map<String, TickerData> map = new HashMap<>();
