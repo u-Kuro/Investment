@@ -83,6 +83,10 @@ public class YahooFinanceRepository {
 
     @NonNull private static final ProxyRepository proxyRepository = new ProxyRepository();
 
+    public static void invalidateProxyCache() {
+        proxyRepository.invalidateCache();
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void updateTickers(
         @NonNull Context context,

@@ -64,6 +64,12 @@ public class ProxyRepository {
         routes.put(Proxy.NO_PROXY, ownRoute);
     }
 
+    public synchronized void invalidateCache() {
+        setRoutes(new LinkedHashMap<>());
+        nextFetchAtMilliseconds = 0;
+        isLoaded = false;
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public synchronized @NonNull List<Proxy> getCandidates(@NonNull Context context) throws InterruptedException {
         refreshIfNeeded(context);

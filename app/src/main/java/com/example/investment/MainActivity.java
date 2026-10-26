@@ -109,7 +109,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean isRequestingPermissions = false;
     private boolean hasAskedNotificationPermission = false;
     private boolean hasAskedBatteryOptimization = false;
-    private boolean hasAskedExportFolder = false;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
     private ActivityResultLauncher<Intent> settingsLauncher;
     private ActivityResultLauncher<Uri> exportFolderLauncher;
@@ -547,8 +546,7 @@ public class MainActivity extends AppCompatActivity {
         exportFolderLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocumentTree(),
             folderUri -> {
-                if (folderUri != null) saveExportFolder(folderUri);
-                askNextPermission();
+                if (folderUri != null) selectExportFolder(folderUri);
             }
         );
         importFileLauncher = registerForActivityResult(
@@ -572,7 +570,6 @@ public class MainActivity extends AppCompatActivity {
         isRequestingPermissions = true;
         hasAskedNotificationPermission = false;
         hasAskedBatteryOptimization = false;
-        hasAskedExportFolder = false;
         askNextPermission();
     }
 
@@ -606,14 +603,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // Export folder
-        if (!hasAskedExportFolder && !BackupUtils.isExportFolderAccessible(this)) {
-            hasAskedExportFolder = true;
-            Toast.makeText(this, "Choose a folder for the backups", Toast.LENGTH_LONG).show();
-            launchExportFolderPicker();
-            return;
-        }
-
         isRequestingPermissions = false;
     }
 
@@ -637,7 +626,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (ActivityNotFoundException e) {
             Logger.error("Folder picker is not available", e);
             Toast.makeText(this, "No app found to choose a folder", Toast.LENGTH_LONG).show();
-            askNextPermission();
         }
     }
 
@@ -650,6 +638,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void selectExportFolder(@NonNull Uri folderUri) {
+        if (exportFolderLayout == null) {
+            return;
+        }
+
+        if (!BackupUtils.isFolderWritable(this, folderUri)) {
+            Toast.makeText(this, "Can't use this folder", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        pendingExportFolderUri = folderUri;
+        showExportFolder();
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void saveExportFolder(@NonNull Uri folderUri) {
         try {
@@ -659,7 +661,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Can't use this folder", Toast.LENGTH_LONG).show();
             return;
         }
-        showExportFolder();
 
         if (!BackupUtils.hasExportableData(this)) {
             Toast.makeText(this, "Export folder saved", Toast.LENGTH_SHORT).show();
@@ -911,11 +912,13 @@ public class MainActivity extends AppCompatActivity {
     private AlertDialog editConfigurationsDialog;
     private @Nullable TextInputLayout exportFolderLayout;
     private @Nullable EditText exportFolderInput;
+    private @Nullable Uri pendingExportFolderUri;
 
     private void showExportFolder() {
         if (exportFolderLayout == null || exportFolderInput == null) return;
 
-        @Nullable Uri exportFolderUri = BackupUtils.getExportFolderUri(this);
+        @Nullable Uri pendingFolderUri = pendingExportFolderUri;
+        @Nullable Uri exportFolderUri = pendingFolderUri != null ? pendingFolderUri : BackupUtils.getExportFolderUri(this);
         if (exportFolderUri == null) {
             exportFolderInput.setText("");
             exportFolderLayout.setError(null);
@@ -926,7 +929,9 @@ public class MainActivity extends AppCompatActivity {
             if (exportFolderInput == null) return;
             exportFolderInput.setSelection(exportFolderInput.length());
         });
-        exportFolderLayout.setError(BackupUtils.isExportFolderAccessible(this) ? null : "Folder is not accessible, choose it again");
+        exportFolderLayout.setError(
+            pendingFolderUri != null || BackupUtils.isExportFolderAccessible(this) ? null : "Folder is not accessible, choose it again"
+        );
     }
 
 
@@ -969,18 +974,22 @@ public class MainActivity extends AppCompatActivity {
         TextInputLayout importBackupLayout = dialogView.findViewById(R.id.importBackupLayout);
         EditText importBackupInput = dialogView.findViewById(R.id.importBackupInput);
 
+        pendingExportFolderUri = null;
         showExportFolder();
 
-        setupClickableInput(exportFolderInput);
+        setupClickableInput(exportFolderInput, this::launchExportFolderPicker);
         exportFolderLayout.setEndIconOnClickListener(v -> launchExportFolderPicker());
 
-        setupClickableInput(importBackupInput);
+        setupClickableInput(importBackupInput, this::launchImportFilePicker);
         importBackupLayout.setEndIconOnClickListener(v -> launchImportFilePicker());
 
         editConfigurationsDialog = new AlertDialog.Builder(this)
             .setTitle(getResources().getText(R.string.edit_configurations))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
+                @Nullable Uri newExportFolderUri = pendingExportFolderUri;
+                if (newExportFolderUri != null) saveExportFolder(newExportFolderUri);
+
                 try {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
 
@@ -1065,6 +1074,7 @@ public class MainActivity extends AppCompatActivity {
         editConfigurationsDialog.setOnDismissListener(dialogInterface -> {
             this.exportFolderLayout = null;
             this.exportFolderInput = null;
+            this.pendingExportFolderUri = null;
         });
 
         Window dialogWindow = editConfigurationsDialog.getWindow();
@@ -1075,7 +1085,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private void setupClickableInput(EditText clickableInput) {
+    private void setupClickableInput(EditText clickableInput, @NonNull Runnable onClick) {
         class ClickListener implements View.OnTouchListener, View.OnClickListener {
             private float startX, startY;
             private boolean moved;
@@ -1105,7 +1115,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (moved) return;
-                launchExportFolderPicker();
+                onClick.run();
             }
         }
 

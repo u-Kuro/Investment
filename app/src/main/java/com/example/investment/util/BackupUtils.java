@@ -12,6 +12,7 @@ import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRES
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
+import static com.example.investment.util.Constants.FILE_RECORD_PROXIES;
 import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
 import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
@@ -40,7 +41,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
+import com.example.investment.model.ProxyDataRecord;
 import com.example.investment.model.TickerDataRecord;
+import com.example.investment.repository.YahooFinanceRepository;
 import com.example.investment.task.TickerDataLoader;
 
 import org.json.JSONException;
@@ -135,7 +138,11 @@ public class BackupUtils {
         );
         if (!hasPermission) return false;
 
-        try (Cursor cursor = resolver.query(
+        return isFolderWritable(context, folderUri);
+    }
+
+    public static boolean isFolderWritable(@NonNull Context context, @NonNull Uri folderUri) {
+        try (Cursor cursor = context.getContentResolver().query(
             getFolderDocumentUri(folderUri),
             new String[]{DocumentsContract.Document.COLUMN_FLAGS},
             null,
@@ -356,6 +363,8 @@ public class BackupUtils {
                 FileUtils.replaceDataRecords(context, records);
                 applyPreferences(context, preferences);
                 TickerDataLoader.getInstance().invalidateCache();
+                // The proxies in memory would replace the imported ones the next time they are saved
+                YahooFinanceRepository.invalidateProxyCache();
             } finally {
                 deleteRecursively(stagingDirectory);
             }
@@ -375,7 +384,12 @@ public class BackupUtils {
         for (Map.Entry<String, File> entry : records.entrySet()) {
             @Nullable File file = entry.getValue();
             if (file == null || FILE_RECORD_TICKERS.equals(entry.getKey())) continue;
-            if (!(loadStagedRecord(file) instanceof List<?>)) {
+
+            if (FILE_RECORD_PROXIES.equals(entry.getKey())) {
+                if (!(loadStagedRecord(file) instanceof ProxyDataRecord proxyRecord) || proxyRecord.proxies() == null) {
+                    throw new IOException("Backup proxies are invalid");
+                }
+            } else if (!(loadStagedRecord(file) instanceof List<?>)) {
                 throw new IOException("Backup leading tickers are invalid");
             }
         }

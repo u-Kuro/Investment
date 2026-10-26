@@ -44,7 +44,8 @@ public class Constants {
     public static final String[] BACKUP_DATA_RECORDS = {
         FILE_RECORD_TICKERS,
         FILE_RECORD_PASSIVE_LEADING_TICKERS,
-        FILE_RECORD_MOMENTUM_LEADING_TICKERS
+        FILE_RECORD_MOMENTUM_LEADING_TICKERS,
+        FILE_RECORD_PROXIES
     };
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
