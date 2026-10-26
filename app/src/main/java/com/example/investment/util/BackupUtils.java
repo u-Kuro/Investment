@@ -45,6 +45,7 @@ import com.example.investment.model.ProxyDataRecord;
 import com.example.investment.model.ProxyStateRecord;
 import com.example.investment.model.TickerDataRecord;
 import com.example.investment.model.ticker.TickerData;
+import com.example.investment.repository.YahooFinanceRepository;
 import com.example.investment.task.TickerDataLoader;
 
 import org.json.JSONException;
@@ -371,6 +372,7 @@ public class BackupUtils {
                 try {
                     FileUtils.replaceDataRecords(context, records, () -> applyPreferences(context, preferences));
                     TickerDataLoader.getInstance().invalidateCache();
+                    if (records.containsKey(FILE_RECORD_PROXIES)) YahooFinanceRepository.invalidateProxyCache();
                 } finally {
                     if (wasInterrupted) Thread.currentThread().interrupt();
                 }
