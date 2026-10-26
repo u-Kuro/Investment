@@ -14,7 +14,13 @@
     <string name="market_cap_threshold">Market Cap Threshold</string>
     <string name="daily_dollar_volume_threshold">Daily Dollar Volume Threshold</string>
     <string name="age_in_seconds_threshold">Age Threshold (Seconds)</string>
-    <string name="investment_configurations">Investment Configurations</string>
+    <string name="edit_configurations">Edit Configurations</string>
+    <string name="export_folder">Export Folder</string>
+    <string name="export_folder_helper">Backup is saved here after every update</string>
+    <string name="choose_export_folder">Choose export folder</string>
+    <string name="import_backup">Import Backup</string>
+    <string name="import_backup_helper">Replaces the current data with a backup</string>
+    <string name="choose_backup_file">Choose backup file</string>
     <string name="search">Search</string>
     <string name="search_hint">Search symbols, exchanges, or names…</string>
 </resources>

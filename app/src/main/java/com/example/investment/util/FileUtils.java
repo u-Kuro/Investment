@@ -6,6 +6,8 @@ import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
+import androidx.annotation.Nullable;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -14,6 +16,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class FileUtils {
     private static final Object fileLock = new Object();
@@ -21,8 +26,7 @@ public class FileUtils {
     public static File getFileDataRecord(@NonNull Context context, String fileName) {
         return new File(context.getApplicationContext().getCacheDir(), fileName);
     }
-    
-    /** @noinspection ResultOfMethodCallIgnored*/
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static void saveObject(Context context, String fileName, Object object) throws IOException {
         File file = getFileDataRecord(context, fileName);
@@ -30,6 +34,7 @@ public class FileUtils {
 
         synchronized (fileLock) {
             if (tempFile.exists()) {
+                //noinspection ResultOfMethodCallIgnored
                 tempFile.delete();
             }
 
@@ -39,17 +44,76 @@ public class FileUtils {
             }
             
             Files.copy(tempFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            //noinspection ResultOfMethodCallIgnored
             tempFile.delete();
         }
     }
     
     public static Object loadObject(Context context, String fileName) throws IOException, ClassNotFoundException {
-        File file = getFileDataRecord(context, fileName);
+        return loadObject(getFileDataRecord(context, fileName));
+    }
+
+    public static Object loadObject(File file) throws IOException, ClassNotFoundException {
         if (!file.exists()) return null;
-        
+
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
             return ois.readObject();
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static boolean copyDataRecord(@NonNull Context context, @NonNull String fileName, @NonNull File destination) throws IOException {
+        File file = getFileDataRecord(context, fileName);
+
+        synchronized (fileLock) {
+            if (!file.exists()) return false;
+            Files.copy(file.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static void replaceDataRecords(@NonNull Context context, @NonNull Map<String, File> records) throws IOException {
+        @NonNull List<String> replacedFileNames = new ArrayList<>();
+
+        synchronized (fileLock) {
+            try {
+                for (Map.Entry<String, File> record : records.entrySet()) {
+                    File file = getFileDataRecord(context, record.getKey());
+                    @Nullable File replacement = record.getValue();
+
+                    if (file.exists()) {
+                        Files.copy(file.toPath(), getPreviousFile(file).toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    if (replacement != null) {
+                        Files.move(replacement.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE);
+                    } else {
+                        Files.deleteIfExists(file.toPath());
+                    }
+                    replacedFileNames.add(record.getKey());
+                }
+            } catch (IOException e) {
+                for (String fileName : replacedFileNames) {
+                    File file = getFileDataRecord(context, fileName);
+                    File previousFile = getPreviousFile(file);
+                    try {
+                        if (previousFile.exists()) {
+                            Files.move(previousFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        } else {
+                            Files.deleteIfExists(file.toPath());
+                        }
+                    } catch (IOException ignored) { }
+                }
+                throw e;
+            } finally {
+                for (String fileName : records.keySet()) {
+                    //noinspection ResultOfMethodCallIgnored
+                    getPreviousFile(getFileDataRecord(context, fileName)).delete();
+                }
+            }
+        }
+    }
+    private static File getPreviousFile(@NonNull File file) {
+        return new File(file.getPath() + ".previous");
+    }
 }

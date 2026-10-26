@@ -33,6 +33,19 @@ public class Constants {
     public static final String PREF_MARKET_CAP_THRESHOLD = "Market Cap Threshold";
     public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
     public static final String PREF_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
+    public static final String PREF_EXPORT_FOLDER_URI = "Export Folder Uri";
+
+    // Backup
+    public static final String BACKUP_FILE_NAME = "investment-backup.zip";
+    public static final String BACKUP_TEMP_FILE_NAME = "investment-backup.tmp";
+    public static final String BACKUP_ENTRY_PREFERENCES = "preferences.json";
+    public static final int BACKUP_VERSION = 1;
+    public static final long BACKUP_MAX_SIZE_BYTES = 512 * 1024 * 1024; // 512 MB
+    public static final String[] BACKUP_DATA_RECORDS = {
+        FILE_RECORD_TICKERS,
+        FILE_RECORD_PASSIVE_LEADING_TICKERS,
+        FILE_RECORD_MOMENTUM_LEADING_TICKERS
+    };
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
     public static final String YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/";

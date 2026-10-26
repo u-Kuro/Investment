@@ -53,6 +53,7 @@ import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.UI_THREAD;
 import static com.example.investment.receiver.NetworkReceiver.retryOnNetworkAvailable;
 import static com.example.investment.util.NetworkUtils.isOffline;
+import static com.example.investment.util.BackupUtils.autoExport;
 import static com.example.investment.util.NotificationUtils.createLowPriorityServiceNotification;
 import static com.example.investment.util.NotificationUtils.showGroupSummary;
 import static com.example.investment.util.NotificationUtils.showHighPriorityNotification;
@@ -247,6 +248,8 @@ public class TickerService extends Service {
                             activity.updateFinished(updateTime);
                         }
                     });
+
+                    autoExport(getApplicationContext());
 
                     TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
                     TickerService.this.stopSelf();

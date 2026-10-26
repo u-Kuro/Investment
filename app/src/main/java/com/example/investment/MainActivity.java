@@ -26,7 +26,9 @@ import static com.example.investment.util.Constants.ASSERT_MAIN_THREAD;
 import static com.example.investment.util.Constants.EVENT_THREAD;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -35,10 +37,13 @@ import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.inputmethod.InputMethodManager;
@@ -53,7 +58,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -72,12 +80,14 @@ import com.example.investment.model.adapter.TickerAdapter;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.util.Logger;
-import com.example.investment.task.WorkerManager;
 import com.example.investment.service.TickerService;
+import com.example.investment.util.BackupUtils;
 import com.example.investment.util.CustomTabsUtils;
 import com.example.investment.util.SafeSingleTaskRunner;
 import com.google.android.material.textfield.MaterialAutoCompleteTextView;
+import com.google.android.material.textfield.TextInputLayout;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -94,7 +104,17 @@ import androidx.activity.OnBackPressedCallback;
 
 public class MainActivity extends AppCompatActivity {
     public static WeakReference<MainActivity> weakActivity;
-    private static final int PERMISSION_REQUEST_CODE = 123;
+
+    // Permissions are asked one at a time on every open, each of them is asked only once per open
+    private boolean isRequestingPermissions = false;
+    private boolean hasAskedNotificationPermission = false;
+    private boolean hasAskedBatteryOptimization = false;
+    private boolean hasAskedExportFolder = false;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
+    private ActivityResultLauncher<Intent> settingsLauncher;
+    private ActivityResultLauncher<Uri> exportFolderLauncher;
+    private ActivityResultLauncher<String[]> importFileLauncher;
+
     private @NonNull final CustomTabsUtils customTabsUtils = CustomTabsUtils.getInstance();
 
     private SwipeRefreshLayout swipeRefreshLayout;
@@ -129,6 +149,8 @@ public class MainActivity extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        registerActivityResultLaunchers();
 
         EdgeToEdge.enable(this);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -202,8 +224,8 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         });
 
-        ImageView investmentConfigurationsImage = findViewById(R.id.investmentConfigurationsImage);
-        investmentConfigurationsImage.setOnClickListener(v -> showConfigurationsDialog());
+        ImageView editConfigurationsImage = findViewById(R.id.editConfigurationsImage);
+        editConfigurationsImage.setOnClickListener(v -> showEditConfigurationsDialog());
 
         customTabsUtils.warmup(MainActivity.this);
 
@@ -224,8 +246,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
-        requestNotificationPermission();
 
         autoLoadTickerDataRecord(true);
     }
@@ -507,32 +527,206 @@ public class MainActivity extends AppCompatActivity {
         return activity;
     }
 
-    private void requestNotificationPermission() {
-        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                requestPermissions(
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                    PERMISSION_REQUEST_CODE
-                );
-                return;
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void registerActivityResultLaunchers() {
+        notificationPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                // The system stops showing the permission dialog after it is denied twice, so the settings are opened instead
+                if (!isGranted && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                    openNotificationSettings();
+                } else {
+                    askNextPermission();
+                }
             }
-        }
-        WorkerManager.scheduleTickerWork(this);
+        );
+        settingsLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> askNextPermission()
+        );
+        exportFolderLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocumentTree(),
+            folderUri -> {
+                if (folderUri != null) saveExportFolder(folderUri);
+                askNextPermission();
+            }
+        );
+        importFileLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            fileUri -> {
+                if (fileUri != null) confirmImportBackup(fileUri);
+            }
+        );
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                WorkerManager.scheduleTickerWork(this);
-            } else {
-                Toast.makeText(this,
-                    "Notification permission denied. You won't receive ticker updates.",
-                    Toast.LENGTH_LONG
-                ).show();
+    protected void onStart() {
+        super.onStart();
+        startPermissionRequests();
+    }
+
+    private void startPermissionRequests() {
+        // A request that is still waiting for an answer continues by itself
+        if (isRequestingPermissions) return;
+
+        isRequestingPermissions = true;
+        hasAskedNotificationPermission = false;
+        hasAskedBatteryOptimization = false;
+        hasAskedExportFolder = false;
+        askNextPermission();
+    }
+
+    @SuppressLint("BatteryLife")
+    private void askNextPermission() {
+        if (!isRequestingPermissions) return;
+
+        // Notifications
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && !hasAskedNotificationPermission
+            && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            hasAskedNotificationPermission = true;
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+            return;
+        }
+
+        // Battery optimization
+        @NonNull PowerManager powerManager = getSystemService(PowerManager.class);
+        if (!hasAskedBatteryOptimization && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            hasAskedBatteryOptimization = true;
+            try {
+                settingsLauncher.launch(new Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())
+                ));
+                return;
+            } catch (ActivityNotFoundException e) {
+                Logger.error("Battery optimization settings are not available", e);
             }
         }
+
+        // Export folder
+        if (!hasAskedExportFolder && !BackupUtils.isExportFolderAccessible(this)) {
+            hasAskedExportFolder = true;
+            Toast.makeText(this, "Choose a folder for the backups", Toast.LENGTH_LONG).show();
+            launchExportFolderPicker();
+            return;
+        }
+
+        isRequestingPermissions = false;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void openNotificationSettings() {
+        try {
+            Toast.makeText(this, "Allow notifications in the settings", Toast.LENGTH_LONG).show();
+            settingsLauncher.launch(
+                new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+            );
+        } catch (ActivityNotFoundException e) {
+            Logger.error("Notification settings are not available", e);
+            askNextPermission();
+        }
+    }
+
+    private void launchExportFolderPicker() {
+        try {
+            exportFolderLauncher.launch(null);
+        } catch (ActivityNotFoundException e) {
+            Logger.error("Folder picker is not available", e);
+            Toast.makeText(this, "No app found to choose a folder", Toast.LENGTH_LONG).show();
+            askNextPermission();
+        }
+    }
+
+    private void launchImportFilePicker() {
+        try {
+            importFileLauncher.launch(new String[]{"*/*"});
+        } catch (ActivityNotFoundException e) {
+            Logger.error("File picker is not available", e);
+            Toast.makeText(this, "No app found to choose a file", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void saveExportFolder(@NonNull Uri folderUri) {
+        try {
+            BackupUtils.saveExportFolder(this, folderUri);
+        } catch (Exception e) {
+            Logger.error("Error saving the export folder", e);
+            Toast.makeText(this, "Can't use this folder", Toast.LENGTH_LONG).show();
+            return;
+        }
+        showExportFolder();
+
+        if (!BackupUtils.hasExportableData(this)) {
+            Toast.makeText(this, "Export folder saved", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Export immediately, so a folder that can't be used is found now instead of after the next update
+        final Context applicationContext = getApplicationContext();
+        EVENT_THREAD.execute(ui -> {
+            try {
+                BackupUtils.exportToFolder(applicationContext, folderUri);
+                ui.post(() -> Toast.makeText(applicationContext, "Backup exported", Toast.LENGTH_SHORT).show());
+            } catch (Exception e) {
+                Logger.error("Error exporting the backup", e);
+                ui.post(() -> Toast.makeText(applicationContext, "Failed to export the backup", Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void confirmImportBackup(@NonNull Uri fileUri) {
+        if (isManuallyUpdated || dataRefreshType != null) {
+            Toast.makeText(this, "Wait for the update to finish before importing", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        @NonNull String fileName = BackupUtils.getFileDisplayName(this, fileUri);
+        AlertDialog alertDialog = new AlertDialog.Builder(this)
+            .setTitle("Import Backup")
+            .setMessage(String.format(Locale.ROOT, "Replace the current data and configurations with \"%s\"?", fileName))
+            .setPositiveButton("IMPORT", (dialog, which) -> importBackup(fileUri))
+            .setNegativeButton("CANCEL", null)
+            .create();
+        Window dialogWindow = alertDialog.getWindow();
+        if (dialogWindow != null) {
+            dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
+        }
+        alertDialog.show();
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void importBackup(@NonNull Uri fileUri) {
+        if (editConfigurationsDialog != null) editConfigurationsDialog.dismiss();
+        swipeRefreshLayout.setRefreshing(true);
+        Toast.makeText(this, "Importing backup...", Toast.LENGTH_SHORT).show();
+
+        final Context applicationContext = getApplicationContext();
+        EVENT_THREAD.execute(ui -> {
+            try {
+                BackupUtils.importFromFile(applicationContext, fileUri);
+                ui.post(() -> {
+                    Toast.makeText(applicationContext, "Backup imported", Toast.LENGTH_LONG).show();
+                    // Configurations and data are loaded again from what was imported
+                    recreate();
+                });
+            } catch (Exception e) {
+                Logger.error("Error importing the backup", e);
+                ui.post(() -> {
+                    swipeRefreshLayout.setRefreshing(false);
+                    Toast.makeText(
+                        applicationContext,
+                        e instanceof IOException ? e.getMessage() : "Failed to import the backup",
+                        Toast.LENGTH_LONG
+                    ).show();
+                });
+            }
+        });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -714,25 +908,46 @@ public class MainActivity extends AppCompatActivity {
         return parent;
     }
 
-    private AlertDialog configurationsDialog;
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void showConfigurationsDialog() {
-        if (configurationsDialog != null && configurationsDialog.isShowing()) return;
+    private AlertDialog editConfigurationsDialog;
+    private @Nullable TextInputLayout exportFolderLayout;
+    private @Nullable EditText exportFolderInput;
 
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_configurations, null);
+    private void showExportFolder() {
+        if (exportFolderLayout == null || exportFolderInput == null) return;
+
+        @Nullable Uri exportFolderUri = BackupUtils.getExportFolderUri(this);
+        if (exportFolderUri == null) {
+            exportFolderInput.setText("");
+            exportFolderLayout.setError(null);
+            return;
+        }
+        exportFolderInput.setText(BackupUtils.getFolderDisplayName(exportFolderUri));
+        exportFolderInput.post(() -> {
+            if (exportFolderInput == null) return;
+            exportFolderInput.setSelection(exportFolderInput.length());
+        });
+        exportFolderLayout.setError(BackupUtils.isExportFolderAccessible(this) ? null : "Folder is not accessible, choose it again");
+    }
+
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void showEditConfigurationsDialog() {
+        if (editConfigurationsDialog != null && editConfigurationsDialog.isShowing()) return;
+
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_edit_configurations, null);
 
         MaterialAutoCompleteTextView investmentTypeSpinner = dialogView.findViewById(R.id.investmentTypeSpinner);
         ArrayAdapter<CharSequence> investmentTypeAdapter = new ArrayAdapter<>(this,
-                R.layout.auto_complete_text_view_spinner_item,
-                new String[]{PASSIVE_INVESTMENT_TYPE, MOMENTUM_INVESTMENT_TYPE}
+            R.layout.auto_complete_text_view_spinner_item,
+            new String[]{PASSIVE_INVESTMENT_TYPE, MOMENTUM_INVESTMENT_TYPE}
         );
         investmentTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
         investmentTypeSpinner.setAdapter(investmentTypeAdapter);
 
         MaterialAutoCompleteTextView assetTypeSpinner = dialogView.findViewById(R.id.assetTypeSpinner);
         ArrayAdapter<CharSequence> assetTypeAdapter = new ArrayAdapter<>(this,
-                R.layout.auto_complete_text_view_spinner_item,
-                new String[]{ALL_TYPE, CRYPTOCURRENCY_TYPE, STOCK_TYPE}
+            R.layout.auto_complete_text_view_spinner_item,
+            new String[]{ALL_TYPE, CRYPTOCURRENCY_TYPE, STOCK_TYPE}
         );
         assetTypeAdapter.setDropDownViewResource(R.layout.spinner_dropdown);
         assetTypeSpinner.setAdapter(assetTypeAdapter);
@@ -749,8 +964,21 @@ public class MainActivity extends AppCompatActivity {
         dailyDollarVolumeThresholdInput.setText(dailyDollarVolumeThreshold.toPlainString());
         ageInSecondsThresholdInput.setText(ageInSecondsThreshold.toPlainString());
 
-        configurationsDialog = new AlertDialog.Builder(this)
-            .setTitle(getResources().getText(R.string.investment_configurations))
+        TextInputLayout exportFolderLayout = this.exportFolderLayout = dialogView.findViewById(R.id.exportFolderLayout);
+        EditText exportFolderInput = this.exportFolderInput = dialogView.findViewById(R.id.exportFolderInput);
+        TextInputLayout importBackupLayout = dialogView.findViewById(R.id.importBackupLayout);
+        EditText importBackupInput = dialogView.findViewById(R.id.importBackupInput);
+
+        showExportFolder();
+
+        setupClickableInput(exportFolderInput);
+        exportFolderLayout.setEndIconOnClickListener(v -> launchExportFolderPicker());
+
+        setupClickableInput(importBackupInput);
+        importBackupLayout.setEndIconOnClickListener(v -> launchImportFilePicker());
+
+        editConfigurationsDialog = new AlertDialog.Builder(this)
+            .setTitle(getResources().getText(R.string.edit_configurations))
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 try {
@@ -834,11 +1062,56 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("Cancel", null)
             .create();
 
-        Window dialogWindow = configurationsDialog.getWindow();
+        editConfigurationsDialog.setOnDismissListener(dialogInterface -> {
+            this.exportFolderLayout = null;
+            this.exportFolderInput = null;
+        });
+
+        Window dialogWindow = editConfigurationsDialog.getWindow();
         if (dialogWindow != null) {
             dialogWindow.setBackgroundDrawableResource(R.drawable.dialog);
         }
-        configurationsDialog.show();
+        editConfigurationsDialog.show();
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupClickableInput(EditText clickableInput) {
+        class ClickListener implements View.OnTouchListener, View.OnClickListener {
+            private float startX, startY;
+            private boolean moved;
+            private final int touchSlop = ViewConfiguration.get(clickableInput.getContext()).getScaledTouchSlop();
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startX = event.getX();
+                        startY = event.getY();
+                        moved = false;
+                        break;
+
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = Math.abs(event.getX() - startX);
+                        float dy = Math.abs(event.getY() - startY);
+
+                        if (dx > touchSlop && dx > dy) {
+                            moved = true;
+                        }
+                        break;
+                }
+                return false;
+            }
+
+            @Override
+            public void onClick(View v) {
+                if (moved) return;
+                launchExportFolderPicker();
+            }
+        }
+
+        ClickListener listener = new ClickListener();
+        clickableInput.setOnTouchListener(listener);
+        clickableInput.setOnClickListener(listener);
     }
 
     private boolean isActivityNotCreated() {

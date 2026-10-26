@@ -12,6 +12,7 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
 import com.example.investment.service.TickerService;
+import com.example.investment.util.Logger;
 
 public class TickerWorker extends Worker {
     public TickerWorker(@NonNull Context context, @NonNull WorkerParameters params) {
@@ -31,7 +32,8 @@ public class TickerWorker extends Worker {
 
             return Result.success();
         } catch (Exception e) {
-            return Result.failure();
+            Logger.error("Error starting the ticker service from the worker", e);
+            return Result.retry();
         }
     }
 }

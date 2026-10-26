@@ -38,6 +38,9 @@ public class TickerDataLoader {
         TickerDataRecord record = loadRecord(context);
         return record != null ? record.tickers() : null;
     }
+    public void invalidateCache() {
+        cachedRecord = null;
+    }
     public long getLastUpdateTime(@NonNull Context context) {
         TickerDataRecord record = loadRecord(context);
         return record != null ? record.timestamp() : 0;

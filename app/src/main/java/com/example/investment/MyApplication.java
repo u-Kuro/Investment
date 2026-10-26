@@ -2,6 +2,7 @@ package com.example.investment;
 
 import android.app.Application;
 
+import com.example.investment.task.WorkerManager;
 import com.example.investment.util.Logger;
 
 public class MyApplication extends Application {
@@ -23,5 +24,12 @@ public class MyApplication extends Application {
                 System.exit(10);
             }
         });
+
+        // Ensure scheduled work every start of the app
+        try {
+            WorkerManager.scheduleTickerWork(this);
+        } catch (Exception e) {
+            Logger.error("Error scheduling the ticker work", e);
+        }
     }
 }
