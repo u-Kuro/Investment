@@ -38,7 +38,7 @@ public class TickerDataLoader {
         TickerDataRecord record = loadRecord(context);
         return record != null ? record.tickers() : null;
     }
-    public void invalidateCache() {
+    public synchronized void invalidateCache() {
         cachedRecord = null;
     }
     public long getLastUpdateTime(@NonNull Context context) {
@@ -84,7 +84,7 @@ public class TickerDataLoader {
         });
     }
 
-    private @Nullable TickerDataRecord loadRecord(@NonNull Context context) {
+    private synchronized @Nullable TickerDataRecord loadRecord(@NonNull Context context) {
         if (cachedRecord == null) {
             try {
                 cachedRecord = (TickerDataRecord) loadObject(context, FILE_RECORD_TICKERS);

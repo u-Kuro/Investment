@@ -76,6 +76,7 @@ import com.example.investment.R;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.model.listener.TickerUpdateListener;
+import com.example.investment.util.ImportUpdateGuard;
 import com.example.investment.util.Logger;
 
 import java.math.BigDecimal;
@@ -121,14 +122,7 @@ public class TickerService extends Service {
         if (intent != null) {
             String action = intent.getAction();
             if (STOP_SERVICE_ACTION.equals(action)) {
-                UI_THREAD.post(() -> {
-                    MainActivity activity = MainActivity.getInstanceActivity();
-                    if (activity != null) {
-                        activity.updateCancel();
-                    }
-                });
-                stopForeground(STOP_FOREGROUND_REMOVE);
-                stopSelf();
+                cancelUpdate();
             } else if (FULL_DATA_REFRESH_ACTION.equals(action)) {
                 if (!FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     dataRefreshType = FULL_DATA_REFRESH_ACTION;
@@ -144,140 +138,162 @@ public class TickerService extends Service {
         return START_NOT_STICKY;
     }
 
-    private final Object UPDATE_TICKERS_TASK_ID = new Object();
-    @RequiresApi(api = Build.VERSION_CODES.Q)
-    private void updateTickers(@NonNull final String dataRefreshType) {
-        BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui ->
-            tickerDataLoader.updateTickers(
-                getApplicationContext(),
-                dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
-                new TickerUpdateListener() {
-                private final AtomicBoolean isFinished = new AtomicBoolean(false);
-                @Override
-                public void onSymbolsProgress(final int current) {
-                    if (isFinished.get()) return;
-
-                    if (current > 0) {
-                        showLowPriorityServiceNotification(
-                            TickerService.this,
-                            String.format(
-                                getString(R.string.fetching_tickers_found),
-                                dataRefreshType,
-                                current
-                            )
-                        );
-                    } else {
-                        showLowPriorityServiceNotification(
-                            TickerService.this,
-                            String.format(
-                                getString(R.string.fetching_tickers),
-                                dataRefreshType
-                            )
-                        );
-                    }
-
-                    ui.post(() -> {
-                        MainActivity activity = MainActivity.getInstanceActivity();
-                        if (activity != null) {
-                           activity.updateSymbolsProgress(current, dataRefreshType);
-                        }
-                    });
-                }
-                @Override
-                public void onTickersProgress(final int current, final int total) {
-                    if (isFinished.get()) return;
-
-                    if (total > 0) {
-                        double progress = ((double) current / total) * 100;
-                        if (current < total) {
-                            showLowPriorityServiceNotification(
-                                TickerService.this,
-                                String.format(
-                                    getString(R.string.processing_tickers),
-                                    progress,
-                                    dataRefreshType
-                                )
-                            );
-                        } else {
-                            showLowPriorityServiceNotification(
-                                TickerService.this,
-                                getString(R.string.successful_ticker_progress)
-                            );
-                        }
-                    } else {
-                        showLowPriorityServiceNotification(
-                            TickerService.this,
-                            String.format(
-                                getString(R.string.fetching_tickers),
-                                dataRefreshType
-                            )
-                        );
-                    }
-
-                    ui.post(() -> {
-                        MainActivity activity = MainActivity.getInstanceActivity();
-                        if (activity != null) {
-                            activity.updateTickersProgress(current, total, dataRefreshType);
-                        }
-                    });
-                }
-
-                @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-                @Override
-                public void onTickerUpdate(final @NonNull List<TickerData> tickers) {
-                    if (isFinished.get()) return;
-
-                    ui.post(() -> {
-                        MainActivity activity = MainActivity.getInstanceActivity();
-                        if (activity != null) {
-                            activity.updateTickerList(tickers);
-                        }
-                    });
-                }
-
-                @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-                @Override
-                public void onFinish(@NonNull List<TickerData> tickers, final long updateTime) {
-                    isFinished.set(true);
-
-                    processChangedTickers(new ArrayList<>(tickers));
-
-                    ui.post(() -> {
-                        MainActivity activity = MainActivity.getInstanceActivity();
-                        if (activity != null) {
-                            activity.updateFinished(updateTime);
-                        }
-                    });
-
-                    autoExport(getApplicationContext());
-
-                    TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
-                    TickerService.this.stopSelf();
-                }
-
-                @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-                @Override
-                public void onError(@Nullable List<TickerData> oldTickers) {
-                    isFinished.set(true);
-
-                    // Without a network, an update is checked for again once there is one
-                    if (isOffline(TickerService.this)) retryOnNetworkAvailable(TickerService.this);
-
-                    processUnchangedTickers(oldTickers);
-
-                    ui.post(() -> {
-                        MainActivity activity = MainActivity.getInstanceActivity();
-                        if (activity != null) {
-                            activity.updateError();
-                        }
-                    });
-
-                    TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
-                    TickerService.this.stopSelf();
-                }
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void cancelUpdate() {
+        UI_THREAD.post(() -> {
+            MainActivity activity = MainActivity.getInstanceActivity();
+            if (activity != null) {
+                activity.updateCancel();
             }
-            )
-        );
+        });
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+    }
+
+    private final Object UPDATE_TICKERS_TASK_ID = new Object();
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void updateTickers(@NonNull final String dataRefreshType) {
+        BACKGROUND_THREAD.replaceUniqueTask(UPDATE_TICKERS_TASK_ID, ui -> {
+            // Import is replacing the data records, so an update would save over them
+            if (!ImportUpdateGuard.tryStartUpdate()) {
+                cancelUpdate();
+                return;
+            }
+
+            try {
+                tickerDataLoader.updateTickers(
+                    getApplicationContext(),
+                    dataRefreshType.equals(FULL_DATA_REFRESH_ACTION),
+                    new TickerUpdateListener() {
+                        private final AtomicBoolean isFinished = new AtomicBoolean(false);
+                        @Override
+                        public void onSymbolsProgress(final int current) {
+                            if (isFinished.get()) return;
+
+                            if (current > 0) {
+                                showLowPriorityServiceNotification(
+                                    TickerService.this,
+                                    String.format(
+                                        getString(R.string.fetching_tickers_found),
+                                        dataRefreshType,
+                                        current
+                                    )
+                                );
+                            } else {
+                                showLowPriorityServiceNotification(
+                                    TickerService.this,
+                                    String.format(
+                                        getString(R.string.fetching_tickers),
+                                        dataRefreshType
+                                    )
+                                );
+                            }
+
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) {
+                                   activity.updateSymbolsProgress(current, dataRefreshType);
+                                }
+                            });
+                        }
+                        @Override
+                        public void onTickersProgress(final int current, final int total) {
+                            if (isFinished.get()) return;
+
+                            if (total > 0) {
+                                double progress = ((double) current / total) * 100;
+                                if (current < total) {
+                                    showLowPriorityServiceNotification(
+                                        TickerService.this,
+                                        String.format(
+                                            getString(R.string.processing_tickers),
+                                            progress,
+                                            dataRefreshType
+                                        )
+                                    );
+                                } else {
+                                    showLowPriorityServiceNotification(
+                                        TickerService.this,
+                                        getString(R.string.successful_ticker_progress)
+                                    );
+                                }
+                            } else {
+                                showLowPriorityServiceNotification(
+                                    TickerService.this,
+                                    String.format(
+                                        getString(R.string.fetching_tickers),
+                                        dataRefreshType
+                                    )
+                                );
+                            }
+
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) {
+                                    activity.updateTickersProgress(current, total, dataRefreshType);
+                                }
+                            });
+                        }
+
+                        @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                        @Override
+                        public void onTickerUpdate(final @NonNull List<TickerData> tickers) {
+                            if (isFinished.get()) return;
+
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) {
+                                    activity.updateTickerList(tickers);
+                                }
+                            });
+                        }
+
+                        @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                        @Override
+                        public void onFinish(@NonNull List<TickerData> tickers, final long updateTime) {
+                            isFinished.set(true);
+
+                            processChangedTickers(new ArrayList<>(tickers));
+
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) {
+                                    activity.updateFinished(updateTime);
+                                }
+                            });
+
+                            autoExport(getApplicationContext());
+
+                            TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
+                            TickerService.this.stopSelf();
+                        }
+
+                        @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                        @Override
+                        public void onError(@Nullable List<TickerData> oldTickers) {
+                            isFinished.set(true);
+
+                            // Without a network, an update is checked for again once there is one
+                            if (isOffline(TickerService.this)) retryOnNetworkAvailable(TickerService.this);
+
+                            processUnchangedTickers(oldTickers);
+
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) {
+                                    activity.updateError();
+                                }
+                            });
+
+                            TickerService.this.stopForeground(STOP_FOREGROUND_REMOVE);
+                            TickerService.this.stopSelf();
+                        }
+                    }
+                );
+            } finally {
+                ImportUpdateGuard.finishUpdate();
+            }
+        });
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)

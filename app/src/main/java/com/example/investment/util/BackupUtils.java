@@ -42,8 +42,9 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.ProxyDataRecord;
+import com.example.investment.model.ProxyStateRecord;
 import com.example.investment.model.TickerDataRecord;
-import com.example.investment.repository.YahooFinanceRepository;
+import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
 
 import org.json.JSONException;
@@ -68,6 +69,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
@@ -110,9 +112,9 @@ public class BackupUtils {
             Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         );
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(PREF_EXPORT_FOLDER_URI, folderUri.toString())
-            .apply();
+        .edit()
+        .putString(PREF_EXPORT_FOLDER_URI, folderUri.toString())
+        .apply();
 
         // Persisted permissions are limited, the replaced folder shouldn't keep one
         if (oldFolderUri != null && !oldFolderUri.equals(folderUri)) {
@@ -229,7 +231,6 @@ public class BackupUtils {
                         throw new IOException("Can't rename the temporary backup file");
                     }
                 } catch (Exception e) {
-                    // Some providers can't rename, the verified zip is saved again with the final name
                     Logger.error("Error renaming the temporary backup file", e);
                     writeVerifiedDocument(resolver, folderDocumentUri, ZIP_MIME_TYPE, BACKUP_FILE_NAME, localZip, expectedDigest);
                     deleteQuietly(resolver, tempUri);
@@ -324,8 +325,9 @@ public class BackupUtils {
 
     // Import
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public static void importFromFile(@NonNull Context context, @NonNull Uri fileUri) throws IOException {
+    public static void importFromFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull Object importToken) throws IOException {
         synchronized (backupLock) {
+            ensureImportActive(importToken);
             @NonNull File stagingDirectory = new File(context.getCacheDir(), IMPORT_DIRECTORY_NAME);
             deleteRecursively(stagingDirectory);
             //noinspection ResultOfMethodCallIgnored
@@ -334,15 +336,17 @@ public class BackupUtils {
             try {
                 @NonNull File zipFile = new File(stagingDirectory, "backup.zip");
                 copyUriToFile(context.getContentResolver(), fileUri, zipFile);
+                ensureImportActive(importToken);
                 verifyBackupZip(zipFile);
+                ensureImportActive(importToken);
 
                 @NonNull Map<String, File> records = new HashMap<>();
                 @NonNull BackupPreferences preferences;
                 try (ZipFile zip = new ZipFile(zipFile)) {
                     for (String fileName : BACKUP_DATA_RECORDS) {
+                        ensureImportActive(importToken);
                         @Nullable ZipEntry entry = zip.getEntry(fileName);
                         if (entry == null) {
-                            // Not in the backup, so it didn't exist when it was exported
                             records.put(fileName, null);
                             continue;
                         }
@@ -359,15 +363,26 @@ public class BackupUtils {
                     }
                 }
                 validateRecords(records);
+                ensureImportActive(importToken);
 
-                FileUtils.replaceDataRecords(context, records);
-                applyPreferences(context, preferences);
-                TickerDataLoader.getInstance().invalidateCache();
-                // The proxies in memory would replace the imported ones the next time they are saved
-                YahooFinanceRepository.invalidateProxyCache();
+                if (!isNewerProxyRecord(context, records.get(FILE_RECORD_PROXIES))) records.remove(FILE_RECORD_PROXIES);
+
+                boolean wasInterrupted = Thread.interrupted();
+                try {
+                    FileUtils.replaceDataRecords(context, records, () -> applyPreferences(context, preferences));
+                    TickerDataLoader.getInstance().invalidateCache();
+                } finally {
+                    if (wasInterrupted) Thread.currentThread().interrupt();
+                }
             } finally {
                 deleteRecursively(stagingDirectory);
             }
+        }
+    }
+
+    private static void ensureImportActive(@NonNull Object importToken) {
+        if (Thread.currentThread().isInterrupted() || ImportUpdateGuard.isNotCurrentImport(importToken)) {
+            throw new CancellationException("Import is canceled by a newer import");
         }
     }
 
@@ -377,7 +392,9 @@ public class BackupUtils {
 
         if (!(loadStagedRecord(tickersFile) instanceof TickerDataRecord record)
             || record.tickers() == null
-            || record.tickers().isEmpty()) {
+            || record.tickers().isEmpty()
+            || hasNonValidTicker(record.tickers())
+        ) {
             throw new IOException("Backup tickers are empty or invalid");
         }
 
@@ -386,12 +403,34 @@ public class BackupUtils {
             if (file == null || FILE_RECORD_TICKERS.equals(entry.getKey())) continue;
 
             if (FILE_RECORD_PROXIES.equals(entry.getKey())) {
-                if (!(loadStagedRecord(file) instanceof ProxyDataRecord proxyRecord) || proxyRecord.proxies() == null) {
+                if (!(loadStagedRecord(file) instanceof ProxyDataRecord proxyRecord)
+                    || proxyRecord.proxies() == null
+                    || !hasOnlyProxies(proxyRecord.proxies())
+                ) {
                     throw new IOException("Backup proxies are invalid");
                 }
-            } else if (!(loadStagedRecord(file) instanceof List<?>)) {
+            } else if (!(loadStagedRecord(file) instanceof List<?> leadingTickers) || hasNonValidTicker(leadingTickers)) {
                 throw new IOException("Backup leading tickers are invalid");
             }
+        }
+    }
+    private static boolean hasNonValidTicker(@NonNull List<?> tickers) {
+        return !tickers.stream().allMatch(ticker -> ticker instanceof TickerData);
+    }
+    private static boolean hasOnlyProxies(@NonNull List<?> proxies) {
+        return proxies.stream().allMatch(proxy -> proxy instanceof ProxyStateRecord stateRecord && stateRecord.address() != null);
+    }
+
+    private static boolean isNewerProxyRecord(@NonNull Context context, @Nullable File stagedFile) throws IOException {
+        if (stagedFile == null) return false;
+        if (!(loadStagedRecord(stagedFile) instanceof ProxyDataRecord importedRecord)) return false;
+
+        try {
+            if (!(FileUtils.loadObject(context, FILE_RECORD_PROXIES) instanceof ProxyDataRecord currentRecord)) return true;
+            return importedRecord.timestamp() > currentRecord.timestamp();
+        } catch (ClassNotFoundException | IOException | RuntimeException e) {
+            Logger.error("Error loading the current proxies", e);
+            return true;
         }
     }
     private static @Nullable Object loadStagedRecord(@NonNull File file) throws IOException {
@@ -445,7 +484,6 @@ public class BackupUtils {
     }
 
     private static void applyPreferences(@NonNull Context context, @NonNull BackupPreferences preferences) throws IOException {
-        // The export folder is not included since it only exists on this device
         boolean isSaved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(PREF_LIST_VIEW_ASSET_TYPE, preferences.listViewAssetType())
@@ -459,8 +497,7 @@ public class BackupUtils {
         if (!isSaved) throw new IOException("Error saving the configurations");
     }
 
-    // Zip
-    // Checks the whole zip: the entries can be read, and each of them matches its saved size and checksum
+    // Zip - checks the whole zip if entries can be read, and each of them matches its saved size and checksum
     private static void verifyBackupZip(@NonNull File zipFile) throws IOException {
         try (ZipFile zip = new ZipFile(zipFile)) {
             @NonNull byte[] buffer = new byte[BUFFER_SIZE];
@@ -539,6 +576,7 @@ public class BackupUtils {
             long total = 0;
             int read;
             while ((read = input.read(buffer)) != -1) {
+                SafeSingleTaskRunner.ensureActive();
                 total += read;
                 if (total > Constants.BACKUP_MAX_SIZE_BYTES) {
                     throw new IOException(String.format(Locale.ROOT, "Backup is larger than %d MB", Constants.BACKUP_MAX_SIZE_BYTES / (1024 * 1024)));

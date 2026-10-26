@@ -83,6 +83,7 @@ import com.example.investment.util.Logger;
 import com.example.investment.service.TickerService;
 import com.example.investment.util.BackupUtils;
 import com.example.investment.util.CustomTabsUtils;
+import com.example.investment.util.ImportUpdateGuard;
 import com.example.investment.util.SafeSingleTaskRunner;
 import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputLayout;
@@ -136,6 +137,7 @@ public class MainActivity extends AppCompatActivity {
     private TickerDataLoader tickerDataLoader;
     private final Object AUTO_LOAD_TASK_ID = new Object();
     private final Object MANUAL_UPDATE_TASK_ID = new Object();
+    private final Object IMPORT_TASK_ID = new Object();
 
     private boolean isManuallyUpdated = false;
     private String dataRefreshType;
@@ -172,6 +174,12 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         swipeRefreshLayout.setOnRefreshListener(() -> {
+            // The service refuses to update during an import too, this only tells the person why
+            if (ImportUpdateGuard.isImporting()) {
+                Toast.makeText(this, "Wait for the import to finish before updating", Toast.LENGTH_LONG).show();
+                return;
+            }
+
             if (isManuallyUpdated || dataRefreshType != null) {
                 if (FULL_DATA_REFRESH_ACTION.equals(dataRefreshType)) {
                     Toast.makeText(this, "Update already started...", Toast.LENGTH_LONG).show();
@@ -682,7 +690,7 @@ public class MainActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void confirmImportBackup(@NonNull Uri fileUri) {
-        if (isManuallyUpdated || dataRefreshType != null) {
+        if (isManuallyUpdated || dataRefreshType != null || ImportUpdateGuard.isUpdating()) {
             Toast.makeText(this, "Wait for the update to finish before importing", Toast.LENGTH_LONG).show();
             return;
         }
@@ -703,20 +711,29 @@ public class MainActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void importBackup(@NonNull Uri fileUri) {
+        boolean isReplacingImport = ImportUpdateGuard.isImporting();
+        @Nullable Object importToken = ImportUpdateGuard.tryStartImport();
+        if (importToken == null) {
+            Toast.makeText(this, "Wait for the update to finish before importing", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         if (editConfigurationsDialog != null) editConfigurationsDialog.dismiss();
         swipeRefreshLayout.setRefreshing(true);
-        Toast.makeText(this, "Importing backup...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, isReplacingImport ? "Previous import canceled, importing backup..." : "Importing backup...", Toast.LENGTH_SHORT).show();
 
         final Context applicationContext = getApplicationContext();
-        EVENT_THREAD.execute(ui -> {
+        EVENT_THREAD.replaceUniqueTask(IMPORT_TASK_ID, ui -> {
             try {
-                BackupUtils.importFromFile(applicationContext, fileUri);
+                BackupUtils.importFromFile(applicationContext, fileUri, importToken);
                 ui.post(() -> {
                     Toast.makeText(applicationContext, "Backup imported", Toast.LENGTH_LONG).show();
-                    // Configurations and data are loaded again from what was imported
+                    // Load configurations and data again after import
                     recreate();
                 });
             } catch (Exception e) {
+                if (ImportUpdateGuard.isNotCurrentImport(importToken)) return;
+
                 Logger.error("Error importing the backup", e);
                 ui.post(() -> {
                     swipeRefreshLayout.setRefreshing(false);
@@ -726,6 +743,8 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_LONG
                     ).show();
                 });
+            } finally {
+                ImportUpdateGuard.finishImport(importToken);
             }
         });
     }

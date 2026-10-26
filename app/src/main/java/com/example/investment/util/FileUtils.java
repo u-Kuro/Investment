@@ -72,8 +72,18 @@ public class FileUtils {
         }
     }
 
+    @FunctionalInterface
+    public interface OnRecordsReplaced {
+        void run() throws IOException;
+    }
+
+    // Every data record is replaced or none of them, if the last step fails the previous records are put back
     @RequiresApi(api = Build.VERSION_CODES.O)
-    public static void replaceDataRecords(@NonNull Context context, @NonNull Map<String, File> records) throws IOException {
+    public static void replaceDataRecords(
+        @NonNull Context context,
+        @NonNull Map<String, File> records,
+        @NonNull OnRecordsReplaced onRecordsReplaced
+    ) throws IOException {
         @NonNull List<String> replacedFileNames = new ArrayList<>();
 
         synchronized (fileLock) {
@@ -82,6 +92,8 @@ public class FileUtils {
                     File file = getFileDataRecord(context, record.getKey());
                     @Nullable File replacement = record.getValue();
 
+                    // A previous file that was left behind must not be put back
+                    Files.deleteIfExists(getPreviousFile(file).toPath());
                     if (file.exists()) {
                         Files.copy(file.toPath(), getPreviousFile(file).toPath(), StandardCopyOption.REPLACE_EXISTING);
                     }
@@ -92,7 +104,8 @@ public class FileUtils {
                     }
                     replacedFileNames.add(record.getKey());
                 }
-            } catch (IOException e) {
+                onRecordsReplaced.run();
+            } catch (IOException | RuntimeException e) {
                 for (String fileName : replacedFileNames) {
                     File file = getFileDataRecord(context, fileName);
                     File previousFile = getPreviousFile(file);
