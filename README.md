@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./images/logo.webp" height="128" alt="Logo"/>
   <h1 align="center">Investment Screener</h1>
-  <a href="https://github.com/u-Kuro/Investment/releases/download/v1.0.0/Investment.apk">
+  <a href="https://github.com/u-Kuro/Investment/releases/download/v2.0.0/Investment.apk">
     <img src="./images/android-download.svg" alt="Download"/>
   </a>
   <hr/>
