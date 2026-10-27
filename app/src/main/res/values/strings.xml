@@ -1,5 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Investment</string>
+    <string name="ticker_service_notification_title">Ticker service running</string>
+    <string name="ticker_update_notification_title">Ticker update running</string>
     <string name="last_updated_format">Last Updated: %s</string>
     <string name="last_updated_na">Last Update: N/A</string>
     <string name="fetching_tickers">Fetching Tickers from YFinance (%s)…</string>

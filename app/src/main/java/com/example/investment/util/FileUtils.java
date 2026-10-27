@@ -42,10 +42,8 @@ public class FileUtils {
                 oos.writeObject(object);
                 oos.flush();
             }
-            
-            Files.copy(tempFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            //noinspection ResultOfMethodCallIgnored
-            tempFile.delete();
+
+            Files.move(tempFile.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE);
         }
     }
     

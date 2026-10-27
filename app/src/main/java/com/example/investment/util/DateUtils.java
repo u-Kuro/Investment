@@ -9,6 +9,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import java.math.BigInteger;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Calendar;
 import java.util.TimeZone;
 
@@ -231,5 +233,20 @@ public class DateUtils {
         cal.setTimeInMillis(tsLong);
         long offsetMillis = (long) cal.get(Calendar.ZONE_OFFSET) + cal.get(Calendar.DST_OFFSET);
         return BigInteger.valueOf(offsetMillis);
+    }
+
+    // Local Calendar Day
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static long getStartOfDayMillis(long nowMillis) {
+        return getStartOfDayMillis(nowMillis, ZoneId.systemDefault());
+    }
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static long getStartOfDayMillis(long nowMillis, @NonNull ZoneId zone) {
+        return Instant.ofEpochMilli(nowMillis)
+            .atZone(zone)
+            .toLocalDate()
+            .atStartOfDay(zone)
+            .toInstant()
+            .toEpochMilli();
     }
 }

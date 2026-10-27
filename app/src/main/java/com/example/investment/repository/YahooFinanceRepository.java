@@ -9,12 +9,12 @@ import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISE
 import static com.example.investment.util.Constants.REQUEST_CONNECT_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
-import static com.example.investment.util.Constants.STOCK_TYPE;
 import static com.example.investment.util.Constants.THOUSAND_BI;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL;
 import static com.example.investment.util.Constants.YAHOO_CHART_URL_ALT;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL;
 import static com.example.investment.util.Constants.YAHOO_SCREENER_URL_ALT;
+import static com.example.investment.task.ScreenerResolver.getAssetType;
 import static com.example.investment.util.NetworkUtils.getThrottleDelay;
 import static com.example.investment.util.NetworkUtils.isOffline;
 import static com.example.investment.util.BigDecimalUtils.safeLog;
@@ -27,10 +27,21 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
+import com.example.investment.model.InvestmentConfig;
+import com.example.investment.model.ScreenerRecord;
+import com.example.investment.model.ScreenerSymbol;
+import com.example.investment.model.TickerFailure;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.model.ticker.TickerData.FixedHistoricalData;
 import com.example.investment.model.listener.TickerUpdateListener;
+import com.example.investment.task.ScreenerResolver;
+import com.example.investment.task.ScreenerResolver.Resolution;
+import com.example.investment.task.TickerUpdateEngine;
+import com.example.investment.task.TickerUpdateEngine.DefinitiveFailureException;
+import com.example.investment.task.TickerUpdateEngine.OfflineException;
+import com.example.investment.task.TickerUpdateStore;
 import com.example.investment.util.Logger;
+import com.example.investment.util.TickerUpdatePlanner.UpdateTarget;
 import com.example.investment.util.UrlBuilder;
 
 import java.io.IOException;
@@ -39,9 +50,11 @@ import java.math.BigInteger;
 import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -51,20 +64,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class YahooFinanceRepository {
-    private record FetchSymbolsResult(@NonNull String type, BigDecimal marketCap) {}
     private record FetchTickerResult(@NonNull JSONObject result, @NonNull String interval, boolean hasFixedHistoricalData) {}
     private record FetchTickerAttempt(@NonNull String interval, @NonNull String baseUrl) {}
     @FunctionalInterface
     private interface ResponseParser<T> {
         T parse(@SuppressWarnings("unused") @NonNull Response response) throws Exception;
     }
-    private static class OfflineException extends Exception {
-        OfflineException(@NonNull String message) {
+    private static class NotFoundException extends DefinitiveFailureException {
+        NotFoundException(@NonNull String message) {
             super(message);
         }
     }
-    private static class NotFoundException extends Exception {
-        NotFoundException(@NonNull String message) {
+    private static class InvalidHistoryException extends DefinitiveFailureException {
+        InvalidHistoryException(@SuppressWarnings("SameParameterValue") @NonNull String message) {
             super(message);
         }
     }
@@ -90,139 +102,129 @@ public class YahooFinanceRepository {
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void updateTickers(
         @NonNull Context context,
-        @Nullable List<TickerData> oldTickers,
+        @NonNull List<TickerData> savedTickers,
+        @NonNull Map<String, TickerFailure> failures,
+        @NonNull InvestmentConfig config,
         boolean isFullRefresh,
+        long nowMillis,
+        @NonNull TickerUpdateStore store,
         @NonNull TickerUpdateListener listener
     ) {
-        @NonNull List<TickerData> result = new ArrayList<>();
-        boolean effectiveFullRefresh = isFullRefresh || oldTickers == null;
-        @NonNull Map<String, TickerData> oldTickersMap = buildOldTickersMap(oldTickers);
+        listener.onTickersProgress(0, 0);
 
+        @NonNull Resolution resolution;
         try {
-            listener.onTickersProgress(0, 0);
-
-            Map<String, FetchSymbolsResult> newSymbolsMap = fetchSymbols(context, listener);
-
-            int total = newSymbolsMap.size();
-            int current = 0;
-
-            for (Map.Entry<String, FetchSymbolsResult> entry : newSymbolsMap.entrySet()) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("Thread interrupted in main ticker loop");
-                }
-
-                @NonNull String symbol = entry.getKey();
-                @Nullable TickerData oldTicker = oldTickersMap.get(symbol);
-
-                @Nullable TickerData processed;
-                try {
-                    processed = processTickerData(context, entry, oldTicker, effectiveFullRefresh);
-                } catch (InterruptedException e) {
-                    Logger.error("InterruptedException processing " + symbol, e);
-                    Thread.currentThread().interrupt();
-                    return;
-                } catch (OfflineException e) {
-                    throw e;
-                } catch (Exception e) {
-                    Logger.error("Error processing " + symbol, e);
-                    processed = oldTicker;
-                }
-
-                if (processed != null) {
-                    result.add(processed);
-                    listener.onTickerUpdate(result);
-                }
-                listener.onTickersProgress(++current, total);
-            }
+            resolution = resolveUniverse(context, savedTickers, nowMillis, store, listener);
         } catch (InterruptedException e) {
-            Logger.error("InterruptedException fetching ticker data", e);
+            Logger.error("InterruptedException fetching symbols", e);
             Thread.currentThread().interrupt();
             return;
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);
-            listener.onError(oldTickers);
+            listener.onError(savedTickers.isEmpty() ? null : savedTickers);
             return;
         }
 
-        if (result.isEmpty()) {
-            listener.onError(oldTickers);
-        } else {
-            listener.onFinish(result, System.currentTimeMillis());
-        }
+        new TickerUpdateEngine(
+            (target, fullRefresh) -> processTickerData(context, target, target.oldTicker(), fullRefresh),
+            store,
+            System::currentTimeMillis
+        ).run(savedTickers, resolution, failures, config, isFullRefresh, nowMillis, listener);
     }
 
     // Symbol Fetching
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private Map<String, FetchSymbolsResult> fetchSymbols(@NonNull Context context, @NonNull TickerUpdateListener listener) throws Exception {
-        Map<String, FetchSymbolsResult> symbols = new HashMap<>();
-
+    private @NonNull Resolution resolveUniverse(
+        @NonNull Context context,
+        @NonNull List<TickerData> savedTickers,
+        long nowMillis,
+        @NonNull TickerUpdateStore store,
+        @NonNull TickerUpdateListener listener
+    ) throws Exception {
+        @NonNull Map<String, ScreenerRecord> savedRecords = new HashMap<>();
         for (String screener : new String[]{ SCREENER_CRYPTO, SCREENER_STOCKS }) {
+            @Nullable ScreenerRecord record = store.getScreenerRecord(screener);
+            if (record != null) savedRecords.put(screener, record);
+        }
+
+        @NonNull AtomicInteger foundSymbolCount = new AtomicInteger(0);
+        return ScreenerResolver.resolve(
+            savedRecords,
+            savedTickers,
+            nowMillis,
+            screener -> {
+                @NonNull List<ScreenerSymbol> symbols = fetchScreener(context, screener, foundSymbolCount.get(), listener);
+                foundSymbolCount.addAndGet(symbols.size());
+                return symbols;
+            },
+            store::saveScreenerRecord
+        );
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private @NonNull List<ScreenerSymbol> fetchScreener(
+        @NonNull Context context,
+        @NonNull String screener,
+        int foundSymbolCount,
+        @NonNull TickerUpdateListener listener
+    ) throws Exception {
+        @NonNull Map<String, ScreenerSymbol> symbols = new LinkedHashMap<>();
+
+        boolean useAlternativeUrl = false;
+        BigInteger startIndex = BigInteger.ZERO;
+        String prevFirstSymbol = null;
+
+        while (true) {
             if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Thread interrupted while fetching symbols");
+                throw new InterruptedException("Thread interrupted during symbol pagination");
             }
 
-            boolean useAlternativeUrl = false;
-            BigInteger startIndex = BigInteger.ZERO;
-            String prevFirstSymbol = null;
+            String url = new UrlBuilder(useAlternativeUrl ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
+                .addParam("count", Integer.toString(MAX_SCREENER_COUNT))
+                .addParam("scrIds", screener)
+                .addParam("sortField", "intradaymarketcap")
+                .addParam("sortType", "DESC")
+                .addParam("start", startIndex.toString())
+                .build();
 
-            while (true) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("Thread interrupted during symbol pagination");
-                }
+            try {
+                JSONArray quotes = fetchResponse(context, url, this::parseScreenerResponse);
+                int length = quotes.length();
 
-                String url = new UrlBuilder(useAlternativeUrl ? YAHOO_SCREENER_URL_ALT : YAHOO_SCREENER_URL)
-                    .addParam("count", Integer.toString(MAX_SCREENER_COUNT))
-                    .addParam("scrIds", screener)
-                    .addParam("sortField", "intradaymarketcap")
-                    .addParam("sortType", "DESC")
-                    .addParam("start", startIndex.toString())
-                    .build();
+                String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
+                if (firstSymbol.equals(prevFirstSymbol)) throw new Exception("Duplicate symbol found.");
+                prevFirstSymbol = firstSymbol;
 
-                try {
-                    JSONArray quotes = fetchResponse(context, url, this::parseScreenerResponse);
-                    int length = quotes.length();
-
-                    String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
-                    if (firstSymbol.equals(prevFirstSymbol)) throw new Exception("Duplicate symbol found.");
-                    prevFirstSymbol = firstSymbol;
-
-                    for (int i = 0; i < length; i++) {
-                        try {
-                            JSONObject obj = quotes.getJSONObject(i);
-                            String symbol = obj.getString("symbol");
-                            @NonNull BigDecimal marketCap = new BigDecimal(obj.getString("marketCap"));
-                            if (!symbol.isEmpty() && marketCap.compareTo(BigDecimal.ZERO) > 0) {
-                                symbols.put(
-                                    symbol,
-                                    new FetchSymbolsResult(
-                                        SCREENER_CRYPTO.equals(screener) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE,
-                                        marketCap
-                                    )
-                                );
-                            }
-                        } catch (Exception e) {
-                            Logger.error(e.getMessage(), e);
+                for (int i = 0; i < length; i++) {
+                    try {
+                        JSONObject obj = quotes.getJSONObject(i);
+                        String symbol = obj.getString("symbol");
+                        @NonNull BigDecimal marketCap = new BigDecimal(obj.getString("marketCap"));
+                        if (!symbol.isEmpty() && marketCap.compareTo(BigDecimal.ZERO) > 0) {
+                            symbols.put(symbol, new ScreenerSymbol(symbol, getAssetType(screener), marketCap));
                         }
+                    } catch (Exception e) {
+                        Logger.error(e.getMessage(), e);
                     }
-
-                    useAlternativeUrl = false;
-                    startIndex = startIndex.add(BigInteger.valueOf(length));
-                    listener.onSymbolsProgress(symbols.size());
-
-                } catch (InterruptedException | OfflineException | NotFoundException e) {
-                    throw e;
-                } catch (NoDataException e) {
-                    if (startIndex.signum() > 0) break;
-                    throw e;
-                } catch (Exception e) {
-                    // Every candidate already had its turn, only the other host is left
-                    if (useAlternativeUrl) throw e;
-                    useAlternativeUrl = true;
                 }
+
+                useAlternativeUrl = false;
+                startIndex = startIndex.add(BigInteger.valueOf(length));
+                listener.onSymbolsProgress(foundSymbolCount + symbols.size());
+
+            } catch (InterruptedException | OfflineException | NotFoundException e) {
+                throw e;
+            } catch (NoDataException e) {
+                if (startIndex.signum() > 0) break;
+                throw e;
+            } catch (Exception e) {
+                // Every candidate already had its turn, only the other host is left
+                if (useAlternativeUrl) throw e;
+                useAlternativeUrl = true;
             }
         }
 
-        return symbols;
+        return new ArrayList<>(symbols.values());
     }
 
     private JSONArray parseScreenerResponse(@NonNull Response response) throws Exception {
@@ -385,12 +387,11 @@ public class YahooFinanceRepository {
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private @NonNull TickerData processTickerData(
         @NonNull Context context,
-        @NonNull Map.Entry<String, FetchSymbolsResult> entry,
+        @NonNull UpdateTarget target,
         @Nullable TickerData oldTicker,
         boolean isFullRefresh
     ) throws Exception {
-        @NonNull String symbol = entry.getKey();
-        @NonNull FetchSymbolsResult symbolResult = entry.getValue();
+        @NonNull String symbol = target.symbol();
 
         FetchTickerResult fetchResult = fetchTickerWithInterval(context, symbol, oldTicker, isFullRefresh);
         @NonNull JSONObject result = fetchResult.result();
@@ -408,7 +409,7 @@ public class YahooFinanceRepository {
         JSONArray apiOpens = quote.getJSONArray("open");
         JSONArray apiHighs = quote.getJSONArray("high");
         JSONArray apiLows = quote.getJSONArray("low");
-        JSONArray apiVolumes = symbolResult.type().equals(CRYPTOCURRENCY_TYPE)
+        JSONArray apiVolumes = target.type().equals(CRYPTOCURRENCY_TYPE)
             ? convertCryptoVolumeToUnits(quote.getJSONArray("volume"), apiCloses)
             : quote.getJSONArray("volume");
 
@@ -474,7 +475,7 @@ public class YahooFinanceRepository {
 
             // Pull full history if history changed (for example: split, data correction, etc.)
             if (hasStoredHistoryChanged(apiTimestamps, apiOpens, apiHighs, apiLows, apiCloses, apiVolumes, fixedData)) {
-                return processTickerData(context, entry, null, true);
+                return processTickerData(context, target, null, true);
             }
 
             prevUpperBand = dpSumNum.divide(dpSumDen, DECIMAL128)
@@ -638,7 +639,7 @@ public class YahooFinanceRepository {
             || startPrice == null || startPriceTimestampSeconds == null
             || startPrice.compareTo(BigDecimal.ZERO) <= 0
         ) {
-            throw new Exception("Invalid History: Insufficient valid data points.");
+            throw new InvalidHistoryException("Invalid History: Insufficient valid data points.");
         }
 
         fixedHistoricalDataMap.put(interval, new FixedHistoricalData(
@@ -660,15 +661,16 @@ public class YahooFinanceRepository {
 
         return new TickerData(
             symbol,
-            symbolResult.type(),
+            target.type(),
             name,
             exchange,
-            symbolResult.marketCap(),
+            target.marketCap(),
             firstTradeTimestampSeconds,
             firstTradeOpenPrice,
             lastAdjustedClosePrice,
             adjustmentFactor,
-            fixedHistoricalDataMap
+            fixedHistoricalDataMap,
+            System.currentTimeMillis()
         );
     }
 
@@ -714,12 +716,6 @@ public class YahooFinanceRepository {
         } catch (Exception ignored) {
             return BigDecimal.ZERO;
         }
-    }
-    private @NonNull Map<String, TickerData> buildOldTickersMap(@Nullable List<TickerData> oldTickers) {
-        Map<String, TickerData> map = new HashMap<>();
-        if (oldTickers == null) return map;
-        for (TickerData ticker : oldTickers) map.put(ticker.getSymbol(), ticker);
-        return map;
     }
     private @NonNull JSONArray convertCryptoVolumeToUnits(@NonNull JSONArray apiVolumes, @NonNull JSONArray apiCloses) {
         JSONArray converted = new JSONArray();

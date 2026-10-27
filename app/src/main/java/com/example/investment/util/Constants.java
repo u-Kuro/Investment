@@ -5,6 +5,8 @@ import android.os.Looper;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class Constants {
@@ -23,6 +25,8 @@ public class Constants {
     public static final String FILE_RECORD_PASSIVE_LEADING_TICKERS = "passive_leading_tickers.ser";
     public static final String FILE_RECORD_MOMENTUM_LEADING_TICKERS = "momentum_leading_tickers.ser";
     public static final String FILE_RECORD_PROXIES = "proxies.ser";
+    public static final String FILE_RECORD_SCREENER_CRYPTO = "screener_crypto.ser";
+    public static final String FILE_RECORD_SCREENER_STOCKS = "screener_stocks.ser";
 
     // Preferences
     public static final String PREFS_NAME = "Investment Shared Preferences";
@@ -45,7 +49,9 @@ public class Constants {
         FILE_RECORD_TICKERS,
         FILE_RECORD_PASSIVE_LEADING_TICKERS,
         FILE_RECORD_MOMENTUM_LEADING_TICKERS,
-        FILE_RECORD_PROXIES
+        FILE_RECORD_PROXIES,
+        FILE_RECORD_SCREENER_STOCKS,
+        FILE_RECORD_SCREENER_CRYPTO
     };
     
     // Yahoo Finance (query1: HTTP 1.0, query2: HTTP 1.1)
@@ -160,4 +166,51 @@ public class Constants {
     public static final BigDecimal DEFAULT_MARKET_CAP_THRESHOLD = BigDecimal.valueOf(10_000_000_000L); // $ 10 Billion
     public static final BigDecimal DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD = BigDecimal.valueOf(1_000_000); // $ 1 Million
     public static final BigDecimal DEFAULT_AGE_IN_SECONDS_THRESHOLD = BigDecimal.valueOf(157_680_000); // 5 Years
+
+    // Ticker Update Records
+    public static final String FILE_RECORD_FAILED_TICKERS = "failed_tickers.ser";
+    public static final int MAX_TICKER_FAILURES_PER_DAY = 3;
+
+    // Ticker Update Progress
+    public static final int PROGRESS_SAVE_TICKER_COUNT = 25;
+    public static final long PROGRESS_SAVE_INTERVAL_MILLISECONDS = 60_000; // 1 Minute
+
+    // Ticker Update Tiers
+    public static final int UPDATE_TIER_LEADING = 1;
+    public static final int UPDATE_TIER_NEW = 2;
+    public static final int UPDATE_TIER_OTHER = 3;
+
+    // Ticker Update Triggers
+    public static final String TICKER_RETRY_WORK_TAG = "ticker_retry_work";
+    public static final String TICKER_RETRY_WORK_NAME = "ticker_retry_work";
+    public static final String EXTRA_IS_RETRY_WORK = "is_retry_work";
+    public static final long TICKER_RETRY_DELAY_HOURS = 1; // 1 Hour
+
+    // User-Initiated Ticker Update
+    public static final String TICKER_UIDT_JOB_ID = "TICKER_UIDT_JOB_ID";
+    public static final long TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES = 50L * 1024 * 1024;
+    public static final long TICKER_UIDT_ESTIMATED_UPLOAD_BYTES = 1024L * 1024;
+    public static final String EXTRA_TICKER_FULL_REFRESH = "full_refresh";
+    public static final String EXTRA_TICKER_REQUEST_ID = "request_id";
+
+    // Work Manager
+    private static Map<String, Integer> buildDirectJobIds(@SuppressWarnings("SameParameterValue") String... jobs) {
+        LinkedHashMap<String, Integer> ids = new LinkedHashMap<>();
+        for (String job : jobs) {
+            if (ids.put(job, Integer.MAX_VALUE - ids.size()) != null) {
+                throw new IllegalStateException("Duplicate direct job: " + job);
+            }
+        }
+        return Collections.unmodifiableMap(ids); // keeps order, blocks outside edits
+    }
+    private static final Map<String, Integer> DIRECT_JOB_IDS = buildDirectJobIds(
+        TICKER_UIDT_JOB_ID
+    );
+    public static int directJobId(String job) {
+        Integer id = DIRECT_JOB_IDS.get(job);
+        if (id == null) throw new IllegalArgumentException("Unknown direct job: " + job);
+        return id;
+    }
+    public static final int WORK_MANAGER_JOB_ID_MIN = 0;
+    public static final int WORK_MANAGER_JOB_ID_MAX = Integer.MAX_VALUE - DIRECT_JOB_IDS.size();
 }

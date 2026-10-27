@@ -5,10 +5,18 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.work.BackoffPolicy;
 import androidx.work.Constraints;
-import androidx.work.NetworkType;
-import androidx.work.PeriodicWorkRequest;
+import androidx.work.Data;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
+
+import static com.example.investment.util.Constants.EXTRA_IS_RETRY_WORK;
+import static com.example.investment.util.Constants.TICKER_RETRY_DELAY_HOURS;
+import static com.example.investment.util.Constants.TICKER_RETRY_WORK_NAME;
+import static com.example.investment.util.Constants.TICKER_RETRY_WORK_TAG;
 
 import com.example.investment.worker.TickerWorker;
 
@@ -36,5 +44,25 @@ public class WorkerManager {
             ExistingPeriodicWorkPolicy.KEEP,
             workRequest
         );
+    }
+
+    public static void scheduleRetryWork(@NonNull Context context) {
+        OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(TickerWorker.class)
+        .addTag(TICKER_RETRY_WORK_TAG)
+        .setInputData(new Data.Builder().putBoolean(EXTRA_IS_RETRY_WORK, true).build())
+        .setInitialDelay(TICKER_RETRY_DELAY_HOURS, TimeUnit.HOURS)
+        .setConstraints(new Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_MINUTES, TimeUnit.MINUTES)
+        .build();
+
+        WorkManager.getInstance(context.getApplicationContext())
+        .enqueueUniqueWork(TICKER_RETRY_WORK_NAME, ExistingWorkPolicy.REPLACE, workRequest);
+    }
+
+    public static void cancelRetryWork(@NonNull Context context) {
+        WorkManager.getInstance(context.getApplicationContext())
+        .cancelUniqueWork(TICKER_RETRY_WORK_NAME);
     }
 }

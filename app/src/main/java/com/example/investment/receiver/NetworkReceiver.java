@@ -17,11 +17,9 @@ import androidx.annotation.RequiresApi;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.service.TickerService;
 import com.example.investment.task.TickerDataLoader;
+import com.example.investment.task.WorkerManager;
 import com.example.investment.util.Logger;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
 
 public class NetworkReceiver extends ConnectivityManager.NetworkCallback {
@@ -33,7 +31,6 @@ public class NetworkReceiver extends ConnectivityManager.NetworkCallback {
         this.context = context.getApplicationContext();
     }
 
-    // Waits for the next network once, it is not a listener for every network change
     public static synchronized void retryOnNetworkAvailable(@NonNull Context context) {
         @NonNull ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
         if (instance != null) manager.unregisterNetworkCallback(instance);
@@ -51,30 +48,23 @@ public class NetworkReceiver extends ConnectivityManager.NetworkCallback {
         }
         context.getSystemService(ConnectivityManager.class).unregisterNetworkCallback(this);
 
-        // Same check as the initial load in MainActivity, the service is only called when an update is due
         EVENT_THREAD.execute(() -> {
             try {
-                @NonNull TickerDataLoader tickerDataLoader = TickerDataLoader.getInstance();
-                final long lastUpdateTime = tickerDataLoader.getLastUpdateTime(context);
-                final @Nullable List<TickerData> tickers = tickerDataLoader.getTickers(context);
-
-                @NonNull String action;
-                if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
-                    action = FULL_DATA_REFRESH_ACTION;
-                } else {
-                    LocalDateTime lastUpdate = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(lastUpdateTime),
-                        ZoneId.systemDefault()
-                    );
-                    if (!lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) return;
-                    action = INCREMENTAL_DATA_REFRESH_ACTION;
+                TickerDataLoader loader = TickerDataLoader.getInstance();
+                if (!loader.hasPendingTickers(context, System.currentTimeMillis())) {
+                    WorkerManager.cancelRetryWork(context);
+                    return;
                 }
 
+                @Nullable List<TickerData> tickers = loader.getTickers(context);
                 Intent serviceIntent = new Intent(context, TickerService.class);
-                serviceIntent.setAction(action);
+                serviceIntent.setAction(tickers == null || tickers.isEmpty()
+                    ? FULL_DATA_REFRESH_ACTION
+                    : INCREMENTAL_DATA_REFRESH_ACTION);
                 context.startForegroundService(serviceIntent);
             } catch (Exception e) {
                 Logger.error("Error updating on network available", e);
+                WorkerManager.scheduleRetryWork(context);
             }
         });
     }

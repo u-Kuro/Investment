@@ -41,6 +41,7 @@ public class TickerData implements Serializable {
     @NonNull private final BigDecimal lastAdjustedClosePrice;
     @NonNull private final BigDecimal adjustmentFactor;
     @NonNull private final Map<String, FixedHistoricalData> fixedHistoricalDataMap;
+    private final long lastUpdatedAtMillis;
     public record FixedHistoricalData(
         @NonNull BigInteger updatedAtTimestampSeconds,
         @NonNull BigDecimal dpSumNum,
@@ -68,7 +69,8 @@ public class TickerData implements Serializable {
         @NonNull BigDecimal firstTradeOpenPrice,
         @NonNull BigDecimal lastAdjustedClosePrice,
         @NonNull BigDecimal adjustmentFactor,
-        @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap
+        @NonNull Map<String, FixedHistoricalData> fixedHistoricalDataMap,
+        long lastUpdatedAtMillis
     ) {
         this.symbol = symbol;
         this.type = type;
@@ -80,6 +82,7 @@ public class TickerData implements Serializable {
         this.lastAdjustedClosePrice = lastAdjustedClosePrice;
         this.adjustmentFactor = adjustmentFactor;
         this.fixedHistoricalDataMap = new HashMap<>(fixedHistoricalDataMap);
+        this.lastUpdatedAtMillis = lastUpdatedAtMillis;
     }
 
     public @NonNull String getSymbol() { return symbol; }
@@ -100,6 +103,9 @@ public class TickerData implements Serializable {
     public FixedHistoricalData getFixedHistoricalData(@NonNull String interval) {
         return getFixedHistoricalDataMap().getOrDefault(interval, null);
     }
+    @SuppressWarnings("unused")
+    public long getLastUpdatedAtMillis() { return lastUpdatedAtMillis; }
+    public boolean isUpdatedSince(long sinceMillis) { return lastUpdatedAtMillis >= sinceMillis; }
 
     public record FixedHistoricalRecord(@NonNull String interval, @NonNull FixedHistoricalData fixedHistoricalData) {}
     public FixedHistoricalRecord getNewestFixedHistoricalDataWithInterval() {
@@ -361,6 +367,15 @@ public class TickerData implements Serializable {
             .divide(numberOfDays, DECIMAL128);
     }
 
+    public @NonNull BigDecimal getPercentageIncreasePerDay(@NonNull String investmentType, final long currentTimeMillis) {
+        if (investmentType.equals(MOMENTUM_INVESTMENT_TYPE)) {
+            FixedHistoricalData newestFixedHistoricalData = getNewestFixedHistoricalData();
+            return getPercentageIncreasePerDay(investmentType, newestFixedHistoricalData, getAdjustedUpperBand(newestFixedHistoricalData), currentTimeMillis);
+        } else {
+            return getPercentageIncreasePerDay(investmentType, null, BigDecimal.ZERO, currentTimeMillis);
+        }
+    }
+
     public @NonNull BigDecimal getDailyDollarVolume(FixedHistoricalRecord newestFixedHistoricalDataRecord) {
         if (newestFixedHistoricalDataRecord == null) return BigDecimal.ZERO;
 
@@ -412,7 +427,8 @@ public class TickerData implements Serializable {
     }
     public @NonNull String getPriceState(
         @NonNull String investmentType,
-        FixedHistoricalData newestFixedHistoricalData
+        FixedHistoricalData newestFixedHistoricalData,
+        final long currentTimeMillis
     ) {
         if (newestFixedHistoricalData == null) return PRICE_BELOW;
 
@@ -424,7 +440,7 @@ public class TickerData implements Serializable {
         @NonNull BigDecimal adjustedUpperBand = getAdjustedUpperBand(newestFixedHistoricalData, adjustedDensePrice);
         if (adjustedUpperBand.compareTo(adjustedLowerBand) < 0) return PRICE_BELOW;
 
-        @NonNull BigDecimal percentageIncreasePerDay = getPercentageIncreasePerDay(investmentType, newestFixedHistoricalData, adjustedUpperBand);
+        @NonNull BigDecimal percentageIncreasePerDay = getPercentageIncreasePerDay(investmentType, newestFixedHistoricalData, adjustedUpperBand, currentTimeMillis);
         if (percentageIncreasePerDay.compareTo(BigDecimal.ZERO) <= 0) {
             return PRICE_BELOW;
         }

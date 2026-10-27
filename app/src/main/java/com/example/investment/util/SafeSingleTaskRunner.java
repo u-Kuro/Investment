@@ -158,7 +158,7 @@ public class SafeSingleTaskRunner {
             }
         });
     }
-
+    /** @noinspection unused*/
     public void cancelAll() {
         currentUniqueTaskIds.clear();
         cancelCurrentTask();

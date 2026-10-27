@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:ignore="ForegroundServicesPolicy" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
 
     <application
         android:name=".MyApplication"
@@ -22,7 +23,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Investment"
         android:launchMode="singleInstance"
-        android:largeHeap="true">
+        android:largeHeap="true"
+        tools:ignore="RemoveWorkManagerInitializer">
         <activity
             android:theme="@style/Theme.Investment.SplashScreen"
             android:name=".MainActivity"
@@ -52,6 +54,21 @@
                 <action android:name="stop_service" />
             </intent-filter>
         </service>
+        <service
+            android:name=".service.TickerJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"
+            tools:targetApi="34" />
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

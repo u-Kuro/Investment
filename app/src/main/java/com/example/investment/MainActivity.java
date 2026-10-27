@@ -2,7 +2,6 @@ package com.example.investment;
 
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
-import static com.example.investment.service.TickerService.STOP_SERVICE_ACTION;
 import static com.example.investment.util.Constants.ALL_TYPE;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
@@ -79,6 +78,7 @@ import android.net.Uri;
 import com.example.investment.model.adapter.TickerAdapter;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
+import com.example.investment.task.UserInitiatedUpdate;
 import com.example.investment.util.Logger;
 import com.example.investment.service.TickerService;
 import com.example.investment.util.BackupUtils;
@@ -104,10 +104,16 @@ import android.content.SharedPreferences;
 import androidx.activity.OnBackPressedCallback;
 
 public class MainActivity extends AppCompatActivity {
+    private static final String STATE_RETURNING_FROM_APP_LAUNCHED_ACTIVITY = "returning_from_app_launched_activity";
+    private static final String STATE_IS_REQUESTING_PERMISSIONS = "is_requesting_permissions";
+    private static final String STATE_HAS_ASKED_NOTIFICATION_PERMISSION = "has_asked_notification_permission";
+    private static final String STATE_HAS_ASKED_BATTERY_OPTIMIZATION = "has_asked_battery_optimization";
+
     public static WeakReference<MainActivity> weakActivity;
 
-    // Permissions are asked one at a time on every open, each of them is asked only once per open
+    // Permissions are asked once per open
     private boolean isRequestingPermissions = false;
+    private boolean isReturningFromAppLaunchedActivity = false;
     private boolean hasAskedNotificationPermission = false;
     private boolean hasAskedBatteryOptimization = false;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
@@ -149,6 +155,21 @@ public class MainActivity extends AppCompatActivity {
         splashScreen.setKeepOnScreenCondition(() -> false);
 
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            isReturningFromAppLaunchedActivity = savedInstanceState.getBoolean(
+                STATE_RETURNING_FROM_APP_LAUNCHED_ACTIVITY,
+                false
+            );
+            isRequestingPermissions = savedInstanceState.getBoolean(STATE_IS_REQUESTING_PERMISSIONS, false);
+            hasAskedNotificationPermission = savedInstanceState.getBoolean(
+                STATE_HAS_ASKED_NOTIFICATION_PERMISSION,
+                false
+            );
+            hasAskedBatteryOptimization = savedInstanceState.getBoolean(
+                STATE_HAS_ASKED_BATTERY_OPTIMIZATION,
+                false
+            );
+        }
         setContentView(R.layout.activity_main);
 
         registerActivityResultLaunchers();
@@ -210,18 +231,7 @@ public class MainActivity extends AppCompatActivity {
                     EVENT_THREAD.cancelCurrentUniqueTask(MANUAL_UPDATE_TASK_ID);
                     DEFERRED_THREAD.cancelCurrentUniqueTask(MANUAL_UPDATE_TASK_ID);
 
-                    Intent stopIntent = new Intent(this, TickerService.class);
-                    stopIntent.setAction(STOP_SERVICE_ACTION);
-                    startService(stopIntent);
-
-                    stopProcessingImage.setVisibility(View.GONE);
-                    progressBar.setVisibility(View.GONE);
-                    progressBar.getLayoutParams().height = 0;
-                    progressBar.requestLayout();
-                    ((View) progressBar.getParent()).requestLayout();
-
-                    dataRefreshType = null;
-                    isManuallyUpdated = false;
+                    UserInitiatedUpdate.cancel(this);
                 })
                 .create();
             Window dialogWindow = alertDialog.getWindow();
@@ -275,25 +285,20 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     final long lastUpdateTime = finalDataLoader.getLastUpdateTime(MainActivity.this);
                     final List<TickerData> tickers = finalDataLoader.getTickers(MainActivity.this);
+                    final boolean hasSavedTickers = tickers != null && !tickers.isEmpty();
+                    final boolean hasPendingTickers = finalDataLoader.hasPendingTickers(
+                        MainActivity.this,
+                        System.currentTimeMillis()
+                    );
                     ui.post(() -> {
                         updateLastUpdateTime(lastUpdateTime);
-                        if (tickers != null && !tickers.isEmpty()) {
+                        if (hasSavedTickers) {
                             tickerAdapter.setInitialTickers(tickers, () -> {
-                                if (lastUpdateTime == 0 || tickers.isEmpty()) {
-                                    updateTickers(false, true);
-                                } else {
-                                    LocalDateTime lastUpdate = LocalDateTime.ofInstant(
-                                        Instant.ofEpochMilli(lastUpdateTime),
-                                        ZoneId.systemDefault()
-                                    );
-                                    if (lastUpdate.isBefore(LocalDateTime.now().minusDays(1))) {
-                                        updateTickers(false, false);
-                                    }
-                                }
+                                if (hasPendingTickers) updateTickers(false);
                                 swipeRefreshLayout.setRefreshing(false);
                             });
                         } else {
-                            updateTickers(false, true);
+                            if (hasPendingTickers) updateTickers(true);
                             swipeRefreshLayout.setRefreshing(false);
                         }
                     });
@@ -328,19 +333,29 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void manualUpdateTickerDataRecord(final boolean isFullDataRefresh) {
         final TickerDataLoader dataLoader = this.tickerDataLoader;
         EVENT_THREAD.replaceUniqueTask(MANUAL_UPDATE_TASK_ID, ui -> {
             try {
-                final long lastUpdateTime = dataLoader.getLastUpdateTime(MainActivity.this);
                 final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this);
+                final boolean hasSavedTickers = tickers != null && !tickers.isEmpty();
+                final boolean hasPendingTickers = dataLoader.hasPendingTickers(
+                    MainActivity.this,
+                    System.currentTimeMillis()
+                );
                 ui.post(() -> {
-                    if (lastUpdateTime == 0 || tickers == null || tickers.isEmpty()) {
-                        updateTickers(true, true);
-                    } else {
-                        updateTickers(true, isFullDataRefresh);
+                    final boolean isFullRefresh = isFullDataRefresh || !hasSavedTickers;
+                    if (!isFullRefresh && !hasPendingTickers) {
+                        Toast.makeText(this, "Tickers are already up to date", Toast.LENGTH_LONG).show();
+                        swipeRefreshLayout.setRefreshing(false);
+                        isManuallyUpdated = false;
+                        dataRefreshType = null;
+                        return;
                     }
+
+                    if (isFullRefresh) swipeRefreshLayout.setRefreshing(false);
+                    UserInitiatedUpdate.start(MainActivity.this, isFullRefresh);
                 });
             } catch (Exception e) {
                 ui.post(() -> {
@@ -352,18 +367,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateTickers(boolean isManual, boolean isFullDataRefresh) {
+    private void updateTickers(boolean isFullDataRefresh) {
         Intent intent = new Intent(this, TickerService.class);
         intent.setAction(isFullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
 
-        if (isManual) {
-            if (isFullDataRefresh) {
-                swipeRefreshLayout.setRefreshing(false);
-            }
-            startService(intent);
-        } else {
-            startService(intent);
-        }
+        startService(intent);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -567,8 +575,21 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStart() {
+        boolean wasReturningFromAppLaunchedActivity = isReturningFromAppLaunchedActivity;
+        if (wasReturningFromAppLaunchedActivity) isReturningFromAppLaunchedActivity = false;
+
         super.onStart();
+        if (wasReturningFromAppLaunchedActivity) return;
         startPermissionRequests();
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putBoolean(STATE_RETURNING_FROM_APP_LAUNCHED_ACTIVITY, isReturningFromAppLaunchedActivity);
+        outState.putBoolean(STATE_IS_REQUESTING_PERMISSIONS, isRequestingPermissions);
+        outState.putBoolean(STATE_HAS_ASKED_NOTIFICATION_PERMISSION, hasAskedNotificationPermission);
+        outState.putBoolean(STATE_HAS_ASKED_BATTERY_OPTIMIZATION, hasAskedBatteryOptimization);
+        super.onSaveInstanceState(outState);
     }
 
     private void startPermissionRequests() {
@@ -601,12 +622,14 @@ public class MainActivity extends AppCompatActivity {
         if (!hasAskedBatteryOptimization && !powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
             hasAskedBatteryOptimization = true;
             try {
+                isReturningFromAppLaunchedActivity = true;
                 settingsLauncher.launch(new Intent(
                     Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + getPackageName())
                 ));
                 return;
             } catch (ActivityNotFoundException e) {
+                isReturningFromAppLaunchedActivity = false;
                 Logger.error("Battery optimization settings are not available", e);
             }
         }
@@ -618,11 +641,13 @@ public class MainActivity extends AppCompatActivity {
     private void openNotificationSettings() {
         try {
             Toast.makeText(this, "Allow notifications in the settings", Toast.LENGTH_LONG).show();
+            isReturningFromAppLaunchedActivity = true;
             settingsLauncher.launch(
                 new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
             );
         } catch (ActivityNotFoundException e) {
+            isReturningFromAppLaunchedActivity = false;
             Logger.error("Notification settings are not available", e);
             askNextPermission();
         }
@@ -630,8 +655,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void launchExportFolderPicker() {
         try {
+            isReturningFromAppLaunchedActivity = true;
             exportFolderLauncher.launch(null);
         } catch (ActivityNotFoundException e) {
+            isReturningFromAppLaunchedActivity = false;
             Logger.error("Folder picker is not available", e);
             Toast.makeText(this, "No app found to choose a folder", Toast.LENGTH_LONG).show();
         }
@@ -639,8 +666,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void launchImportFilePicker() {
         try {
+            isReturningFromAppLaunchedActivity = true;
             importFileLauncher.launch(new String[]{"*/*"});
         } catch (ActivityNotFoundException e) {
+            isReturningFromAppLaunchedActivity = false;
             Logger.error("File picker is not available", e);
             Toast.makeText(this, "No app found to choose a file", Toast.LENGTH_LONG).show();
         }
@@ -775,6 +804,7 @@ public class MainActivity extends AppCompatActivity {
                     @NonNull String symbol = ticker.getSymbol();
                     if (symbol.isEmpty()) throw new Exception("Empty Symbol");
                     String url = "https://finance.yahoo.com/quote/" + symbol;
+                    isReturningFromAppLaunchedActivity = true;
                     customTabsUtils.launchUrl(
                         this,
                         Uri.parse(url),
@@ -782,6 +812,7 @@ public class MainActivity extends AppCompatActivity {
                         true
                     );
                 } catch (Exception ignored) {
+                    isReturningFromAppLaunchedActivity = false;
                     Toast.makeText(getApplicationContext(), "Can't open the link", Toast.LENGTH_LONG).show();
                 }
             },

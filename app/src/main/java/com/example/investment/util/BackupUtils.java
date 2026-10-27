@@ -13,6 +13,8 @@ import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.FILE_RECORD_PROXIES;
+import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_CRYPTO;
+import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_STOCKS;
 import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
 import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
@@ -26,6 +28,8 @@ import static com.example.investment.util.Constants.PREF_LIST_VIEW_ASSET_TYPE;
 import static com.example.investment.util.Constants.PREF_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_NUMBER_OF_TOP_HOLDINGS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
+import static com.example.investment.util.Constants.SCREENER_CRYPTO;
+import static com.example.investment.util.Constants.SCREENER_STOCKS;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -43,6 +47,8 @@ import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.ProxyDataRecord;
 import com.example.investment.model.ProxyStateRecord;
+import com.example.investment.model.ScreenerRecord;
+import com.example.investment.model.ScreenerSymbol;
 import com.example.investment.model.TickerDataRecord;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.repository.YahooFinanceRepository;
@@ -411,6 +417,19 @@ public class BackupUtils {
                 ) {
                     throw new IOException("Backup proxies are invalid");
                 }
+            } else if (FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
+                || FILE_RECORD_SCREENER_STOCKS.equals(entry.getKey())) {
+                @NonNull String expectedScreenerId = FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
+                    ? SCREENER_CRYPTO : SCREENER_STOCKS;
+                @NonNull String expectedAssetType = FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
+                    ? CRYPTOCURRENCY_TYPE : STOCK_TYPE;
+                if (!(loadStagedRecord(file) instanceof ScreenerRecord screenerRecord)
+                    || !expectedScreenerId.equals(screenerRecord.screenerId())
+                    || screenerRecord.symbols().isEmpty()
+                    || hasInvalidScreenerSymbols(screenerRecord.symbols(), expectedAssetType)
+                ) {
+                    throw new IOException("Backup screener records are invalid");
+                }
             } else if (!(loadStagedRecord(file) instanceof List<?> leadingTickers) || hasNonValidTicker(leadingTickers)) {
                 throw new IOException("Backup leading tickers are invalid");
             }
@@ -421,6 +440,18 @@ public class BackupUtils {
     }
     private static boolean hasOnlyProxies(@NonNull List<?> proxies) {
         return proxies.stream().allMatch(proxy -> proxy instanceof ProxyStateRecord stateRecord && stateRecord.address() != null);
+    }
+    private static boolean hasInvalidScreenerSymbols(@NonNull List<ScreenerSymbol> symbols, @NonNull String expectedAssetType) {
+        for (ScreenerSymbol symbol : symbols) {
+            if (symbol == null
+                || symbol.symbol().isBlank()
+                || !expectedAssetType.equals(symbol.type())
+                || symbol.marketCap().compareTo(BigDecimal.ZERO) < 0
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isNewerProxyRecord(@NonNull Context context, @Nullable File stagedFile) throws IOException {
