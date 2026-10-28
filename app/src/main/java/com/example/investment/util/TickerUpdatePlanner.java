@@ -42,10 +42,10 @@ public class TickerUpdatePlanner {
         @NonNull Map<String, TickerFailure> failures,
         @NonNull InvestmentConfig config,
         long nowMillis,
-        long fullRefreshSinceMillis
+        long refreshSinceMillis
     ) {
         final long dayStartMillis = getStartOfDayMillis(nowMillis);
-        final long dueSinceMillis = PendingTickers.getDueSinceMillis(dayStartMillis, fullRefreshSinceMillis);
+        final long dueSinceMillis = PendingTickers.getDueSinceMillis(dayStartMillis, refreshSinceMillis);
 
         @NonNull Map<String, ScreenerSymbol> universeBySymbol = new LinkedHashMap<>();
         for (ScreenerSymbol screenerSymbol : universe) {
@@ -69,7 +69,7 @@ public class TickerUpdatePlanner {
         for (TickerData ticker : TickerRanking.getLeadingTickers(universeTickers, config, nowMillis)) {
             @NonNull String symbol = ticker.getSymbol();
             tieredSymbols.add(symbol);
-            if (isNotDue(symbol, ticker, failures, dayStartMillis, dueSinceMillis)) continue;
+            if (isNotDue(symbol, ticker, failures, dueSinceMillis)) continue;
             targets.add(toTarget(requireUniverseSymbol(universeBySymbol, symbol), ticker, UPDATE_TIER_LEADING));
         }
 
@@ -78,7 +78,7 @@ public class TickerUpdatePlanner {
             @NonNull String symbol = screenerSymbol.symbol();
             if (savedBySymbol.containsKey(symbol)) continue;
             tieredSymbols.add(symbol);
-            if (isNotDue(symbol, null, failures, dayStartMillis, dueSinceMillis)) continue;
+            if (isNotDue(symbol, null, failures, dueSinceMillis)) continue;
             targets.add(toTarget(screenerSymbol, null, UPDATE_TIER_NEW));
         }
 
@@ -88,7 +88,7 @@ public class TickerUpdatePlanner {
         for (TickerData ticker : universeTickers) {
             @NonNull String symbol = ticker.getSymbol();
             if (tieredSymbols.contains(symbol)) continue;
-            if (isNotDue(symbol, ticker, failures, dayStartMillis, dueSinceMillis)) continue;
+            if (isNotDue(symbol, ticker, failures, dueSinceMillis)) continue;
 
             @NonNull RankedTicker rankedTicker = new RankedTicker(
                 ticker,
@@ -120,11 +120,10 @@ public class TickerUpdatePlanner {
         @NonNull String symbol,
         @Nullable TickerData ticker,
         @NonNull Map<String, TickerFailure> failures,
-        long dayStartMillis,
         long dueSinceMillis
     ) {
         @Nullable TickerFailure failure = failures.get(symbol);
-        if (failure != null && failure.isGivenUp(dayStartMillis)) return true;
+        if (failure != null && failure.isGivenUp(dueSinceMillis)) return true;
 
         return ticker != null && ticker.isUpdatedSince(dueSinceMillis);
     }

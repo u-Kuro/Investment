@@ -339,9 +339,9 @@ public class MainActivity extends AppCompatActivity {
             try {
                 final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this);
                 final boolean hasSavedTickers = tickers != null && !tickers.isEmpty();
+                final boolean isFullRefresh = isFullDataRefresh || !hasSavedTickers;
+                dataLoader.requestManualRefresh(MainActivity.this.getApplicationContext(), isFullRefresh);
                 ui.post(() -> {
-                    final boolean isFullRefresh = isFullDataRefresh || !hasSavedTickers;
-
                     swipeRefreshLayout.setRefreshing(false);
                     UserInitiatedUpdate.start(MainActivity.this, isFullRefresh);
                 });

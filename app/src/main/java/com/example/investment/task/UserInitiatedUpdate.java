@@ -95,6 +95,7 @@ public class UserInitiatedUpdate {
         scheduler.cancel(directJobId(TICKER_UIDT_JOB_ID));
         appContext.stopService(new Intent(appContext, TickerService.class));
         EVENT_THREAD.execute(() -> {
+            TickerDataLoader.getInstance().clearRefreshPoint(appContext);
             if (!TickerDataLoader.getInstance().hasPendingTickers(appContext, System.currentTimeMillis())) {
                 WorkerManager.cancelRetryWork(appContext);
             }

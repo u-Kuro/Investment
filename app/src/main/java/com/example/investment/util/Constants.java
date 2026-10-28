@@ -8,7 +8,6 @@ import java.math.BigInteger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 public class Constants {
     // Runnable Tasks Handlers
@@ -171,13 +170,7 @@ public class Constants {
     // Ticker Update Records
     public static final String FILE_RECORD_FAILED_TICKERS = "failed_tickers.ser";
     public static final int MAX_TICKER_FAILURES_PER_DAY = 3;
-    public static final String FILE_RECORD_FULL_REFRESH = "full_refresh.ser";
-    public static final long FULL_REFRESH_RESUME_MAX_AGE_MILLISECONDS = TimeUnit.DAYS.toMillis(1); // 1 Day
-
-    // Ticker Update Progress
-    public static final int PROGRESS_SAVE_TICKER_COUNT = 25;
-    public static final long PROGRESS_SAVE_INTERVAL_MILLISECONDS = 60_000; // 1 Minute
-    public static final long PROGRESS_SAVE_COST_FACTOR = 10;
+    public static final String FILE_RECORD_REFRESH_POINT = "refresh_point.ser";
 
     // Ticker Update Tiers
     public static final int UPDATE_TIER_LEADING = 1;

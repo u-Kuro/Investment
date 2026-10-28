@@ -24,7 +24,7 @@ public class FileUtils {
     private static final Object fileLock = new Object();
     
     public static File getFileDataRecord(@NonNull Context context, String fileName) {
-        return new File(context.getApplicationContext().getCacheDir(), fileName);
+        return new File(context.getApplicationContext().getNoBackupFilesDir(), fileName);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)

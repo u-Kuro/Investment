@@ -33,36 +33,36 @@ public class PendingTickers {
         @NonNull Collection<String> universeSymbols,
         @NonNull Map<String, TickerFailure> failures,
         long nowMillis,
-        long fullRefreshSinceMillis
+        long refreshSinceMillis
     ) {
         final long dayStartMillis = getStartOfDayMillis(nowMillis);
-        final long dueSinceMillis = getDueSinceMillis(dayStartMillis, fullRefreshSinceMillis);
+        final long dueSinceMillis = getDueSinceMillis(dayStartMillis, refreshSinceMillis);
         @NonNull Set<String> countedSymbols = new HashSet<>();
         int count = 0;
 
         for (TickerData ticker : tickers) {
             @NonNull String symbol = ticker.getSymbol();
             if (!countedSymbols.add(symbol)) continue;
-            if (ticker.isUpdatedSince(dueSinceMillis) || isGivenUp(failures, symbol, dayStartMillis)) continue;
+            if (ticker.isUpdatedSince(dueSinceMillis) || isGivenUp(failures, symbol, dueSinceMillis)) continue;
             count++;
         }
 
         for (String symbol : universeSymbols) {
             if (!countedSymbols.add(symbol)) continue;
-            if (isGivenUp(failures, symbol, dayStartMillis)) continue;
+            if (isGivenUp(failures, symbol, dueSinceMillis)) continue;
             count++;
         }
 
         return count;
     }
 
-    public static long getDueSinceMillis(long dayStartMillis, long fullRefreshSinceMillis) {
-        return Math.max(dayStartMillis, fullRefreshSinceMillis);
+    public static long getDueSinceMillis(long dayStartMillis, long refreshSinceMillis) {
+        return Math.max(dayStartMillis, refreshSinceMillis);
     }
 
     // Helpers
-    private static boolean isGivenUp(@NonNull Map<String, TickerFailure> failures, @NonNull String symbol, long dayStartMillis) {
+    private static boolean isGivenUp(@NonNull Map<String, TickerFailure> failures, @NonNull String symbol, long sinceMillis) {
         TickerFailure failure = failures.get(symbol);
-        return failure != null && failure.isGivenUp(dayStartMillis);
+        return failure != null && failure.isGivenUp(sinceMillis);
     }
 }

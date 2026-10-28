@@ -1,13 +1,12 @@
 package com.example.investment.task;
 
 import static com.example.investment.util.Constants.FILE_RECORD_FAILED_TICKERS;
-import static com.example.investment.util.Constants.FILE_RECORD_FULL_REFRESH;
 import static com.example.investment.util.Constants.FILE_RECORD_MOMENTUM_LEADING_TICKERS;
 import static com.example.investment.util.Constants.FILE_RECORD_PASSIVE_LEADING_TICKERS;
+import static com.example.investment.util.Constants.FILE_RECORD_REFRESH_POINT;
 import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_STOCKS;
 import static com.example.investment.util.Constants.FILE_RECORD_TICKERS;
-import static com.example.investment.util.Constants.FULL_REFRESH_RESUME_MAX_AGE_MILLISECONDS;
 import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
@@ -24,6 +23,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.InvestmentConfig;
+import com.example.investment.model.RefreshPoint;
 import com.example.investment.model.ScreenerRecord;
 import com.example.investment.model.ScreenerSymbol;
 import com.example.investment.model.TickerDataRecord;
@@ -71,23 +71,25 @@ public class TickerDataLoader {
     ) {
         final long nowMillis = System.currentTimeMillis();
 
-        final long fullRefreshSinceMillis;
+        @Nullable RefreshPoint refreshPoint;
         if (isFullRefresh) {
-            clearTickerFailures(context);
-            saveFullRefreshSince(context, nowMillis);
-            fullRefreshSinceMillis = nowMillis;
+            refreshPoint = new RefreshPoint(nowMillis, true);
+            saveRefreshPoint(context, refreshPoint);
         } else {
-            fullRefreshSinceMillis = getFullRefreshSinceMillis(context, nowMillis);
+            refreshPoint = getRefreshPoint(context, nowMillis);
         }
+        final long refreshSinceMillis = refreshPoint != null ? refreshPoint.sinceMillis() : 0;
+        final boolean isFullRefreshing = refreshPoint != null && refreshPoint.isFullRefresh();
 
         @Nullable List<TickerData> savedTickers = getTickers(context);
 
         repository.updateTickers(
             context,
             savedTickers != null ? new ArrayList<>(savedTickers) : new ArrayList<>(),
-            isFullRefresh ? new HashMap<>() : getTickerFailures(context),
+            getTickerFailures(context),
             InvestmentConfig.fromPreferences(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)),
-            fullRefreshSinceMillis,
+            refreshSinceMillis,
+            isFullRefreshing,
             nowMillis,
             new TickerUpdateStore() {
                 @Override
@@ -125,7 +127,7 @@ public class TickerDataLoader {
                     // Only a finished update moves the last update time, progress saves keep the previous one
                     try {
                         saveAndCache(context, tickers, updateTime);
-                        clearFullRefresh(context);
+                        clearRefreshPoint(context);
                     } catch (Exception e) {
                         Logger.error("Error saving ticker record", e);
                         listener.onError(tickers);
@@ -201,12 +203,13 @@ public class TickerDataLoader {
             }
         }
 
+        @Nullable RefreshPoint refreshPoint = getRefreshPoint(context, nowMillis);
         return PendingTickers.count(
             tickers,
             universeSymbols,
             getTickerFailures(context),
             nowMillis,
-            getFullRefreshSinceMillis(context, nowMillis)
+            refreshPoint != null ? refreshPoint.sinceMillis() : 0
         ) > 0;
     }
 
@@ -235,34 +238,41 @@ public class TickerDataLoader {
         return SCREENER_CRYPTO.equals(screenerId) ? FILE_RECORD_SCREENER_CRYPTO : FILE_RECORD_SCREENER_STOCKS;
     }
 
-    // Full Refresh Resume Point
-    public long getFullRefreshSinceMillis(@NonNull Context context, long nowMillis) {
+    // Refresh Point
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public @Nullable RefreshPoint getRefreshPoint(@NonNull Context context, long nowMillis) {
         try {
-            if (!(loadObject(context, FILE_RECORD_FULL_REFRESH) instanceof Long sinceMillis)) return 0;
-            if (sinceMillis <= 0 || sinceMillis > nowMillis) return 0;
-            return nowMillis - sinceMillis <= FULL_REFRESH_RESUME_MAX_AGE_MILLISECONDS ? sinceMillis : 0;
+            if (!(loadObject(context, FILE_RECORD_REFRESH_POINT) instanceof RefreshPoint refreshPoint)) return null;
+
+            final long sinceMillis = refreshPoint.sinceMillis();
+            if (sinceMillis <= 0 || sinceMillis > nowMillis) return null;
+            return sinceMillis >= getStartOfDayMillis(nowMillis) ? refreshPoint : null;
         } catch (Exception e) {
-            Logger.error("Error loading full refresh resume point", e);
-            return 0;
+            Logger.error("Error loading refresh point", e);
+            return null;
         }
     }
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void saveFullRefreshSince(@NonNull Context context, long sinceMillis) {
+    public void saveRefreshPoint(@NonNull Context context, @NonNull RefreshPoint refreshPoint) {
         try {
-            saveObject(context, FILE_RECORD_FULL_REFRESH, sinceMillis);
+            saveObject(context, FILE_RECORD_REFRESH_POINT, refreshPoint);
         } catch (Exception e) {
-            Logger.error("Error saving full refresh resume point", e);
+            Logger.error("Error saving refresh point", e);
         }
     }
     @RequiresApi(api = Build.VERSION_CODES.O)
-    private void clearFullRefresh(@NonNull Context context) {
+    public void clearRefreshPoint(@NonNull Context context) {
         try {
-            if (loadObject(context, FILE_RECORD_FULL_REFRESH) instanceof Long sinceMillis && sinceMillis > 0) {
-                saveObject(context, FILE_RECORD_FULL_REFRESH, 0L);
+            if (loadObject(context, FILE_RECORD_REFRESH_POINT) instanceof RefreshPoint refreshPoint && refreshPoint.sinceMillis() > 0) {
+                saveObject(context, FILE_RECORD_REFRESH_POINT, new RefreshPoint(0, false));
             }
         } catch (Exception e) {
-            Logger.error("Error clearing full refresh resume point", e);
+            Logger.error("Error clearing refresh point", e);
         }
+    }
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void requestManualRefresh(@NonNull Context context, boolean isFullRefresh) {
+        saveRefreshPoint(context, new RefreshPoint(System.currentTimeMillis(), isFullRefresh));
     }
 
     // Ticker Failures
@@ -289,14 +299,6 @@ public class TickerDataLoader {
             saveObject(context, FILE_RECORD_FAILED_TICKERS, todayFailures);
         } catch (Exception e) {
             Logger.error("Error saving ticker failures", e);
-        }
-    }
-    @RequiresApi(api = Build.VERSION_CODES.O)
-    public void clearTickerFailures(@NonNull Context context) {
-        try {
-            saveObject(context, FILE_RECORD_FAILED_TICKERS, new HashMap<String, TickerFailure>());
-        } catch (Exception e) {
-            Logger.error("Error clearing ticker failures", e);
         }
     }
 }

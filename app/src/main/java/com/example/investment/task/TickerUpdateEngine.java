@@ -1,9 +1,5 @@
 package com.example.investment.task;
 
-import static com.example.investment.util.Constants.PROGRESS_SAVE_COST_FACTOR;
-import static com.example.investment.util.Constants.PROGRESS_SAVE_INTERVAL_MILLISECONDS;
-import static com.example.investment.util.Constants.PROGRESS_SAVE_TICKER_COUNT;
-
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -25,6 +21,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 public class TickerUpdateEngine {
@@ -46,29 +46,40 @@ public class TickerUpdateEngine {
     private static class RunState {
         @NonNull private final Map<String, TickerData> tickers = new LinkedHashMap<>();
         @NonNull private final Map<String, TickerFailure> failures;
-        @Nullable private List<TickerData> latestSavedTickers;
-        private boolean hasUnsavedTickers;
-        private boolean hasUnsavedFailures = false;
-        private int unsavedTickerCount = 0;
-        private long lastSaveAttemptAtMillis;
-        private long lastSaveFinishedAtMillis;
-        private long lastSaveDurationMillis = 0;
-        private long lastSavedAtMillis = 0;
+        @NonNull private final ExecutorService writer = Executors.newSingleThreadExecutor();
+        @NonNull private final AtomicBoolean isWriting = new AtomicBoolean(false);
+        @Nullable private volatile List<TickerData> latestSavedTickers;
+        private volatile long lastSavedAtMillis = 0;
+        private volatile long savedTickersVersion = 0;
+        private volatile long savedFailuresVersion = 0;
+        private long tickersVersion;
+        private long failuresVersion = 0;
 
         RunState(
             @NonNull List<TickerData> savedTickers,
             @NonNull List<TickerData> keptTickers,
-            @NonNull Map<String, TickerFailure> failures,
-            long startedAtMillis
+            @NonNull Map<String, TickerFailure> failures
         ) {
             for (TickerData ticker : keptTickers) tickers.put(ticker.getSymbol(), ticker);
             this.failures = new HashMap<>(failures);
             this.latestSavedTickers = savedTickers.isEmpty() ? null : new ArrayList<>(savedTickers);
-            this.hasUnsavedTickers = tickers.size() != savedTickers.size();
-            this.lastSaveAttemptAtMillis = startedAtMillis;
-            this.lastSaveFinishedAtMillis = startedAtMillis;
+            this.tickersVersion = tickers.size() != savedTickers.size() ? 1 : 0;
+        }
+
+        boolean hasUnsavedTickers() {
+            return tickersVersion != savedTickersVersion;
+        }
+        boolean hasUnsavedFailures() {
+            return failuresVersion != savedFailuresVersion;
         }
     }
+    private record Snapshot(
+        @Nullable List<TickerData> tickers,
+        long tickersVersion,
+        @Nullable Map<String, TickerFailure> failures,
+        long failuresVersion,
+        long savedAtMillis
+    ) {}
 
     @NonNull private final TickerProcessor processor;
     @NonNull private final TickerUpdateStore store;
@@ -90,25 +101,25 @@ public class TickerUpdateEngine {
         @NonNull Resolution resolution,
         @NonNull Map<String, TickerFailure> failures,
         @NonNull InvestmentConfig config,
-        long fullRefreshSinceMillis,
+        long refreshSinceMillis,
+        boolean isFullRefresh,
         long nowMillis,
         @NonNull TickerUpdateListener listener
     ) {
         @NonNull RunState state = new RunState(
             savedTickers,
             resolution.pruneRemoved(savedTickers),
-            failures,
-            clock.getAsLong()
+            failures
         );
 
         @NonNull Outcome outcome = Outcome.FAILED;
         boolean isSaved;
         try {
-            outcome = processTargets(state, resolution, config, fullRefreshSinceMillis, nowMillis, listener);
+            outcome = processTargets(state, resolution, config, refreshSinceMillis, isFullRefresh, nowMillis, listener);
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);
         } finally {
-            isSaved = flush(state);
+            isSaved = saveAll(state);
         }
 
         if (outcome == Outcome.INTERRUPTED) {
@@ -125,7 +136,7 @@ public class TickerUpdateEngine {
         if (
             !isSaved
             || tickers.isEmpty()
-            || PendingTickers.count(tickers, resolution.symbols(), state.failures, nowMillis, fullRefreshSinceMillis) > 0
+            || PendingTickers.count(tickers, resolution.symbols(), state.failures, nowMillis, refreshSinceMillis) > 0
         ) {
             listener.onError(state.latestSavedTickers);
             return;
@@ -140,19 +151,18 @@ public class TickerUpdateEngine {
         @NonNull RunState state,
         @NonNull Resolution resolution,
         @NonNull InvestmentConfig config,
-        long fullRefreshSinceMillis,
+        long refreshSinceMillis,
+        boolean isFullRefresh,
         long nowMillis,
         @NonNull TickerUpdateListener listener
     ) {
-        final boolean isFullRefresh = fullRefreshSinceMillis > 0;
-
         @NonNull List<UpdateTarget> targets = TickerUpdatePlanner.plan(
             new ArrayList<>(state.tickers.values()),
             resolution.universe(),
             state.failures,
             config,
             nowMillis,
-            fullRefreshSinceMillis
+            refreshSinceMillis
         );
 
         int total = targets.size();
@@ -181,20 +191,19 @@ public class TickerUpdateEngine {
                     symbol,
                     TickerFailure.afterFailure(state.failures.get(symbol), clock.getAsLong(), e instanceof DefinitiveFailureException)
                 );
-                state.hasUnsavedFailures = true;
+                state.failuresVersion++;
             }
 
             if (ticker != null) {
                 state.tickers.put(symbol, ticker);
-                state.hasUnsavedTickers = true;
-                state.unsavedTickerCount++;
+                state.tickersVersion++;
 
-                if (state.failures.remove(symbol) != null) state.hasUnsavedFailures = true;
+                if (state.failures.remove(symbol) != null) state.failuresVersion++;
 
                 listener.onTickerUpdate(new ArrayList<>(state.tickers.values()));
             }
 
-            flushIfDue(state);
+            saveIfAvailable(state);
             listener.onTickersProgress(++current, total);
         }
 
@@ -202,55 +211,72 @@ public class TickerUpdateEngine {
     }
 
     // Progress Saving
-    private void flushIfDue(@NonNull RunState state) {
-        if (!state.hasUnsavedTickers && !state.hasUnsavedFailures) return;
+    private void saveIfAvailable(@NonNull RunState state) {
+        if (!state.hasUnsavedTickers() && !state.hasUnsavedFailures()) return;
+        if (!state.isWriting.compareAndSet(false, true)) return;
 
-        final long nowMillis = clock.getAsLong();
-
-        if (nowMillis - state.lastSaveFinishedAtMillis < state.lastSaveDurationMillis * PROGRESS_SAVE_COST_FACTOR) return;
-
-        if (
-            state.unsavedTickerCount < PROGRESS_SAVE_TICKER_COUNT
-            && nowMillis - state.lastSaveAttemptAtMillis < PROGRESS_SAVE_INTERVAL_MILLISECONDS
-        ) return;
-
-        flush(state);
+        @NonNull Snapshot snapshot = takeSnapshot(state);
+        state.writer.execute(() -> {
+            try {
+                write(state, snapshot);
+            } finally {
+                state.isWriting.set(false);
+            }
+        });
     }
-    private boolean flush(@NonNull RunState state) {
-        if (!state.hasUnsavedTickers && !state.hasUnsavedFailures) return true;
-
+    private boolean saveAll(@NonNull RunState state) {
         boolean wasInterrupted = Thread.interrupted();
-        long savedAtMillis = clock.getAsLong();
-        state.lastSaveAttemptAtMillis = savedAtMillis;
-        state.unsavedTickerCount = 0;
-        boolean isSaved = true;
 
         try {
-            if (state.hasUnsavedTickers) {
-                @NonNull List<TickerData> tickers = new ArrayList<>(state.tickers.values());
-                if (tickers.isEmpty()) {
-                    state.hasUnsavedTickers = false;
-                } else {
-                    try {
-                        store.saveProgress(tickers, savedAtMillis);
-                        state.latestSavedTickers = tickers;
-                        state.lastSavedAtMillis = savedAtMillis;
-                        state.hasUnsavedTickers = false;
-                    } catch (Exception e) {
-                        Logger.error("Error saving ticker progress", e);
-                        isSaved = false;
-                    }
-                    state.lastSaveFinishedAtMillis = clock.getAsLong();
-                    state.lastSaveDurationMillis = Math.max(0, state.lastSaveFinishedAtMillis - savedAtMillis);
+            state.writer.shutdown();
+            while (true) {
+                try {
+                    if (state.writer.awaitTermination(1, TimeUnit.MINUTES)) break;
+                } catch (InterruptedException e) {
+                    wasInterrupted = true;
                 }
             }
 
-            if (state.hasUnsavedFailures) {
-                store.saveTickerFailures(new HashMap<>(state.failures), savedAtMillis);
-                state.hasUnsavedFailures = false;
-            }
+            if (!state.hasUnsavedTickers() && !state.hasUnsavedFailures()) return true;
+            return write(state, takeSnapshot(state));
         } finally {
             if (wasInterrupted) Thread.currentThread().interrupt();
+        }
+    }
+    private @NonNull Snapshot takeSnapshot(@NonNull RunState state) {
+        return new Snapshot(
+            state.hasUnsavedTickers() ? new ArrayList<>(state.tickers.values()) : null,
+            state.tickersVersion,
+            state.hasUnsavedFailures() ? new HashMap<>(state.failures) : null,
+            state.failuresVersion,
+            clock.getAsLong()
+        );
+    }
+    private boolean write(@NonNull RunState state, @NonNull Snapshot snapshot) {
+        boolean isSaved = true;
+
+        if (snapshot.tickers() != null) {
+            try {
+                if (!snapshot.tickers().isEmpty()) {
+                    store.saveProgress(snapshot.tickers(), snapshot.savedAtMillis());
+                    state.latestSavedTickers = snapshot.tickers();
+                    state.lastSavedAtMillis = snapshot.savedAtMillis();
+                }
+                state.savedTickersVersion = snapshot.tickersVersion();
+            } catch (Exception e) {
+                Logger.error("Error saving ticker progress", e);
+                isSaved = false;
+            }
+        }
+
+        if (snapshot.failures() != null) {
+            try {
+                store.saveTickerFailures(snapshot.failures(), snapshot.savedAtMillis());
+                state.savedFailuresVersion = snapshot.failuresVersion();
+            } catch (Exception e) {
+                Logger.error("Error saving ticker failures", e);
+                isSaved = false;
+            }
         }
 
         return isSaved;

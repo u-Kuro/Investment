@@ -215,7 +215,7 @@ public class BackupUtils {
     public static void exportToFolder(@NonNull Context context, @NonNull Uri folderUri) throws IOException {
         synchronized (backupLock) {
             @NonNull ContentResolver resolver = context.getContentResolver();
-            @NonNull File localZip = new File(context.getCacheDir(), BACKUP_FILE_NAME + ".local");
+            @NonNull File localZip = new File(context.getNoBackupFilesDir(), BACKUP_FILE_NAME + ".local");
 
             try {
                 writeBackupZip(context, localZip);
@@ -251,7 +251,7 @@ public class BackupUtils {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     private static void writeBackupZip(@NonNull Context context, @NonNull File zipFile) throws IOException {
-        @NonNull File snapshotDirectory = new File(context.getCacheDir(), EXPORT_DIRECTORY_NAME);
+        @NonNull File snapshotDirectory = new File(context.getNoBackupFilesDir(), EXPORT_DIRECTORY_NAME);
         deleteRecursively(snapshotDirectory);
         //noinspection ResultOfMethodCallIgnored
         snapshotDirectory.mkdirs();
@@ -335,7 +335,7 @@ public class BackupUtils {
     public static void importFromFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull Object importToken) throws IOException {
         synchronized (backupLock) {
             ensureImportActive(importToken);
-            @NonNull File stagingDirectory = new File(context.getCacheDir(), IMPORT_DIRECTORY_NAME);
+            @NonNull File stagingDirectory = new File(context.getNoBackupFilesDir(), IMPORT_DIRECTORY_NAME);
             deleteRecursively(stagingDirectory);
             //noinspection ResultOfMethodCallIgnored
             stagingDirectory.mkdirs();
@@ -378,6 +378,7 @@ public class BackupUtils {
                 try {
                     FileUtils.replaceDataRecords(context, records, () -> applyPreferences(context, preferences));
                     TickerDataLoader.getInstance().invalidateCache();
+                    TickerDataLoader.getInstance().clearRefreshPoint(context);
                     if (records.containsKey(FILE_RECORD_PROXIES)) YahooFinanceRepository.invalidateProxyCache();
                 } finally {
                     if (wasInterrupted) Thread.currentThread().interrupt();

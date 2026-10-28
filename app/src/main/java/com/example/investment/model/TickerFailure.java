@@ -16,8 +16,8 @@ public record TickerFailure(long lastFailedAtMillis, int failureCount) implement
     @Serial
     private static final long serialVersionUID = 1L;
 
-    public boolean isGivenUp(long dayStartMillis) {
-        return lastFailedAtMillis >= dayStartMillis && failureCount >= MAX_TICKER_FAILURES_PER_DAY;
+    public boolean isGivenUp(long sinceMillis) {
+        return lastFailedAtMillis >= sinceMillis && failureCount >= MAX_TICKER_FAILURES_PER_DAY;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)

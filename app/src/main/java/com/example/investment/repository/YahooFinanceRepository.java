@@ -105,7 +105,8 @@ public class YahooFinanceRepository {
         @NonNull List<TickerData> savedTickers,
         @NonNull Map<String, TickerFailure> failures,
         @NonNull InvestmentConfig config,
-        long fullRefreshSinceMillis,
+        long refreshSinceMillis,
+        boolean isFullRefresh,
         long nowMillis,
         @NonNull TickerUpdateStore store,
         @NonNull TickerUpdateListener listener
@@ -129,7 +130,7 @@ public class YahooFinanceRepository {
             (target, fullRefresh) -> processTickerData(context, target, target.oldTicker(), fullRefresh),
             store,
             System::currentTimeMillis
-        ).run(savedTickers, resolution, failures, config, fullRefreshSinceMillis, nowMillis, listener);
+        ).run(savedTickers, resolution, failures, config, refreshSinceMillis, isFullRefresh, nowMillis, listener);
     }
 
     // Symbol Fetching
