@@ -1,5 +1,6 @@
 package com.example.investment.task;
 
+import static com.example.investment.util.Constants.PROGRESS_SAVE_COST_FACTOR;
 import static com.example.investment.util.Constants.PROGRESS_SAVE_INTERVAL_MILLISECONDS;
 import static com.example.investment.util.Constants.PROGRESS_SAVE_TICKER_COUNT;
 
@@ -50,6 +51,8 @@ public class TickerUpdateEngine {
         private boolean hasUnsavedFailures = false;
         private int unsavedTickerCount = 0;
         private long lastSaveAttemptAtMillis;
+        private long lastSaveFinishedAtMillis;
+        private long lastSaveDurationMillis = 0;
         private long lastSavedAtMillis = 0;
 
         RunState(
@@ -63,6 +66,7 @@ public class TickerUpdateEngine {
             this.latestSavedTickers = savedTickers.isEmpty() ? null : new ArrayList<>(savedTickers);
             this.hasUnsavedTickers = tickers.size() != savedTickers.size();
             this.lastSaveAttemptAtMillis = startedAtMillis;
+            this.lastSaveFinishedAtMillis = startedAtMillis;
         }
     }
 
@@ -86,7 +90,7 @@ public class TickerUpdateEngine {
         @NonNull Resolution resolution,
         @NonNull Map<String, TickerFailure> failures,
         @NonNull InvestmentConfig config,
-        boolean isFullRefresh,
+        long fullRefreshSinceMillis,
         long nowMillis,
         @NonNull TickerUpdateListener listener
     ) {
@@ -100,7 +104,7 @@ public class TickerUpdateEngine {
         @NonNull Outcome outcome = Outcome.FAILED;
         boolean isSaved;
         try {
-            outcome = processTargets(state, resolution, config, isFullRefresh, nowMillis, listener);
+            outcome = processTargets(state, resolution, config, fullRefreshSinceMillis, nowMillis, listener);
         } catch (Exception e) {
             Logger.error("Error fetching ticker data", e);
         } finally {
@@ -121,7 +125,7 @@ public class TickerUpdateEngine {
         if (
             !isSaved
             || tickers.isEmpty()
-            || PendingTickers.count(tickers, resolution.symbols(), state.failures, nowMillis) > 0
+            || PendingTickers.count(tickers, resolution.symbols(), state.failures, nowMillis, fullRefreshSinceMillis) > 0
         ) {
             listener.onError(state.latestSavedTickers);
             return;
@@ -136,17 +140,19 @@ public class TickerUpdateEngine {
         @NonNull RunState state,
         @NonNull Resolution resolution,
         @NonNull InvestmentConfig config,
-        boolean isFullRefresh,
+        long fullRefreshSinceMillis,
         long nowMillis,
         @NonNull TickerUpdateListener listener
     ) {
+        final boolean isFullRefresh = fullRefreshSinceMillis > 0;
+
         @NonNull List<UpdateTarget> targets = TickerUpdatePlanner.plan(
             new ArrayList<>(state.tickers.values()),
             resolution.universe(),
             state.failures,
             config,
             nowMillis,
-            isFullRefresh
+            fullRefreshSinceMillis
         );
 
         int total = targets.size();
@@ -199,9 +205,13 @@ public class TickerUpdateEngine {
     private void flushIfDue(@NonNull RunState state) {
         if (!state.hasUnsavedTickers && !state.hasUnsavedFailures) return;
 
+        final long nowMillis = clock.getAsLong();
+
+        if (nowMillis - state.lastSaveFinishedAtMillis < state.lastSaveDurationMillis * PROGRESS_SAVE_COST_FACTOR) return;
+
         if (
             state.unsavedTickerCount < PROGRESS_SAVE_TICKER_COUNT
-            && clock.getAsLong() - state.lastSaveAttemptAtMillis < PROGRESS_SAVE_INTERVAL_MILLISECONDS
+            && nowMillis - state.lastSaveAttemptAtMillis < PROGRESS_SAVE_INTERVAL_MILLISECONDS
         ) return;
 
         flush(state);
@@ -230,6 +240,8 @@ public class TickerUpdateEngine {
                         Logger.error("Error saving ticker progress", e);
                         isSaved = false;
                     }
+                    state.lastSaveFinishedAtMillis = clock.getAsLong();
+                    state.lastSaveDurationMillis = Math.max(0, state.lastSaveFinishedAtMillis - savedAtMillis);
                 }
             }
 

@@ -61,6 +61,7 @@ public class TickerJobService extends JobService {
                 state.completed = true;
             }
         }
+        UserInitiatedUpdate.releaseRequestId(requestId);
 
         boolean expectedStop = UserInitiatedUpdate.consumeExpectedStop(requestId);
         TickerUpdateRunner.cancelJobRun(this, params);
@@ -105,6 +106,7 @@ public class TickerJobService extends JobService {
             if (state.stopped || state.completed) return;
             state.completed = true;
             jobRuns.remove(requestId, state);
+            UserInitiatedUpdate.releaseRequestId(requestId);
             jobFinished(state.params, false);
         }
     }

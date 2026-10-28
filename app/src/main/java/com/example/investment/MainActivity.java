@@ -195,7 +195,6 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            // The service refuses to update during an import too, this only tells the person why
             if (ImportUpdateGuard.isImporting()) {
                 Toast.makeText(this, "Wait for the import to finish before updating", Toast.LENGTH_LONG).show();
                 return;
@@ -340,21 +339,10 @@ public class MainActivity extends AppCompatActivity {
             try {
                 final List<TickerData> tickers = dataLoader.getTickers(MainActivity.this);
                 final boolean hasSavedTickers = tickers != null && !tickers.isEmpty();
-                final boolean hasPendingTickers = dataLoader.hasPendingTickers(
-                    MainActivity.this,
-                    System.currentTimeMillis()
-                );
                 ui.post(() -> {
                     final boolean isFullRefresh = isFullDataRefresh || !hasSavedTickers;
-                    if (!isFullRefresh && !hasPendingTickers) {
-                        Toast.makeText(this, "Tickers are already up to date", Toast.LENGTH_LONG).show();
-                        swipeRefreshLayout.setRefreshing(false);
-                        isManuallyUpdated = false;
-                        dataRefreshType = null;
-                        return;
-                    }
 
-                    if (isFullRefresh) swipeRefreshLayout.setRefreshing(false);
+                    swipeRefreshLayout.setRefreshing(false);
                     UserInitiatedUpdate.start(MainActivity.this, isFullRefresh);
                 });
             } catch (Exception e) {

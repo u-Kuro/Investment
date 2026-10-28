@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class Constants {
     // Runnable Tasks Handlers
@@ -76,7 +77,7 @@ public class Constants {
     public static final int PROXY_LIST_TIMEOUT_MILLISECONDS = 30_000; // 30 Seconds
     public static final long PROXY_REFRESH_MILLISECONDS = 300_000; // 5 Minutes
     public static final int REQUEST_CONNECT_TIMEOUT_MILLISECONDS = 5_000; // 5 Seconds (For Proxies)
-    public static final int REQUEST_CALL_TIMEOUT_MILLISECONDS = 30_000; // 30 Seconds
+    public static final int REQUEST_CALL_TIMEOUT_MILLISECONDS = 30_000; // 30 Seconds (For Proxies)
     public static final long PROXY_COOLDOWN_MILLISECONDS = 600_000; // 10 Minutes
     public static final long PROXY_MAX_COOLDOWN_MILLISECONDS = 3_600_000; // 1 Hour
     public static final int PROXY_POOL_SIZE = 100;
@@ -170,10 +171,13 @@ public class Constants {
     // Ticker Update Records
     public static final String FILE_RECORD_FAILED_TICKERS = "failed_tickers.ser";
     public static final int MAX_TICKER_FAILURES_PER_DAY = 3;
+    public static final String FILE_RECORD_FULL_REFRESH = "full_refresh.ser";
+    public static final long FULL_REFRESH_RESUME_MAX_AGE_MILLISECONDS = TimeUnit.DAYS.toMillis(1); // 1 Day
 
     // Ticker Update Progress
     public static final int PROGRESS_SAVE_TICKER_COUNT = 25;
     public static final long PROGRESS_SAVE_INTERVAL_MILLISECONDS = 60_000; // 1 Minute
+    public static final long PROGRESS_SAVE_COST_FACTOR = 10;
 
     // Ticker Update Tiers
     public static final int UPDATE_TIER_LEADING = 1;
@@ -188,8 +192,8 @@ public class Constants {
 
     // User-Initiated Ticker Update
     public static final String TICKER_UIDT_JOB_ID = "TICKER_UIDT_JOB_ID";
-    public static final long TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES = 50L * 1024 * 1024;
-    public static final long TICKER_UIDT_ESTIMATED_UPLOAD_BYTES = 1024L * 1024;
+    public static final long TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES = 50L * 1024 * 1024; // 50MB
+    public static final long TICKER_UIDT_ESTIMATED_UPLOAD_BYTES = 1024L * 1024; // 1MB
     public static final String EXTRA_TICKER_FULL_REFRESH = "full_refresh";
     public static final String EXTRA_TICKER_REQUEST_ID = "request_id";
 

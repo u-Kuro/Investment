@@ -6,5 +6,5 @@ import java.util.List;
 
 public record ProxyDataRecord(List<ProxyStateRecord> proxies, long timestamp) implements Serializable {
     @Serial
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 1L;
 }

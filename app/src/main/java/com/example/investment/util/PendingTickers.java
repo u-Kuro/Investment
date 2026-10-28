@@ -24,14 +24,26 @@ public class PendingTickers {
         @NonNull Map<String, TickerFailure> failures,
         long nowMillis
     ) {
+        return count(tickers, universeSymbols, failures, nowMillis, 0L);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public static int count(
+        @NonNull List<TickerData> tickers,
+        @NonNull Collection<String> universeSymbols,
+        @NonNull Map<String, TickerFailure> failures,
+        long nowMillis,
+        long fullRefreshSinceMillis
+    ) {
         final long dayStartMillis = getStartOfDayMillis(nowMillis);
+        final long dueSinceMillis = getDueSinceMillis(dayStartMillis, fullRefreshSinceMillis);
         @NonNull Set<String> countedSymbols = new HashSet<>();
         int count = 0;
 
         for (TickerData ticker : tickers) {
             @NonNull String symbol = ticker.getSymbol();
             if (!countedSymbols.add(symbol)) continue;
-            if (ticker.isUpdatedSince(dayStartMillis) || isGivenUp(failures, symbol, dayStartMillis)) continue;
+            if (ticker.isUpdatedSince(dueSinceMillis) || isGivenUp(failures, symbol, dayStartMillis)) continue;
             count++;
         }
 
@@ -42,6 +54,10 @@ public class PendingTickers {
         }
 
         return count;
+    }
+
+    public static long getDueSinceMillis(long dayStartMillis, long fullRefreshSinceMillis) {
+        return Math.max(dayStartMillis, fullRefreshSinceMillis);
     }
 
     // Helpers

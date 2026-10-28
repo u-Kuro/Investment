@@ -417,8 +417,10 @@ public class BackupUtils {
                 ) {
                     throw new IOException("Backup proxies are invalid");
                 }
-            } else if (FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
-                || FILE_RECORD_SCREENER_STOCKS.equals(entry.getKey())) {
+            } else if (
+                FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
+                || FILE_RECORD_SCREENER_STOCKS.equals(entry.getKey())
+            ) {
                 @NonNull String expectedScreenerId = FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())
                     ? SCREENER_CRYPTO : SCREENER_STOCKS;
                 @NonNull String expectedAssetType = FILE_RECORD_SCREENER_CRYPTO.equals(entry.getKey())

@@ -19,7 +19,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.PersistableBundle;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -40,12 +39,6 @@ public class UserInitiatedUpdate {
 
     public static void start(@NonNull Context context, boolean isFullRefresh) {
         Context appContext = context.getApplicationContext();
-        TickerDataLoader tickerDataLoader = TickerDataLoader.getInstance();
-        if (!isFullRefresh && !tickerDataLoader.hasPendingTickers(appContext, System.currentTimeMillis())) {
-            WorkerManager.cancelRetryWork(appContext);
-            Toast.makeText(appContext, "Tickers are already up to date", Toast.LENGTH_SHORT).show();
-            return;
-        }
 
         appContext.stopService(new Intent(appContext, TickerService.class));
 
@@ -127,6 +120,10 @@ public class UserInitiatedUpdate {
 
     public static void registerRequestId(long requestId) {
         if (requestId != 0) CURRENT_REQUEST_ID.set(requestId);
+    }
+
+    public static void releaseRequestId(long requestId) {
+        if (requestId != 0) CURRENT_REQUEST_ID.compareAndSet(requestId, 0);
     }
 
     public static boolean consumeExpectedStop(long requestId) {
