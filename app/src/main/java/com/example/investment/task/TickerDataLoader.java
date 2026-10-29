@@ -124,10 +124,9 @@ public class TickerDataLoader {
                 }
                 @Override
                 public void onFinish(@NonNull List<TickerData> tickers, long updateTime) {
-                    // Only a finished update moves the last update time, progress saves keep the previous one
                     try {
                         saveAndCache(context, tickers, updateTime);
-                        clearRefreshPoint(context);
+                        if (!hasPendingTickers(context, System.currentTimeMillis())) clearRefreshPoint(context);
                     } catch (Exception e) {
                         Logger.error("Error saving ticker record", e);
                         listener.onError(tickers);

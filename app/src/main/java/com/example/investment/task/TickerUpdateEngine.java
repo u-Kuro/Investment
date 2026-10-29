@@ -12,7 +12,6 @@ import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.ScreenerResolver.Resolution;
 import com.example.investment.util.Logger;
-import com.example.investment.util.PendingTickers;
 import com.example.investment.util.TickerUpdatePlanner;
 import com.example.investment.util.TickerUpdatePlanner.UpdateTarget;
 
@@ -133,11 +132,7 @@ public class TickerUpdateEngine {
         }
 
         @NonNull List<TickerData> tickers = new ArrayList<>(state.tickers.values());
-        if (
-            !isSaved
-            || tickers.isEmpty()
-            || PendingTickers.count(tickers, resolution.symbols(), state.failures, nowMillis, refreshSinceMillis) > 0
-        ) {
+        if (!isSaved || tickers.isEmpty()) {
             listener.onError(state.latestSavedTickers);
             return;
         }

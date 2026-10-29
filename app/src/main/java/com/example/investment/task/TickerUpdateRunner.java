@@ -366,7 +366,7 @@ public class TickerUpdateRunner {
         @NonNull com.example.investment.util.SafeSingleTaskRunner.UI ui
     ) {
         TickerUpdateProcessor processor = new TickerUpdateProcessor(request.context);
-        if (request.madeProgress.get()) {
+        if (request.madeProgress.get() && TickerDataLoader.getInstance().getLastUpdateTime(request.context) > 0) {
             processor.processChangedTickers(tickers != null ? tickers : List.of());
         } else {
             processor.processUnchangedTickers(tickers);
