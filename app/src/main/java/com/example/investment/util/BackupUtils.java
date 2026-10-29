@@ -74,7 +74,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.zip.CRC32;
@@ -609,14 +608,9 @@ public class BackupUtils {
     private static void copyToFile(@NonNull InputStream input, @NonNull File destination) throws IOException {
         try (OutputStream output = new BufferedOutputStream(new FileOutputStream(destination))) {
             @NonNull byte[] buffer = new byte[BUFFER_SIZE];
-            long total = 0;
             int read;
             while ((read = input.read(buffer)) != -1) {
                 SafeSingleTaskRunner.ensureActive();
-                total += read;
-                if (total > Constants.BACKUP_MAX_SIZE_BYTES) {
-                    throw new IOException(String.format(Locale.ROOT, "Backup is larger than %d MB", Constants.BACKUP_MAX_SIZE_BYTES / (1024 * 1024)));
-                }
                 output.write(buffer, 0, read);
             }
         }

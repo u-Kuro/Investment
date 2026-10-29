@@ -6,8 +6,6 @@ import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFR
 import static com.example.investment.util.Constants.EVENT_THREAD;
 import static com.example.investment.util.Constants.TICKER_UIDT_JOB_ID;
 import static com.example.investment.util.Constants.UI_THREAD;
-import static com.example.investment.util.Constants.TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES;
-import static com.example.investment.util.Constants.TICKER_UIDT_ESTIMATED_UPLOAD_BYTES;
 import static com.example.investment.util.Constants.EXTRA_TICKER_FULL_REFRESH;
 import static com.example.investment.util.Constants.EXTRA_TICKER_REQUEST_ID;
 import static com.example.investment.util.Constants.directJobId;
@@ -48,6 +46,29 @@ public class UserInitiatedUpdate {
         scheduler.cancel(directJobId(TICKER_UIDT_JOB_ID));
         CURRENT_REQUEST_ID.set(0);
 
+        if (scheduleJob(appContext, scheduler, isFullRefresh, previousRequestId)) return;
+
+        startServiceFallback(appContext, isFullRefresh, true);
+    }
+
+    public static void startIfIdle(@NonNull Context context, boolean isFullRefresh) {
+        Context appContext = context.getApplicationContext();
+        if (TickerUpdateRunner.isRunning()) return;
+
+        JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
+        if (scheduler.getPendingJob(directJobId(TICKER_UIDT_JOB_ID)) != null) return;
+
+        if (scheduleJob(appContext, scheduler, isFullRefresh, CURRENT_REQUEST_ID.get())) return;
+
+        startServiceFallback(appContext, isFullRefresh, false);
+    }
+
+    private static boolean scheduleJob(
+        @NonNull Context appContext,
+        @NonNull JobScheduler scheduler,
+        boolean isFullRefresh,
+        long previousRequestId
+    ) {
         long requestId = Math.max(System.currentTimeMillis(), previousRequestId + 1);
         JobInfo jobInfo = getJobInfo(isFullRefresh, requestId, appContext);
 
@@ -55,14 +76,13 @@ public class UserInitiatedUpdate {
             int result = scheduler.schedule(jobInfo);
             if (result == JobScheduler.RESULT_SUCCESS) {
                 CURRENT_REQUEST_ID.set(requestId);
-                return;
+                return true;
             }
-            Logger.error("Failed to schedule the user-initiated ticker update", new IllegalStateException("JobScheduler result: " + result));
+            Logger.debug("The user-initiated ticker update was not scheduled, JobScheduler result: " + result);
         } catch (Exception e) {
             Logger.error("Failed to schedule the user-initiated ticker update", e);
         }
-
-        startServiceFallback(appContext, isFullRefresh);
+        return false;
     }
 
     private static JobInfo getJobInfo(boolean isFullRefresh, long requestId, Context appContext) {
@@ -75,7 +95,6 @@ public class UserInitiatedUpdate {
             new ComponentName(appContext, TickerJobService.class)
         )
         .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-        .setEstimatedNetworkBytes(TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES, TICKER_UIDT_ESTIMATED_UPLOAD_BYTES)
         .setUserInitiated(true)
         .setExtras(extras)
         .build();
@@ -108,9 +127,13 @@ public class UserInitiatedUpdate {
     }
 
     public static void startServiceFallback(@NonNull Context context, boolean isFullRefresh) {
+        startServiceFallback(context, isFullRefresh, true);
+    }
+
+    public static void startServiceFallback(@NonNull Context context, boolean isFullRefresh, boolean isUserInitiated) {
         Intent serviceIntent = new Intent(context, TickerService.class);
         serviceIntent.setAction(isFullRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
-        serviceIntent.putExtra(EXTRA_USER_INITIATED, true);
+        serviceIntent.putExtra(EXTRA_USER_INITIATED, isUserInitiated);
         try {
             context.startForegroundService(serviceIntent);
         } catch (Exception e) {

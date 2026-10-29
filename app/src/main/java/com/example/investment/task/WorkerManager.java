@@ -13,11 +13,14 @@ import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
+import static com.example.investment.util.BackupUtils.getExportFolderUri;
+import static com.example.investment.util.Constants.BACKUP_WORK_NAME;
 import static com.example.investment.util.Constants.EXTRA_IS_RETRY_WORK;
 import static com.example.investment.util.Constants.TICKER_RETRY_DELAY_HOURS;
 import static com.example.investment.util.Constants.TICKER_RETRY_WORK_NAME;
 import static com.example.investment.util.Constants.TICKER_RETRY_WORK_TAG;
 
+import com.example.investment.worker.BackupWorker;
 import com.example.investment.worker.TickerWorker;
 
 import java.util.concurrent.TimeUnit;
@@ -64,5 +67,14 @@ public class WorkerManager {
     public static void cancelRetryWork(@NonNull Context context) {
         WorkManager.getInstance(context.getApplicationContext())
         .cancelUniqueWork(TICKER_RETRY_WORK_NAME);
+    }
+
+    public static void scheduleBackupWork(@NonNull Context context) {
+        if (getExportFolderUri(context) == null) return;
+
+        OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(BackupWorker.class).build();
+
+        WorkManager.getInstance(context.getApplicationContext())
+        .enqueueUniqueWork(BACKUP_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, workRequest);
     }
 }

@@ -5,7 +5,6 @@ import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFR
 import static com.example.investment.util.Constants.BACKGROUND_THREAD;
 import static com.example.investment.util.Constants.EXTRA_TICKER_REQUEST_ID;
 import static com.example.investment.util.NetworkUtils.isOffline;
-import static com.example.investment.util.BackupUtils.autoExport;
 
 import android.app.job.JobParameters;
 import android.content.Context;
@@ -113,6 +112,12 @@ public class TickerUpdateRunner {
         }
 
         BACKGROUND_THREAD.replaceUniqueTask(RUN_TASK_ID, ui -> run(request, ui));
+    }
+
+    public static boolean isRunning() {
+        synchronized (RUN_LOCK) {
+            return activeRun != null;
+        }
     }
 
     public static void cancelServiceRun(@NonNull TickerService service) {
@@ -262,14 +267,6 @@ public class TickerUpdateRunner {
                             MainActivity activity = MainActivity.getInstanceActivity();
                             if (activity != null) activity.updateFinished(updateTime);
                         });
-
-                        try {
-                            if (!TickerDataLoader.getInstance().hasPendingTickers(request.context, System.currentTimeMillis())) {
-                                autoExport(request.context);
-                            }
-                        } catch (Exception e) {
-                            Logger.error("Error checking pending tickers before export", e);
-                        }
                     }
 
                     @Override
@@ -292,6 +289,14 @@ public class TickerUpdateRunner {
             }
         } finally {
             if (guardStarted) ImportUpdateGuard.finishUpdate();
+
+            if (!request.nothingPending) {
+                try {
+                    WorkerManager.scheduleBackupWork(request.context);
+                } catch (Exception e) {
+                    Logger.error("Error scheduling the backup", e);
+                }
+            }
 
             boolean interrupted = isInterrupted(request);
             boolean isCurrent;

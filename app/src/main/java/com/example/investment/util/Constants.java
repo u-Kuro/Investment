@@ -44,7 +44,7 @@ public class Constants {
     public static final String BACKUP_TEMP_FILE_NAME = "investment-backup.tmp";
     public static final String BACKUP_ENTRY_PREFERENCES = "preferences.json";
     public static final int BACKUP_VERSION = 1;
-    public static final long BACKUP_MAX_SIZE_BYTES = 512 * 1024 * 1024; // 512 MB
+    public static final String BACKUP_WORK_NAME = "backup_work";
     public static final String[] BACKUP_DATA_RECORDS = {
         FILE_RECORD_TICKERS,
         FILE_RECORD_PASSIVE_LEADING_TICKERS,
@@ -185,8 +185,6 @@ public class Constants {
 
     // User-Initiated Ticker Update
     public static final String TICKER_UIDT_JOB_ID = "TICKER_UIDT_JOB_ID";
-    public static final long TICKER_UIDT_ESTIMATED_DOWNLOAD_BYTES = 50L * 1024 * 1024; // 50MB
-    public static final long TICKER_UIDT_ESTIMATED_UPLOAD_BYTES = 1024L * 1024; // 1MB
     public static final String EXTRA_TICKER_FULL_REFRESH = "full_refresh";
     public static final String EXTRA_TICKER_REQUEST_ID = "request_id";
 

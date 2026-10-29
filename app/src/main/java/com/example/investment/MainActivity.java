@@ -1,7 +1,6 @@
 package com.example.investment;
 
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
-import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
 import static com.example.investment.util.Constants.ALL_TYPE;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
 import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRESHOLD;
@@ -355,11 +354,9 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void updateTickers(boolean isFullDataRefresh) {
-        Intent intent = new Intent(this, TickerService.class);
-        intent.setAction(isFullDataRefresh ? FULL_DATA_REFRESH_ACTION : INCREMENTAL_DATA_REFRESH_ACTION);
-
-        startService(intent);
+        UserInitiatedUpdate.startIfIdle(this, isFullDataRefresh);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -677,27 +674,32 @@ public class MainActivity extends AppCompatActivity {
         showExportFolder();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private void saveExportFolder(@NonNull Uri folderUri) {
+    private boolean saveExportFolder(@NonNull Uri folderUri) {
         try {
             BackupUtils.saveExportFolder(this, folderUri);
+            return true;
         } catch (Exception e) {
             Logger.error("Error saving the export folder", e);
             Toast.makeText(this, "Can't use this folder", Toast.LENGTH_LONG).show();
-            return;
+            return false;
         }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private void backupOnSave(boolean isNewExportFolder) {
+        @Nullable Uri folderUri = BackupUtils.getExportFolderUri(this);
+        if (folderUri == null) return;
 
         if (!BackupUtils.hasExportableData(this)) {
-            Toast.makeText(this, "Export folder saved", Toast.LENGTH_SHORT).show();
+            if (isNewExportFolder) Toast.makeText(this, "Export folder saved", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Export immediately, so a folder that can't be used is found now instead of after the next update
         final Context applicationContext = getApplicationContext();
         EVENT_THREAD.execute(ui -> {
             try {
                 BackupUtils.exportToFolder(applicationContext, folderUri);
-                ui.post(() -> Toast.makeText(applicationContext, "Backup exported", Toast.LENGTH_SHORT).show());
+                if (isNewExportFolder) ui.post(() -> Toast.makeText(applicationContext, "Backup exported", Toast.LENGTH_SHORT).show());
             } catch (Exception e) {
                 Logger.error("Error exporting the backup", e);
                 ui.post(() -> Toast.makeText(applicationContext, "Failed to export the backup", Toast.LENGTH_LONG).show());
@@ -1026,7 +1028,7 @@ public class MainActivity extends AppCompatActivity {
             .setView(dialogView)
             .setPositiveButton("Save", (dialogInterface, i) -> {
                 @Nullable Uri newExportFolderUri = pendingExportFolderUri;
-                if (newExportFolderUri != null) saveExportFolder(newExportFolderUri);
+                boolean isNewExportFolder = newExportFolderUri != null && saveExportFolder(newExportFolderUri);
 
                 try {
                     SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
@@ -1105,6 +1107,8 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
                 }
+
+                backupOnSave(isNewExportFolder);
             })
             .setNegativeButton("Cancel", null)
             .create();
