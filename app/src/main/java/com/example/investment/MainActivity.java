@@ -690,7 +690,7 @@ public class MainActivity extends AppCompatActivity {
         @Nullable Uri folderUri = BackupUtils.getExportFolderUri(this);
         if (folderUri == null) return;
 
-        if (!BackupUtils.hasExportableData(this)) {
+        if (BackupUtils.hasNoExportableData(this)) {
             if (isNewExportFolder) Toast.makeText(this, "Export folder saved", Toast.LENGTH_SHORT).show();
             return;
         }

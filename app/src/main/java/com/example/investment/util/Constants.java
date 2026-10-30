@@ -38,6 +38,7 @@ public class Constants {
     public static final String PREF_DAILY_DOLLAR_VOLUME_THRESHOLD = "Daily Dollar Volume Threshold";
     public static final String PREF_AGE_IN_SECONDS_THRESHOLD = "Age Threshold (Seconds)";
     public static final String PREF_EXPORT_FOLDER_URI = "Export Folder Uri";
+    public static final String PREF_BACKUP_OWED_SINCE = "Backup Owed Since";
 
     // Backup
     public static final String BACKUP_FILE_NAME = "investment-backup.zip";

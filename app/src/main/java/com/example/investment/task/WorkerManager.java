@@ -14,6 +14,7 @@ import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
 import static com.example.investment.util.BackupUtils.getExportFolderUri;
+import static com.example.investment.util.BackupUtils.isBackupOwed;
 import static com.example.investment.util.Constants.BACKUP_WORK_NAME;
 import static com.example.investment.util.Constants.EXTRA_IS_RETRY_WORK;
 import static com.example.investment.util.Constants.TICKER_RETRY_DELAY_HOURS;
@@ -76,5 +77,9 @@ public class WorkerManager {
 
         WorkManager.getInstance(context.getApplicationContext())
         .enqueueUniqueWork(BACKUP_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, workRequest);
+    }
+
+    public static void scheduleOwedBackupWork(@NonNull Context context) {
+        if (isBackupOwed(context)) scheduleBackupWork(context);
     }
 }

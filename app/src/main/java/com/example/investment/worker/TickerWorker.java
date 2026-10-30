@@ -32,6 +32,12 @@ public class TickerWorker extends Worker {
         boolean isRetryWork = getInputData().getBoolean(EXTRA_IS_RETRY_WORK, false);
 
         try {
+            WorkerManager.scheduleOwedBackupWork(context);
+        } catch (Exception e) {
+            Logger.error("Error scheduling the owed backup", e);
+        }
+
+        try {
             if (!loader.hasPendingTickers(context, System.currentTimeMillis())) {
                 if (!isRetryWork) WorkerManager.cancelRetryWork(context);
                 return Result.success();

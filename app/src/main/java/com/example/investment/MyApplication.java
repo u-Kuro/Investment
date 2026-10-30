@@ -21,8 +21,7 @@ public class MyApplication extends Application implements Configuration.Provider
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             Logger.error(throwable.getMessage(), throwable);
 
-            // IMPORTANT: Android apps usually need to be killed after a Throwable/Error,
-            // - otherwise they stay in a "zombie" broken state.
+            // Android apps usually need to be killed after a Throwable/Error,
             if (systemHandler != null) {
                 systemHandler.uncaughtException(thread, throwable);
             } else {

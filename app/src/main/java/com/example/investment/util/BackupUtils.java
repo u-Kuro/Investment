@@ -21,6 +21,7 @@ import static com.example.investment.util.Constants.PASSIVE_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.PREFS_NAME;
 import static com.example.investment.util.Constants.PREF_AGE_IN_SECONDS_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_ASSET_TYPE;
+import static com.example.investment.util.Constants.PREF_BACKUP_OWED_SINCE;
 import static com.example.investment.util.Constants.PREF_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.PREF_EXPORT_FOLDER_URI;
 import static com.example.investment.util.Constants.PREF_INVESTMENT_TYPE;
@@ -85,6 +86,7 @@ import java.util.zip.ZipOutputStream;
 
 public class BackupUtils {
     private static final Object backupLock = new Object();
+    private static final Object backupOwedLock = new Object();
     private static final String ZIP_MIME_TYPE = "application/zip";
     private static final String GENERIC_MIME_TYPE = "application/octet-stream";
     private static final String EXPORT_DIRECTORY_NAME = "export";
@@ -193,9 +195,43 @@ public class BackupUtils {
         return lastPathSegment != null ? lastPathSegment : BACKUP_FILE_NAME;
     }
 
+    public static boolean isBackupOwed(@NonNull Context context) {
+        return getBackupOwedSince(context) > 0;
+    }
+
+    public static void markBackupOwed(@NonNull Context context) {
+        synchronized (backupOwedLock) {
+            long owedSince = Math.max(System.currentTimeMillis(), getBackupOwedSince(context) + 1);
+
+            boolean isSaved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(PREF_BACKUP_OWED_SINCE, owedSince)
+                .commit();
+            if (!isSaved) Logger.error("Error saving the owed backup", new IOException("Preferences were not written"));
+        }
+    }
+
+    private static long getBackupOwedSince(@NonNull Context context) {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(PREF_BACKUP_OWED_SINCE, 0);
+    }
+
+    // Only what the finished backup started with is cleared, a newer mark made while it ran stays owed
+    private static void clearBackupOwed(@NonNull Context context, long owedSince) {
+        if (owedSince <= 0) return;
+
+        synchronized (backupOwedLock) {
+            if (getBackupOwedSince(context) != owedSince) return;
+
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PREF_BACKUP_OWED_SINCE)
+            .apply();
+        }
+    }
+
     // Export
-    public static boolean hasExportableData(@NonNull Context context) {
-        return FileUtils.getFileDataRecord(context, FILE_RECORD_TICKERS).exists();
+    public static boolean hasNoExportableData(@NonNull Context context) {
+        return !FileUtils.getFileDataRecord(context, FILE_RECORD_TICKERS).exists();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -215,6 +251,7 @@ public class BackupUtils {
         synchronized (backupLock) {
             @NonNull ContentResolver resolver = context.getContentResolver();
             @NonNull File localZip = new File(context.getNoBackupFilesDir(), BACKUP_FILE_NAME + ".local");
+            long owedSince = getBackupOwedSince(context);
 
             try {
                 writeBackupZip(context, localZip);
@@ -241,6 +278,8 @@ public class BackupUtils {
                     writeVerifiedDocument(resolver, folderDocumentUri, ZIP_MIME_TYPE, BACKUP_FILE_NAME, localZip, expectedDigest);
                     deleteQuietly(resolver, tempUri);
                 }
+
+                clearBackupOwed(context, owedSince);
             } finally {
                 //noinspection ResultOfMethodCallIgnored
                 localZip.delete();
@@ -545,6 +584,7 @@ public class BackupUtils {
                 try (InputStream stream = zip.getInputStream(entry)) {
                     int read;
                     while ((read = stream.read(buffer)) != -1) {
+                        SafeSingleTaskRunner.ensureActive();
                         checksum.update(buffer, 0, read);
                         size += read;
                     }
@@ -631,6 +671,7 @@ public class BackupUtils {
         @NonNull byte[] buffer = new byte[BUFFER_SIZE];
         int read;
         while ((read = input.read(buffer)) != -1) {
+            SafeSingleTaskRunner.ensureActive();
             output.write(buffer, 0, read);
         }
     }
@@ -640,8 +681,9 @@ public class BackupUtils {
             @NonNull MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (DigestInputStream stream = new DigestInputStream(new BufferedInputStream(input), digest)) {
                 @NonNull byte[] buffer = new byte[BUFFER_SIZE];
-                //noinspection StatementWithEmptyBody
-                while (stream.read(buffer) != -1) { }
+                while (stream.read(buffer) != -1) {
+                    SafeSingleTaskRunner.ensureActive();
+                }
             }
             return digest.digest();
         } catch (NoSuchAlgorithmException e) {

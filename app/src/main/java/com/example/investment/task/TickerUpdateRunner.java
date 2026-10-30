@@ -2,12 +2,17 @@ package com.example.investment.task;
 
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
+import static com.example.investment.util.BackupUtils.exportToFolder;
+import static com.example.investment.util.BackupUtils.getExportFolderUri;
+import static com.example.investment.util.BackupUtils.hasNoExportableData;
+import static com.example.investment.util.BackupUtils.markBackupOwed;
 import static com.example.investment.util.Constants.BACKGROUND_THREAD;
 import static com.example.investment.util.Constants.EXTRA_TICKER_REQUEST_ID;
 import static com.example.investment.util.NetworkUtils.isOffline;
 
 import android.app.job.JobParameters;
 import android.content.Context;
+import android.net.Uri;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -163,6 +168,7 @@ public class TickerUpdateRunner {
             long nowMillis = System.currentTimeMillis();
             if (!request.isFullRefresh && !loader.hasPendingTickers(request.context, nowMillis)) {
                 request.nothingPending = true;
+                scheduleOwedBackup(request);
                 ui.post(() -> {
                     MainActivity activity = MainActivity.getInstanceActivity();
                     if (activity != null) activity.updateFinished(loader.getLastUpdateTime(request.context));
@@ -170,7 +176,6 @@ public class TickerUpdateRunner {
                 return;
             }
 
-            // Arm the retry before a long run can hit the platform's dataSync limit
             WorkerManager.scheduleRetryWork(request.context);
 
             if (!ImportUpdateGuard.tryStartUpdate()) {
@@ -179,6 +184,8 @@ public class TickerUpdateRunner {
                 return;
             }
             guardStarted = true;
+
+            scheduleBackup(request);
 
             String dataRefreshType = request.isFullRefresh
                 ? FULL_DATA_REFRESH_ACTION
@@ -290,20 +297,15 @@ public class TickerUpdateRunner {
         } finally {
             if (guardStarted) ImportUpdateGuard.finishUpdate();
 
-            if (!request.nothingPending) {
-                try {
-                    WorkerManager.scheduleBackupWork(request.context);
-                } catch (Exception e) {
-                    Logger.error("Error scheduling the backup", e);
-                }
-            }
-
             boolean interrupted = isInterrupted(request);
             boolean isCurrent;
             synchronized (RUN_LOCK) {
                 isCurrent = activeRun == request;
-                if (isCurrent) activeRun = null;
+                if (isCurrent && interrupted) activeRun = null;
             }
+
+            boolean backupBeforeEnd = isCurrent && !interrupted;
+            if (!request.nothingPending && !backupBeforeEnd) scheduleBackup(request);
 
             if (isCurrent) {
                 if (interrupted) {
@@ -341,18 +343,61 @@ public class TickerUpdateRunner {
                         }
                     }
 
-                    if (request.type == RunType.SERVICE) {
-                        ((TickerService) request.owner).onRunnerFinished();
-                    } else {
-                        TickerJobService jobService = (TickerJobService) request.owner;
-                        if (request.jobParameters != null)
-                            jobService.onRunnerFinished(request.jobParameters);
-                        if (request.failed && pending) {
-                            BACKGROUND_THREAD.execute(() -> UserInitiatedUpdate.startServiceFallback(request.context, false));
+                    if (!request.nothingPending) backup(request);
+
+                    synchronized (RUN_LOCK) {
+                        if (activeRun == request) activeRun = null;
+                    }
+
+                    if (!isInterrupted(request)) {
+                        if (request.type == RunType.SERVICE) {
+                            ((TickerService) request.owner).onRunnerFinished();
+                        } else {
+                            TickerJobService jobService = (TickerJobService) request.owner;
+                            if (request.jobParameters != null)
+                                jobService.onRunnerFinished(request.jobParameters);
+                            if (request.failed && pending) {
+                                BACKGROUND_THREAD.execute(() -> UserInitiatedUpdate.startServiceFallback(request.context, false));
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private static void backup(@NonNull RunRequest request) {
+        @Nullable Uri folderUri = getExportFolderUri(request.context);
+        if (folderUri == null || hasNoExportableData(request.context)) return;
+
+        // Stays owed until the export succeeds, so a kill during it is picked up by the next run or the worker
+        markBackupOwed(request.context);
+        showNotification(request, request.context.getString(R.string.backing_up));
+        try {
+            exportToFolder(request.context, folderUri);
+        } catch (Exception e) {
+            if (isInterrupted(request)) {
+                // Stopped halfway, so the worker takes it from here
+                scheduleBackup(request);
+            } else {
+                Logger.error("Error backing up after the update", e);
+            }
+        }
+    }
+
+    private static void scheduleBackup(@NonNull RunRequest request) {
+        try {
+            WorkerManager.scheduleBackupWork(request.context);
+        } catch (Exception e) {
+            Logger.error("Error scheduling the backup", e);
+        }
+    }
+
+    private static void scheduleOwedBackup(@NonNull RunRequest request) {
+        try {
+            WorkerManager.scheduleOwedBackupWork(request.context);
+        } catch (Exception e) {
+            Logger.error("Error scheduling the owed backup", e);
         }
     }
 

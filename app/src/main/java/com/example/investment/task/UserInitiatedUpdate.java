@@ -40,13 +40,17 @@ public class UserInitiatedUpdate {
 
         appContext.stopService(new Intent(appContext, TickerService.class));
 
-        JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
-        long previousRequestId = CURRENT_REQUEST_ID.get();
-        if (previousRequestId != 0) expectStop(previousRequestId);
-        scheduler.cancel(directJobId(TICKER_UIDT_JOB_ID));
-        CURRENT_REQUEST_ID.set(0);
+        try {
+            JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
+            long previousRequestId = CURRENT_REQUEST_ID.get();
+            if (previousRequestId != 0) expectStop(previousRequestId);
+            scheduler.cancel(directJobId(TICKER_UIDT_JOB_ID));
+            CURRENT_REQUEST_ID.set(0);
 
-        if (scheduleJob(appContext, scheduler, isFullRefresh, previousRequestId)) return;
+            if (scheduleJob(appContext, scheduler, isFullRefresh, previousRequestId)) return;
+        } catch (Exception e) {
+            Logger.error("Failed to start the user-initiated ticker update", e);
+        }
 
         startServiceFallback(appContext, isFullRefresh, true);
     }
@@ -55,10 +59,14 @@ public class UserInitiatedUpdate {
         Context appContext = context.getApplicationContext();
         if (TickerUpdateRunner.isRunning()) return;
 
-        JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
-        if (scheduler.getPendingJob(directJobId(TICKER_UIDT_JOB_ID)) != null) return;
+        try {
+            JobScheduler scheduler = appContext.getSystemService(JobScheduler.class);
+            if (scheduler.getPendingJob(directJobId(TICKER_UIDT_JOB_ID)) != null) return;
 
-        if (scheduleJob(appContext, scheduler, isFullRefresh, CURRENT_REQUEST_ID.get())) return;
+            if (scheduleJob(appContext, scheduler, isFullRefresh, CURRENT_REQUEST_ID.get())) return;
+        } catch (Exception e) {
+            Logger.error("Failed to start the user-initiated ticker update", e);
+        }
 
         startServiceFallback(appContext, isFullRefresh, false);
     }
@@ -70,10 +78,9 @@ public class UserInitiatedUpdate {
         long previousRequestId
     ) {
         long requestId = Math.max(System.currentTimeMillis(), previousRequestId + 1);
-        JobInfo jobInfo = getJobInfo(isFullRefresh, requestId, appContext);
 
         try {
-            int result = scheduler.schedule(jobInfo);
+            int result = scheduler.schedule(getJobInfo(isFullRefresh, requestId, appContext));
             if (result == JobScheduler.RESULT_SUCCESS) {
                 CURRENT_REQUEST_ID.set(requestId);
                 return true;

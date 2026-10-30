@@ -9,6 +9,7 @@
     <string name="processing_tickers">%.2f%% Processing Tickers (%s)</string>
     <string name="processing_ticker_progress">Processing Tickers (%s) | %d of %d | %.2f%%</string>
     <string name="successful_ticker_progress">Successfully Processed Tickers</string>
+    <string name="backing_up">Backing Up Data…</string>
     <string name="stop_processing">Stop Processing</string>
     <string name="asset_type">Asset Type</string>
     <string name="investment_type">Investment Type</string>
