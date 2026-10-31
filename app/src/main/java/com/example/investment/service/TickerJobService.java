@@ -13,12 +13,14 @@ import androidx.annotation.RequiresApi;
 import com.example.investment.R;
 import com.example.investment.task.TickerDataLoader;
 import com.example.investment.task.TickerUpdateRunner;
-import com.example.investment.task.UserInitiatedUpdate;
+import com.example.investment.task.UpdateLauncher;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.util.Logger;
 import com.example.investment.util.NotificationUtils;
-import com.example.investment.util.Constants;
-import static com.example.investment.util.Constants.EXTRA_TICKER_FULL_REFRESH;
+import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
+import static com.example.investment.util.BackupUtils.isBackupOwed;
+import static com.example.investment.util.Constants.EVENT_THREAD;
+import static com.example.investment.util.Constants.EXTRA_TICKER_ACTION;
 import static com.example.investment.util.Constants.EXTRA_TICKER_REQUEST_ID;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,14 +43,29 @@ public class TickerJobService extends JobService {
     @Override
     public boolean onStartJob(@NonNull JobParameters params) {
         long requestId = params.getExtras().getLong(EXTRA_TICKER_REQUEST_ID, 0);
-        UserInitiatedUpdate.registerRequestId(requestId);
-        jobRuns.put(requestId, new JobRunState(params));
+        String action = params.getExtras().getString(EXTRA_TICKER_ACTION, INCREMENTAL_DATA_REFRESH_ACTION);
 
-        setUpdateNotification(params, getString(R.string.ticker_update_notification_title));
+        try {
+            UpdateLauncher.registerRequestId(requestId);
+            jobRuns.put(requestId, new JobRunState(params));
 
-        boolean isFullRefresh = params.getExtras().getBoolean(EXTRA_TICKER_FULL_REFRESH, false);
-        TickerUpdateRunner.startForJob(this, params, isFullRefresh);
-        return true;
+            setUpdateNotification(params, getString(R.string.ticker_update_notification_title));
+
+            TickerUpdateRunner.startForJob(this, params, action);
+            return true;
+        } catch (Exception e) {
+            Logger.error("Failed to start the ticker job", e);
+            jobRuns.remove(requestId);
+            UpdateLauncher.releaseRequestId(requestId);
+
+            if (params.isUserInitiatedJob()) {
+                UpdateLauncher.continueFrom(this, action, true, UpdateLauncher.Host.SERVICE);
+            } else {
+                WorkerManager.scheduleRetryWork(this);
+            }
+
+            return false;
+        }
     }
 
     @Override
@@ -61,29 +78,40 @@ public class TickerJobService extends JobService {
                 state.completed = true;
             }
         }
-        UserInitiatedUpdate.releaseRequestId(requestId);
+        UpdateLauncher.releaseRequestId(requestId);
 
-        boolean expectedStop = UserInitiatedUpdate.consumeExpectedStop(requestId);
+        boolean expectedStop = UpdateLauncher.consumeExpectedStop(requestId);
         TickerUpdateRunner.cancelJobRun(this, params);
-        if (!expectedStop) {
-            WorkerManager.scheduleRetryWork(this);
-            Constants.EVENT_THREAD.execute(() -> {
-                try {
-                    if (TickerDataLoader.getInstance().hasPendingTickers(this, System.currentTimeMillis())) {
-                        UserInitiatedUpdate.startServiceFallback(this, false);
-                    } else {
-                        WorkerManager.cancelRetryWork(this);
-                    }
-                } catch (Exception e) {
-                    Logger.error("Error checking pending tickers after the UIDT job stopped", e);
-                    WorkerManager.scheduleRetryWork(this);
+        if (expectedStop) return false;
+
+        if (!params.isUserInitiatedJob()) return true;
+
+        String action = TickerUpdateRunner.getContinuedAction(params.getExtras().getString(EXTRA_TICKER_ACTION, INCREMENTAL_DATA_REFRESH_ACTION));
+        WorkerManager.scheduleRetryWork(this);
+        long stoppedAtMillis = System.currentTimeMillis();
+        EVENT_THREAD.execute(() -> {
+            try {
+                if (UpdateLauncher.wasCancelledSince(stoppedAtMillis)) return;
+
+                if (
+                    TickerDataLoader.getInstance().hasPendingTickers(this, System.currentTimeMillis())
+                    || isBackupOwed(this)
+                ) {
+                    UpdateLauncher.continueFrom(this, action, true, UpdateLauncher.Host.SERVICE);
+                } else {
+                    WorkerManager.cancelRetryWork(this);
                 }
-            });
-        }
+            } catch (Exception e) {
+                Logger.error("Error checking pending tickers after the UIDT job stopped", e);
+                WorkerManager.scheduleRetryWork(this);
+            }
+        });
         return false;
     }
 
     public void setUpdateNotification(@NonNull JobParameters params, @NonNull String message) {
+        if (!params.isUserInitiatedJob()) return;
+
         try {
             Notification notification = NotificationUtils.createLowPriorityServiceNotification(this, message);
             setNotification(
@@ -106,7 +134,7 @@ public class TickerJobService extends JobService {
             if (state.stopped || state.completed) return;
             state.completed = true;
             jobRuns.remove(requestId, state);
-            UserInitiatedUpdate.releaseRequestId(requestId);
+            UpdateLauncher.releaseRequestId(requestId);
             jobFinished(state.params, false);
         }
     }

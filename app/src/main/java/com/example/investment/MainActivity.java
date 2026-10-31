@@ -1,5 +1,6 @@
 package com.example.investment;
 
+import static com.example.investment.service.TickerService.BACKUP_ACTION;
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.util.Constants.ALL_TYPE;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
@@ -77,9 +78,8 @@ import android.net.Uri;
 import com.example.investment.model.adapter.TickerAdapter;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
-import com.example.investment.task.UserInitiatedUpdate;
+import com.example.investment.task.UpdateLauncher;
 import com.example.investment.util.Logger;
-import com.example.investment.service.TickerService;
 import com.example.investment.util.BackupUtils;
 import com.example.investment.util.CustomTabsUtils;
 import com.example.investment.util.ImportUpdateGuard;
@@ -113,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
     // Permissions are asked once per open
     private boolean isRequestingPermissions = false;
     private boolean isReturningFromAppLaunchedActivity = false;
+    private boolean isAwaitingNewFolderBackup = false;
     private boolean hasAskedNotificationPermission = false;
     private boolean hasAskedBatteryOptimization = false;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
@@ -229,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
                     EVENT_THREAD.cancelCurrentUniqueTask(MANUAL_UPDATE_TASK_ID);
                     DEFERRED_THREAD.cancelCurrentUniqueTask(MANUAL_UPDATE_TASK_ID);
 
-                    UserInitiatedUpdate.cancel(this);
+                    UpdateLauncher.cancel(this);
                 })
                 .create();
             Window dialogWindow = alertDialog.getWindow();
@@ -342,7 +343,7 @@ public class MainActivity extends AppCompatActivity {
                 dataLoader.requestManualRefresh(MainActivity.this.getApplicationContext(), isFullRefresh);
                 ui.post(() -> {
                     swipeRefreshLayout.setRefreshing(false);
-                    UserInitiatedUpdate.start(MainActivity.this, isFullRefresh);
+                    UpdateLauncher.start(MainActivity.this, UpdateLauncher.getAction(isFullRefresh));
                 });
             } catch (Exception e) {
                 ui.post(() -> {
@@ -356,7 +357,7 @@ public class MainActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private void updateTickers(boolean isFullDataRefresh) {
-        UserInitiatedUpdate.startIfIdle(this, isFullDataRefresh);
+        UpdateLauncher.startIfIdle(this, UpdateLauncher.getAction(isFullDataRefresh));
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
@@ -465,9 +466,6 @@ public class MainActivity extends AppCompatActivity {
 
         updateLastUpdateTime(updateTime);
 
-        Intent serviceIntent = new Intent(this, TickerService.class);
-        stopService(serviceIntent);
-
         dataRefreshType = null;
         isManuallyUpdated = false;
     }
@@ -483,9 +481,6 @@ public class MainActivity extends AppCompatActivity {
 
         autoLoadTickerDataRecord(false, false);
 
-        Intent serviceIntent = new Intent(this, TickerService.class);
-        stopService(serviceIntent);
-
         dataRefreshType = null;
         isManuallyUpdated = false;
     }
@@ -500,9 +495,6 @@ public class MainActivity extends AppCompatActivity {
         ((View) progressBar.getParent()).requestLayout();
 
         autoLoadTickerDataRecord(false, true);
-
-        Intent serviceIntent = new Intent(this, TickerService.class);
-        stopService(serviceIntent);
 
         dataRefreshType = null;
         isManuallyUpdated = false;
@@ -695,16 +687,28 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        if (isNewExportFolder) isAwaitingNewFolderBackup = true;
+
         final Context applicationContext = getApplicationContext();
-        EVENT_THREAD.execute(ui -> {
+        EVENT_THREAD.execute(() -> {
             try {
-                BackupUtils.exportToFolder(applicationContext, folderUri);
-                if (isNewExportFolder) ui.post(() -> Toast.makeText(applicationContext, "Backup exported", Toast.LENGTH_SHORT).show());
+                BackupUtils.markBackupOwed(applicationContext);
+                UpdateLauncher.startIfIdle(applicationContext, BACKUP_ACTION);
             } catch (Exception e) {
-                Logger.error("Error exporting the backup", e);
-                ui.post(() -> Toast.makeText(applicationContext, "Failed to export the backup", Toast.LENGTH_LONG).show());
+                Logger.error("Error starting the backup", e);
             }
         });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void updateBackupFinished(boolean isSuccess) {
+        ASSERT_MAIN_THREAD();
+        if (!isSuccess) {
+            Toast.makeText(this, "Failed to export the backup", Toast.LENGTH_LONG).show();
+        } else if (isAwaitingNewFolderBackup) {
+            Toast.makeText(this, "Backup exported", Toast.LENGTH_SHORT).show();
+        }
+        isAwaitingNewFolderBackup = false;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)

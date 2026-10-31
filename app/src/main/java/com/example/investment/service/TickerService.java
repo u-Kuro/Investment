@@ -17,7 +17,7 @@ import androidx.annotation.RequiresApi;
 
 import com.example.investment.R;
 import com.example.investment.task.TickerUpdateRunner;
-import com.example.investment.task.UserInitiatedUpdate;
+import com.example.investment.task.UpdateLauncher;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.util.Logger;
 
@@ -25,6 +25,7 @@ public class TickerService extends Service {
     public static final String STOP_SERVICE_ACTION = "stop_service";
     public static final String FULL_DATA_REFRESH_ACTION = "Full";
     public static final String INCREMENTAL_DATA_REFRESH_ACTION = "Incremental";
+    public static final String BACKUP_ACTION = "Backup";
     public static final String EXTRA_USER_INITIATED = "user_initiated";
 
     private @Nullable String dataRefreshType = null;
@@ -45,25 +46,36 @@ public class TickerService extends Service {
             startFailed = true;
             Logger.error("Failed to start ticker service", e);
             WorkerManager.scheduleRetryWork(this);
+
+            UpdateLauncher.onServiceStartFailed(this);
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
+            return;
         }
+
+        UpdateLauncher.onServiceStarted();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (startFailed || intent == null) return START_NOT_STICKY;
+        if (intent == null) return START_NOT_STICKY;
 
         String action = intent.getAction();
         if (STOP_SERVICE_ACTION.equals(action)) {
-            UserInitiatedUpdate.cancel(this);
+            UpdateLauncher.cancel(this);
             return START_NOT_STICKY;
         }
 
-        if (!FULL_DATA_REFRESH_ACTION.equals(action) && !INCREMENTAL_DATA_REFRESH_ACTION.equals(action)) {
+        if (
+            !FULL_DATA_REFRESH_ACTION.equals(action)
+            && !INCREMENTAL_DATA_REFRESH_ACTION.equals(action)
+            && !BACKUP_ACTION.equals(action)
+        ) {
             return START_NOT_STICKY;
         }
+
+        if (startFailed) return START_NOT_STICKY;
 
         if (dataRefreshType != null) {
             WorkerManager.scheduleRetryWork(this);
@@ -71,13 +83,17 @@ public class TickerService extends Service {
         }
         dataRefreshType = action;
 
-        boolean isFullRefresh = FULL_DATA_REFRESH_ACTION.equals(action);
-        boolean isUserInitiated = intent.getBooleanExtra(EXTRA_USER_INITIATED, false);
-        if (!TickerUpdateRunner.startForService(this, isFullRefresh, isUserInitiated)) {
+        boolean isUserInitiatedJob = intent.getBooleanExtra(EXTRA_USER_INITIATED, false);
+        try {
+            if (TickerUpdateRunner.startForService(this, action, isUserInitiatedJob)) return START_NOT_STICKY;
             WorkerManager.scheduleRetryWork(this);
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+        } catch (Exception e) {
+            Logger.error("Failed to start the ticker update in the service", e);
+            UpdateLauncher.continueFrom(this, action, isUserInitiatedJob, UpdateLauncher.Host.JOB);
         }
+
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
         return START_NOT_STICKY;
     }
 
@@ -96,9 +112,15 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @Override
     public void onTimeout(int startId, int fgsType) {
-        TickerUpdateRunner.onServiceTimeout(this);
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
+        try {
+            TickerUpdateRunner.onServiceTimeout(this);
+        } catch (Exception e) {
+            Logger.error("Error handing over after the ticker service timed out", e);
+            WorkerManager.scheduleRetryWork(this);
+        } finally {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
+        }
     }
 
     @Nullable
@@ -110,7 +132,11 @@ public class TickerService extends Service {
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     @Override
     public void onDestroy() {
-        TickerUpdateRunner.cancelServiceRun(this);
+        try {
+            TickerUpdateRunner.cancelServiceRun(this);
+        } catch (Exception e) {
+            Logger.error("Error cancelling the ticker service run", e);
+        }
         super.onDestroy();
     }
 }

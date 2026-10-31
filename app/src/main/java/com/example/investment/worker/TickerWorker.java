@@ -1,5 +1,7 @@
 package com.example.investment.worker;
 
+import static com.example.investment.service.TickerService.BACKUP_ACTION;
+import static com.example.investment.util.BackupUtils.isBackupOwed;
 import static com.example.investment.util.Constants.EXTRA_IS_RETRY_WORK;
 
 import android.content.Context;
@@ -12,7 +14,7 @@ import androidx.work.WorkerParameters;
 
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
-import com.example.investment.task.UserInitiatedUpdate;
+import com.example.investment.task.UpdateLauncher;
 import com.example.investment.task.WorkerManager;
 import com.example.investment.util.Logger;
 
@@ -32,19 +34,14 @@ public class TickerWorker extends Worker {
         boolean isRetryWork = getInputData().getBoolean(EXTRA_IS_RETRY_WORK, false);
 
         try {
-            WorkerManager.scheduleOwedBackupWork(context);
-        } catch (Exception e) {
-            Logger.error("Error scheduling the owed backup", e);
-        }
-
-        try {
             if (!loader.hasPendingTickers(context, System.currentTimeMillis())) {
                 if (!isRetryWork) WorkerManager.cancelRetryWork(context);
+                if (isBackupOwed(context)) UpdateLauncher.startIfIdle(context, BACKUP_ACTION);
                 return Result.success();
             }
 
             List<TickerData> tickers = loader.getTickers(context);
-            UserInitiatedUpdate.startIfIdle(context, tickers == null || tickers.isEmpty());
+            UpdateLauncher.startIfIdle(context, UpdateLauncher.getAction(tickers == null || tickers.isEmpty()));
             return Result.success();
         } catch (Exception e) {
             Logger.error("Error starting the ticker update from the worker", e);

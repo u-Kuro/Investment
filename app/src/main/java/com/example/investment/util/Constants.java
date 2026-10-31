@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class Constants {
     // Runnable Tasks Handlers
@@ -45,7 +46,6 @@ public class Constants {
     public static final String BACKUP_TEMP_FILE_NAME = "investment-backup.tmp";
     public static final String BACKUP_ENTRY_PREFERENCES = "preferences.json";
     public static final int BACKUP_VERSION = 1;
-    public static final String BACKUP_WORK_NAME = "backup_work";
     public static final String[] BACKUP_DATA_RECORDS = {
         FILE_RECORD_TICKERS,
         FILE_RECORD_PASSIVE_LEADING_TICKERS,
@@ -184,10 +184,11 @@ public class Constants {
     public static final String EXTRA_IS_RETRY_WORK = "is_retry_work";
     public static final long TICKER_RETRY_DELAY_HOURS = 1; // 1 Hour
 
-    // User-Initiated Ticker Update
-    public static final String TICKER_UIDT_JOB_ID = "TICKER_UIDT_JOB_ID";
-    public static final String EXTRA_TICKER_FULL_REFRESH = "full_refresh";
+    // Ticker Update Job
+    public static final String TICKER_JOB_ID = "TICKER_JOB_ID";
+    public static final String EXTRA_TICKER_ACTION = "action";
     public static final String EXTRA_TICKER_REQUEST_ID = "request_id";
+    public static final long TICKER_JOB_PENDING_TIMEOUT_MILLIS = TimeUnit.HOURS.toMillis(TICKER_RETRY_DELAY_HOURS);
 
     // Work Manager
     private static Map<String, Integer> buildDirectJobIds(@SuppressWarnings("SameParameterValue") String... jobs) {
@@ -200,7 +201,7 @@ public class Constants {
         return Collections.unmodifiableMap(ids); // keeps order, blocks outside edits
     }
     private static final Map<String, Integer> DIRECT_JOB_IDS = buildDirectJobIds(
-        TICKER_UIDT_JOB_ID
+        TICKER_JOB_ID
     );
     public static int directJobId(String job) {
         Integer id = DIRECT_JOB_IDS.get(job);

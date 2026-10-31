@@ -1,10 +1,12 @@
 package com.example.investment.task;
 
+import static com.example.investment.service.TickerService.BACKUP_ACTION;
 import static com.example.investment.service.TickerService.FULL_DATA_REFRESH_ACTION;
 import static com.example.investment.service.TickerService.INCREMENTAL_DATA_REFRESH_ACTION;
 import static com.example.investment.util.BackupUtils.exportToFolder;
 import static com.example.investment.util.BackupUtils.getExportFolderUri;
 import static com.example.investment.util.BackupUtils.hasNoExportableData;
+import static com.example.investment.util.BackupUtils.isBackupOwed;
 import static com.example.investment.util.BackupUtils.markBackupOwed;
 import static com.example.investment.util.Constants.BACKGROUND_THREAD;
 import static com.example.investment.util.Constants.EXTRA_TICKER_REQUEST_ID;
@@ -28,6 +30,7 @@ import com.example.investment.service.TickerJobService;
 import com.example.investment.service.TickerService;
 import com.example.investment.util.ImportUpdateGuard;
 import com.example.investment.util.Logger;
+import com.example.investment.util.SafeSingleTaskRunner;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -47,8 +50,10 @@ public class TickerUpdateRunner {
         private final Context context;
         private final Object owner;
         private final RunType type;
+        private final String action;
         private final boolean isFullRefresh;
-        private final boolean isUserInitiated;
+        private final boolean isBackupOnly;
+        private final boolean isUserInitiatedJob;
         private final @Nullable JobParameters jobParameters;
         private final AtomicBoolean madeProgress = new AtomicBoolean(false);
         private final AtomicBoolean callbackHandled = new AtomicBoolean(false);
@@ -60,63 +65,96 @@ public class TickerUpdateRunner {
             @NonNull Context context,
             @NonNull Object owner,
             @NonNull RunType type,
-            boolean isFullRefresh,
-            boolean isUserInitiated,
+            @NonNull String action,
+            boolean isUserInitiatedJob,
             @Nullable JobParameters jobParameters
         ) {
             this.context = context.getApplicationContext();
             this.owner = owner;
             this.type = type;
-            this.isFullRefresh = isFullRefresh;
-            this.isUserInitiated = isUserInitiated;
+            this.action = action;
+            this.isFullRefresh = FULL_DATA_REFRESH_ACTION.equals(action);
+            this.isBackupOnly = BACKUP_ACTION.equals(action);
+            this.isUserInitiatedJob = isUserInitiatedJob;
             this.jobParameters = jobParameters;
         }
     }
 
     public static boolean startForService(
         @NonNull TickerService service,
-        boolean isFullRefresh,
-        boolean isUserInitiated
+        @NonNull String action,
+        boolean isUserInitiatedJob
     ) {
         RunRequest request = new RunRequest(
             service,
             service,
             RunType.SERVICE,
-            isFullRefresh,
-            isUserInitiated,
+            action,
+            isUserInitiatedJob,
             null
         );
 
+        @Nullable RunRequest replacedRun;
         synchronized (RUN_LOCK) {
-            // A background trigger must not interrupt a user-initiated update
-            if (!isUserInitiated && activeRun != null && activeRun.isUserInitiated) return false;
-            if (!isUserInitiated && activeRun != null && activeRun.owner == service) return false;
+            if (!isUserInitiatedJob && activeRun != null && activeRun.isUserInitiatedJob) return false;
+            if (!isUserInitiatedJob && activeRun != null && activeRun.owner == service) return false;
+            replacedRun = activeRun;
             activeRun = request;
         }
 
-        BACKGROUND_THREAD.replaceUniqueTask(RUN_TASK_ID, ui -> run(request, ui));
+        releaseReplacedHost(replacedRun, request);
+        submitRun(request);
         return true;
     }
 
     public static void startForJob(
         @NonNull TickerJobService service,
         @NonNull JobParameters params,
-        boolean isFullRefresh
+        @NonNull String action
     ) {
         RunRequest request = new RunRequest(
             service,
             service,
             RunType.JOB,
-            isFullRefresh,
-            true,
+            action,
+            params.isUserInitiatedJob(),
             params
         );
 
+        @Nullable RunRequest replacedRun;
         synchronized (RUN_LOCK) {
+            replacedRun = activeRun;
             activeRun = request;
         }
 
-        BACKGROUND_THREAD.replaceUniqueTask(RUN_TASK_ID, ui -> run(request, ui));
+        releaseReplacedHost(replacedRun, request);
+        submitRun(request);
+    }
+
+    private static void releaseReplacedHost(@Nullable RunRequest replacedRun, @NonNull RunRequest request) {
+        if (replacedRun == null) return;
+        replacedRun.cancelRequested = true;
+
+        try {
+            if (replacedRun.type == RunType.SERVICE) {
+                if (replacedRun.owner != request.owner) ((TickerService) replacedRun.owner).onRunnerFinished();
+            } else if (replacedRun.jobParameters != null && differentJobParameters(replacedRun.jobParameters, request.jobParameters)) {
+                ((TickerJobService) replacedRun.owner).onRunnerFinished(replacedRun.jobParameters);
+            }
+        } catch (Exception e) {
+            Logger.error("Error releasing the host of the replaced ticker run", e);
+        }
+    }
+
+    private static void submitRun(@NonNull RunRequest request) {
+        try {
+            BACKGROUND_THREAD.replaceUniqueTask(RUN_TASK_ID, ui -> run(request, ui));
+        } catch (Exception e) {
+            synchronized (RUN_LOCK) {
+                if (activeRun == request) activeRun = null;
+            }
+            throw e;
+        }
     }
 
     public static boolean isRunning() {
@@ -130,8 +168,12 @@ public class TickerUpdateRunner {
     }
 
     public static void onServiceTimeout(@NonNull TickerService service) {
-        cancelRun(service, null);
+        @Nullable RunRequest request = cancelRun(service, null);
         WorkerManager.scheduleRetryWork(service);
+
+        if (request != null) {
+            UpdateLauncher.continueFrom(service, getContinuedAction(request.action), request.isUserInitiatedJob, UpdateLauncher.Host.JOB);
+        }
     }
 
     public static void cancelJobRun(
@@ -141,38 +183,49 @@ public class TickerUpdateRunner {
         cancelRun(service, params);
     }
 
-    private static void cancelRun(
+    public static @NonNull String getContinuedAction(@NonNull String action) {
+        return BACKUP_ACTION.equals(action) ? BACKUP_ACTION : INCREMENTAL_DATA_REFRESH_ACTION;
+    }
+
+    private static @Nullable RunRequest cancelRun(
         @NonNull Object owner,
         @Nullable JobParameters params
     ) {
         @Nullable RunRequest request;
         synchronized (RUN_LOCK) {
             request = activeRun;
-            if (request == null || request.owner != owner || !sameJobParameters(request.jobParameters, params)) return;
+            if (request == null || request.owner != owner || differentJobParameters(request.jobParameters, params)) return null;
             request.cancelRequested = true;
             activeRun = null;
         }
 
         BACKGROUND_THREAD.cancelCurrentUniqueTask(RUN_TASK_ID);
+        return request;
     }
 
     private static void run(
         @NonNull RunRequest request,
-        @NonNull com.example.investment.util.SafeSingleTaskRunner.UI ui
+        @NonNull SafeSingleTaskRunner.UI ui
     ) {
         TickerDataLoader loader = TickerDataLoader.getInstance();
         boolean guardStarted = false;
         try {
             if (isInterrupted(request)) return;
 
+            if (request.isBackupOnly) {
+                request.nothingPending = true;
+                backup(request, ui);
+                return;
+            }
+
             long nowMillis = System.currentTimeMillis();
             if (!request.isFullRefresh && !loader.hasPendingTickers(request.context, nowMillis)) {
                 request.nothingPending = true;
-                scheduleOwedBackup(request);
                 ui.post(() -> {
                     MainActivity activity = MainActivity.getInstanceActivity();
                     if (activity != null) activity.updateFinished(loader.getLastUpdateTime(request.context));
                 });
+                if (isBackupOwed(request.context)) backup(request, ui);
                 return;
             }
 
@@ -185,7 +238,7 @@ public class TickerUpdateRunner {
             }
             guardStarted = true;
 
-            scheduleBackup(request);
+            oweBackup(request);
 
             String dataRefreshType = request.isFullRefresh
                 ? FULL_DATA_REFRESH_ACTION
@@ -268,12 +321,15 @@ public class TickerUpdateRunner {
                     @Override
                     public void onFinish(@NonNull List<TickerData> tickers, long updateTime) {
                         if (isInterrupted(request) || !request.callbackHandled.compareAndSet(false, true)) return;
-                        processRunResult(request, tickers);
 
-                        ui.post(() -> {
-                            MainActivity activity = MainActivity.getInstanceActivity();
-                            if (activity != null) activity.updateFinished(updateTime);
-                        });
+                        try {
+                            processRunResult(request, tickers);
+                        } finally {
+                            ui.post(() -> {
+                                MainActivity activity = MainActivity.getInstanceActivity();
+                                if (activity != null) activity.updateFinished(updateTime);
+                            });
+                        }
                     }
 
                     @Override
@@ -304,9 +360,6 @@ public class TickerUpdateRunner {
                 if (isCurrent && interrupted) activeRun = null;
             }
 
-            boolean backupBeforeEnd = isCurrent && !interrupted;
-            if (!request.nothingPending && !backupBeforeEnd) scheduleBackup(request);
-
             if (isCurrent) {
                 if (interrupted) {
                     boolean pendingAfterInterrupt = true;
@@ -322,42 +375,59 @@ public class TickerUpdateRunner {
                         ((TickerJobService) request.owner).onRunnerFinished(request.jobParameters);
                     }
                 } else {
-
                     boolean pending = true;
                     try {
-                        pending = loader.hasPendingTickers(request.context, System.currentTimeMillis());
-                    } catch (Exception e) {
-                        Logger.error("Error checking pending tickers after update", e);
-                    }
-
-                    if (pending) {
-                        WorkerManager.scheduleRetryWork(request.context);
-                    } else {
-                        WorkerManager.cancelRetryWork(request.context);
-                    }
-
-                    if (!request.callbackHandled.get() && !request.nothingPending) {
-                        request.failed = true;
-                        if (request.callbackHandled.compareAndSet(false, true)) {
-                            processErrorResult(request, loader.getTickers(request.context), ui);
+                        try {
+                            pending = loader.hasPendingTickers(request.context, System.currentTimeMillis());
+                        } catch (Exception e) {
+                            Logger.error("Error checking pending tickers after update", e);
                         }
-                    }
 
-                    if (!request.nothingPending) backup(request);
-
-                    synchronized (RUN_LOCK) {
-                        if (activeRun == request) activeRun = null;
-                    }
-
-                    if (!isInterrupted(request)) {
-                        if (request.type == RunType.SERVICE) {
-                            ((TickerService) request.owner).onRunnerFinished();
+                        if (pending) {
+                            WorkerManager.scheduleRetryWork(request.context);
                         } else {
-                            TickerJobService jobService = (TickerJobService) request.owner;
-                            if (request.jobParameters != null)
-                                jobService.onRunnerFinished(request.jobParameters);
-                            if (request.failed && pending) {
-                                BACKGROUND_THREAD.execute(() -> UserInitiatedUpdate.startServiceFallback(request.context, false));
+                            WorkerManager.cancelRetryWork(request.context);
+                        }
+
+                        if (!request.callbackHandled.get() && !request.nothingPending) {
+                            request.failed = true;
+                            if (request.callbackHandled.compareAndSet(false, true)) {
+                                try {
+                                    processErrorResult(request, loader.getTickers(request.context), ui);
+                                } catch (Exception e) {
+                                    Logger.error("Error handling the failed ticker update", e);
+                                }
+                            }
+                        }
+
+                        if (!request.nothingPending) backup(request, ui);
+                    } finally {
+                        synchronized (RUN_LOCK) {
+                            if (activeRun == request) activeRun = null;
+                        }
+
+                        if (!isInterrupted(request)) {
+                            if (request.type == RunType.SERVICE) {
+                                ((TickerService) request.owner).onRunnerFinished();
+                            } else if (request.type == RunType.JOB) {
+                                TickerJobService jobService = (TickerJobService) request.owner;
+                                if (request.jobParameters != null) {
+                                    jobService.onRunnerFinished(request.jobParameters);
+                                }
+
+                                if (request.failed && pending && request.isUserInitiatedJob) {
+                                    long failedAtMillis = System.currentTimeMillis();
+                                    BACKGROUND_THREAD.execute(() -> {
+                                        if (UpdateLauncher.wasCancelledSince(failedAtMillis)) return;
+
+                                        UpdateLauncher.continueFrom(
+                                            request.context,
+                                            INCREMENTAL_DATA_REFRESH_ACTION,
+                                            true,
+                                            UpdateLauncher.Host.SERVICE
+                                        );
+                                    });
+                                }
                             }
                         }
                     }
@@ -366,38 +436,37 @@ public class TickerUpdateRunner {
         }
     }
 
-    private static void backup(@NonNull RunRequest request) {
-        @Nullable Uri folderUri = getExportFolderUri(request.context);
-        if (folderUri == null || hasNoExportableData(request.context)) return;
-
-        // Stays owed until the export succeeds, so a kill during it is picked up by the next run or the worker
-        markBackupOwed(request.context);
-        showNotification(request, request.context.getString(R.string.backing_up));
+    private static void oweBackup(@NonNull RunRequest request) {
         try {
+            if (getExportFolderUri(request.context) == null || hasNoExportableData(request.context)) return;
+            markBackupOwed(request.context);
+        } catch (Exception e) {
+            Logger.error("Error marking the backup as owed", e);
+        }
+    }
+
+    private static void backup(@NonNull RunRequest request, @NonNull SafeSingleTaskRunner.UI ui) {
+        try {
+            @Nullable Uri folderUri = getExportFolderUri(request.context);
+            if (folderUri == null || hasNoExportableData(request.context)) return;
+
+            markBackupOwed(request.context);
+
+            showNotification(request, request.context.getString(R.string.backing_up));
+
             exportToFolder(request.context, folderUri);
+            ui.post(() -> {
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) activity.updateBackupFinished(true);
+            });
         } catch (Exception e) {
-            if (isInterrupted(request)) {
-                // Stopped halfway, so the worker takes it from here
-                scheduleBackup(request);
-            } else {
-                Logger.error("Error backing up after the update", e);
-            }
-        }
-    }
+            if (isInterrupted(request)) return;
 
-    private static void scheduleBackup(@NonNull RunRequest request) {
-        try {
-            WorkerManager.scheduleBackupWork(request.context);
-        } catch (Exception e) {
-            Logger.error("Error scheduling the backup", e);
-        }
-    }
-
-    private static void scheduleOwedBackup(@NonNull RunRequest request) {
-        try {
-            WorkerManager.scheduleOwedBackupWork(request.context);
-        } catch (Exception e) {
-            Logger.error("Error scheduling the owed backup", e);
+            Logger.error("Error backing up the data", e);
+            ui.post(() -> {
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) activity.updateBackupFinished(false);
+            });
         }
     }
 
@@ -413,27 +482,29 @@ public class TickerUpdateRunner {
     private static void processErrorResult(
         @NonNull RunRequest request,
         @Nullable List<TickerData> tickers,
-        @NonNull com.example.investment.util.SafeSingleTaskRunner.UI ui
+        @NonNull SafeSingleTaskRunner.UI ui
     ) {
-        TickerUpdateProcessor processor = new TickerUpdateProcessor(request.context);
-        if (request.madeProgress.get() && TickerDataLoader.getInstance().getLastUpdateTime(request.context) > 0) {
-            processor.processChangedTickers(tickers != null ? tickers : List.of());
-        } else {
-            processor.processUnchangedTickers(tickers);
+        try {
+            TickerUpdateProcessor processor = new TickerUpdateProcessor(request.context);
+            if (request.madeProgress.get() && TickerDataLoader.getInstance().getLastUpdateTime(request.context) > 0) {
+                processor.processChangedTickers(tickers != null ? tickers : List.of());
+            } else {
+                processor.processUnchangedTickers(tickers);
+            }
+
+            if (isOffline(request.context)) NetworkReceiver.retryOnNetworkAvailable(request.context);
+        } finally {
+            ui.post(() -> {
+                MainActivity activity = MainActivity.getInstanceActivity();
+                if (activity != null) activity.updateError();
+            });
         }
-
-        if (isOffline(request.context)) NetworkReceiver.retryOnNetworkAvailable(request.context);
-
-        ui.post(() -> {
-            MainActivity activity = MainActivity.getInstanceActivity();
-            if (activity != null) activity.updateError();
-        });
     }
 
     private static void handleError(
         @NonNull RunRequest request,
         @Nullable List<TickerData> tickers,
-        @NonNull com.example.investment.util.SafeSingleTaskRunner.UI ui
+        @NonNull SafeSingleTaskRunner.UI ui
     ) {
         if (!request.callbackHandled.compareAndSet(false, true)) return;
         request.failed = true;
@@ -441,21 +512,24 @@ public class TickerUpdateRunner {
     }
 
     private static void showNotification(@NonNull RunRequest request, @NonNull String message) {
-        if (request.type == RunType.SERVICE) {
-            ((TickerService) request.owner).showUpdateNotification(message);
-        } else if (request.jobParameters != null) {
-            ((TickerJobService) request.owner).setUpdateNotification(request.jobParameters, message);
+        try {
+            if (request.type == RunType.SERVICE) {
+                ((TickerService) request.owner).showUpdateNotification(message);
+            } else if (request.type == RunType.JOB && request.jobParameters != null) {
+                ((TickerJobService) request.owner).setUpdateNotification(request.jobParameters, message);
+            }
+        } catch (Exception e) {
+            Logger.error("Error showing the ticker update notification", e);
         }
     }
 
-    private static boolean sameJobParameters(
+    private static boolean differentJobParameters(
         @Nullable JobParameters first,
         @Nullable JobParameters second
     ) {
-        if (first == second) return true;
-        if (first == null || second == null || first.getJobId() != second.getJobId()) return false;
-        return first.getExtras().getLong(EXTRA_TICKER_REQUEST_ID, 0)
-            == second.getExtras().getLong(EXTRA_TICKER_REQUEST_ID, 0);
+        if (first == second) return false;
+        if (first == null || second == null || first.getJobId() != second.getJobId()) return true;
+        return first.getExtras().getLong(EXTRA_TICKER_REQUEST_ID, 0) != second.getExtras().getLong(EXTRA_TICKER_REQUEST_ID, 0);
     }
 
     private static boolean isInterrupted(@NonNull RunRequest request) {

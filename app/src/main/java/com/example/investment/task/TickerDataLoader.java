@@ -73,8 +73,11 @@ public class TickerDataLoader {
 
         @Nullable RefreshPoint refreshPoint;
         if (isFullRefresh) {
-            refreshPoint = new RefreshPoint(nowMillis, true);
-            saveRefreshPoint(context, refreshPoint);
+            @Nullable RefreshPoint savedRefreshPoint = getRefreshPoint(context, nowMillis);
+            refreshPoint = savedRefreshPoint != null && savedRefreshPoint.isFullRefresh()
+                ? savedRefreshPoint
+                : new RefreshPoint(nowMillis, true);
+            if (refreshPoint != savedRefreshPoint) saveRefreshPoint(context, refreshPoint);
         } else {
             refreshPoint = getRefreshPoint(context, nowMillis);
         }

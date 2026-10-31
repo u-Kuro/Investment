@@ -13,15 +13,12 @@ import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
-import static com.example.investment.util.BackupUtils.getExportFolderUri;
-import static com.example.investment.util.BackupUtils.isBackupOwed;
-import static com.example.investment.util.Constants.BACKUP_WORK_NAME;
 import static com.example.investment.util.Constants.EXTRA_IS_RETRY_WORK;
 import static com.example.investment.util.Constants.TICKER_RETRY_DELAY_HOURS;
 import static com.example.investment.util.Constants.TICKER_RETRY_WORK_NAME;
 import static com.example.investment.util.Constants.TICKER_RETRY_WORK_TAG;
 
-import com.example.investment.worker.BackupWorker;
+import com.example.investment.util.Logger;
 import com.example.investment.worker.TickerWorker;
 
 import java.util.concurrent.TimeUnit;
@@ -51,35 +48,30 @@ public class WorkerManager {
     }
 
     public static void scheduleRetryWork(@NonNull Context context) {
-        OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(TickerWorker.class)
-        .addTag(TICKER_RETRY_WORK_TAG)
-        .setInputData(new Data.Builder().putBoolean(EXTRA_IS_RETRY_WORK, true).build())
-        .setInitialDelay(TICKER_RETRY_DELAY_HOURS, TimeUnit.HOURS)
-        .setConstraints(new Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build())
-        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_MINUTES, TimeUnit.MINUTES)
-        .build();
+        try {
+            OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(TickerWorker.class)
+            .addTag(TICKER_RETRY_WORK_TAG)
+            .setInputData(new Data.Builder().putBoolean(EXTRA_IS_RETRY_WORK, true).build())
+            .setInitialDelay(TICKER_RETRY_DELAY_HOURS, TimeUnit.HOURS)
+            .setConstraints(new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_BACKOFF_MINUTES, TimeUnit.MINUTES)
+            .build();
 
-        WorkManager.getInstance(context.getApplicationContext())
-        .enqueueUniqueWork(TICKER_RETRY_WORK_NAME, ExistingWorkPolicy.REPLACE, workRequest);
+            WorkManager.getInstance(context.getApplicationContext())
+            .enqueueUniqueWork(TICKER_RETRY_WORK_NAME, ExistingWorkPolicy.REPLACE, workRequest);
+        } catch (Exception e) {
+            Logger.error("Failed to schedule the ticker retry work", e);
+        }
     }
 
     public static void cancelRetryWork(@NonNull Context context) {
-        WorkManager.getInstance(context.getApplicationContext())
-        .cancelUniqueWork(TICKER_RETRY_WORK_NAME);
-    }
-
-    public static void scheduleBackupWork(@NonNull Context context) {
-        if (getExportFolderUri(context) == null) return;
-
-        OneTimeWorkRequest workRequest = new OneTimeWorkRequest.Builder(BackupWorker.class).build();
-
-        WorkManager.getInstance(context.getApplicationContext())
-        .enqueueUniqueWork(BACKUP_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, workRequest);
-    }
-
-    public static void scheduleOwedBackupWork(@NonNull Context context) {
-        if (isBackupOwed(context)) scheduleBackupWork(context);
+        try {
+            WorkManager.getInstance(context.getApplicationContext())
+            .cancelUniqueWork(TICKER_RETRY_WORK_NAME);
+        } catch (Exception e) {
+            Logger.error("Failed to cancel the ticker retry work", e);
+        }
     }
 }
