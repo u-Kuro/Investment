@@ -21,6 +21,12 @@ public class Constants {
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("This method must be called on the main thread.");
     }
 
+    // BigDecimal Constants
+    public static final BigDecimal THOUSAND_BD = BigDecimal.valueOf(1_000);
+    public static final BigInteger THOUSAND_BI = BigInteger.valueOf(1_000);
+    public static final BigInteger DAYS_PER_WEEK = BigInteger.valueOf(7);
+    public static final BigInteger MILLIS_PER_DAY = BigInteger.valueOf(86_400_000);
+
     // File Data Records
     public static final String FILE_RECORD_TICKERS = "tickers.ser";
     public static final String FILE_RECORD_PASSIVE_LEADING_TICKERS = "passive_leading_tickers.ser";
@@ -65,7 +71,7 @@ public class Constants {
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
     public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
     public static final int MAX_SCREENER_COUNT = 250;
-    public static final BigInteger FIRST_TRADE_TIMESTAMP_SECONDS = BigInteger.valueOf(-11_607_782_632L); // March 1602
+    public static final BigInteger MIN_HISTORICAL_TIMESTAMP_SECONDS = BigInteger.valueOf(Long.MIN_VALUE).divide(THOUSAND_BI); // May 17, 292,275,056 BCE, 16:47:05 UTC (proleptic Gregorian)
 
     // Yahoo Finance Request Limit
     public static final int MINIMUM_REQUEST_TIMEOUT_MILLISECONDS = 1800; // 2000 Request / Hour | (60 Minutes * 60 Seconds) / 2000 Request = 1.8 Seconds / Request
@@ -92,24 +98,20 @@ public class Constants {
     public static final String PASSIVE_INVESTMENT_TYPE = "Passive Investing";
     public static final String MOMENTUM_INVESTMENT_TYPE = "Momentum Investing";
 
-    // BigDecimal Constants
-    public static final BigDecimal THOUSAND_BD = BigDecimal.valueOf(1_000);
-    public static final BigInteger THOUSAND_BI = BigInteger.valueOf(1_000);
-    public static final BigInteger DAYS_PER_WEEK = BigInteger.valueOf(7);
-    public static final BigInteger MILLIS_PER_DAY = BigInteger.valueOf(86_400_000);
-
     // Asset Intervals
-    public static final String[] ASSET_INTERVALS = { "1d", "1wk", "1mo", "3mo" };
+    public static final String[] ASSET_INTERVALS = { "1d", "5d", "1wk", "1mo", "3mo" };
     public static final Map<String, BigInteger> ASSET_DURATION_UNTIL_NEXT_UPDATE_MS = Map.ofEntries(
         // Interval time * 2 until Next Update
         // Periodic worker's buffer handles DST shifts and Leap Seconds (1hr + 2s)
         Map.entry("1d", BigInteger.valueOf(172_800_000)), // 1 + 1 Days to Milliseconds
+        Map.entry("5d", BigInteger.valueOf(864_000_000)), // 5 + 5
         Map.entry("1wk", BigInteger.valueOf(1_209_600_000)), // 7 + 7
         Map.entry("1mo", BigInteger.valueOf(5_356_800_000L)), // 31 + 31  (July 1 to Aug 31)
         Map.entry("3mo", BigInteger.valueOf(15_897_600_000L)) // 31 + 31 + 30 + 31 + 30 + 31 (July 1 to December 31)
     );
     public static final Map<String, BigDecimal> ASSET_DURATION_DAYS = Map.ofEntries(
         Map.entry("1d", BigDecimal.ONE), // 1
+        Map.entry("5d", BigDecimal.valueOf(5)), // 5
         Map.entry("1wk", BigDecimal.valueOf(DAYS_PER_WEEK.intValue())), // 7
         Map.entry("1mo", BigDecimal.valueOf(31)), // 31 (July)
         Map.entry("3mo", BigDecimal.valueOf(92)) // 31 + 31 + 30 (July 1 to September 30)

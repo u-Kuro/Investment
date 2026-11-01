@@ -169,11 +169,11 @@ public class DateUtils {
         BigInteger easternMs = timestampMs.add(getEasternOffsetMillis(timestampMs));
 
         // Calculate days since epoch
-        BigInteger daysSinceEpoch = easternMs.divide(MILLIS_PER_DAY);
+        BigInteger daysSinceEpoch = floorDiv(easternMs);
 
         // Calculate day of week (epoch was Thursday = 4)
         BigInteger dayOfWeekBD = daysSinceEpoch.add(EPOCH_DAY_OF_WEEK)
-            .remainder(DAYS_PER_WEEK);
+            .mod(DAYS_PER_WEEK);
 
         return dayOfWeekBD.intValue();
     }
@@ -214,10 +214,17 @@ public class DateUtils {
         BigInteger easternMs = timestampMs.add(getEasternOffsetMillis(timestampMs));
 
         // Get milliseconds since start of day
-        BigInteger msIntoDay = easternMs.remainder(MILLIS_PER_DAY);
+        BigInteger msIntoDay = easternMs.mod(MILLIS_PER_DAY);
 
         // Subtract to get midnight in Eastern, then convert back to UTC
         return timestampMs.subtract(msIntoDay);
+    }
+
+    private static BigInteger floorDiv(BigInteger dividend) {
+        BigInteger[] quotientAndRemainder = dividend.divideAndRemainder(MILLIS_PER_DAY);
+        return quotientAndRemainder[1].signum() < 0
+            ? quotientAndRemainder[0].subtract(BigInteger.ONE)
+            : quotientAndRemainder[0];
     }
 
     @RequiresApi(api = Build.VERSION_CODES.S)

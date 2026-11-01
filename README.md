@@ -47,6 +47,7 @@ Every refresh cycle pulls two types of assets from Yahoo Finance:
 | Interval | Bar length |
 |---|---|
 | Daily | 1 trading day per bar |
+| 5-Day | 5 days per bar |
 | Weekly | 1 week per bar |
 | Monthly | 1 month per bar |
 | Quarterly | 3 months per bar |
@@ -119,6 +120,7 @@ A background worker re-runs this update automatically on a schedule. If the app 
 | Bar Interval | Considered Stale After |
 |---|---|
 | Daily bars | 2 days |
+| 5-day bars | 10 days |
 | Weekly bars | 14 days |
 | Monthly bars | ~62 days |
 | Quarterly bars | ~184 days |

@@ -2,7 +2,7 @@ package com.example.investment.repository;
 
 import static com.example.investment.util.Constants.ASSET_INTERVALS;
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
-import static com.example.investment.util.Constants.FIRST_TRADE_TIMESTAMP_SECONDS;
+import static com.example.investment.util.Constants.MIN_HISTORICAL_TIMESTAMP_SECONDS;
 import static com.example.investment.util.Constants.MINIMUM_REQUEST_TIMEOUT_MILLISECONDS;
 import static com.example.investment.util.Constants.MAX_SCREENER_COUNT;
 import static com.example.investment.util.Constants.REQUEST_CALL_TIMEOUT_MILLISECONDS;
@@ -263,12 +263,12 @@ public class YahooFinanceRepository {
             @NonNull BigInteger period1;
 
             if (isFullRefresh || oldTicker == null) {
-                period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
+                period1 = MIN_HISTORICAL_TIMESTAMP_SECONDS;
                 hasFixedHistoricalData = false;
             } else {
                 FixedHistoricalData fixedData = oldTicker.getFixedHistoricalData(interval);
                 if (fixedData == null) {
-                    period1 = FIRST_TRADE_TIMESTAMP_SECONDS;
+                    period1 = MIN_HISTORICAL_TIMESTAMP_SECONDS;
                     hasFixedHistoricalData = false;
                 } else {
                     period1 = fixedData.updatedAtTimestampSeconds();
@@ -500,7 +500,7 @@ public class YahooFinanceRepository {
                 if (
                     bAdjClose.compareTo(BigDecimal.ZERO) > 0
                     && bClose.compareTo(BigDecimal.ZERO) > 0
-                    && bTimestamp.compareTo(BigInteger.ZERO) > 0
+                    && bTimestamp.compareTo(MIN_HISTORICAL_TIMESTAMP_SECONDS) >= 0
                     && bOpen.compareTo(BigDecimal.ZERO) > 0
                     && BigInteger.valueOf(System.currentTimeMillis()).compareTo(bTimestamp.multiply(THOUSAND_BI)) > 0
                 ) {
@@ -522,7 +522,7 @@ public class YahooFinanceRepository {
                 @NonNull BigInteger bTimestamp = new BigInteger(apiTimestamps.getString(i));
 
                 if (
-                    bTimestamp.compareTo(BigInteger.ZERO) > 0
+                    bTimestamp.compareTo(MIN_HISTORICAL_TIMESTAMP_SECONDS) >= 0
                     && (updatedAtTimestampSeconds == null || bTimestamp.compareTo(updatedAtTimestampSeconds) > 0)
                 ) {
                     updatedAtTimestampSeconds = bTimestamp;
