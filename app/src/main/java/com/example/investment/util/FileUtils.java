@@ -12,8 +12,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InvalidClassException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -56,6 +59,53 @@ public class FileUtils {
 
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
             return ois.readObject();
+        }
+    }
+
+    private static final String[] ALLOWED_CLASS_PREFIXES = {
+        "com.example.investment.model.",
+        "java.lang.",
+        "java.math.",
+        "java.util.",
+        "java.net.SocketAddress",
+        "java.net.Inet"
+    };
+
+    public static Object loadObjectFromUntrustedFile(File file) throws IOException, ClassNotFoundException {
+        if (!file.exists()) return null;
+
+        try (ObjectInputStream ois = new AllowedTypesObjectInputStream(new FileInputStream(file))) {
+            return ois.readObject();
+        }
+    }
+
+    private static final class AllowedTypesObjectInputStream extends ObjectInputStream {
+        AllowedTypesObjectInputStream(@NonNull InputStream in) throws IOException {
+            super(in);
+        }
+
+        @Override
+        protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+            @NonNull String name = desc.getName();
+            int dimensions = 0;
+            while (dimensions < name.length() && name.charAt(dimensions) == '[') dimensions++;
+            if (dimensions > 0) {
+                if (name.length() == dimensions + 1) return super.resolveClass(desc);
+                if (!name.startsWith("L", dimensions) || !name.endsWith(";")) {
+                    throw new InvalidClassException(name, "Class is not allowed");
+                }
+                name = name.substring(dimensions + 1, name.length() - 1);
+            }
+
+            for (@NonNull String prefix : ALLOWED_CLASS_PREFIXES) {
+                if (name.startsWith(prefix)) return super.resolveClass(desc);
+            }
+            throw new InvalidClassException(name, "Class is not allowed");
+        }
+
+        @Override
+        protected Class<?> resolveProxyClass(String[] interfaces) throws IOException, ClassNotFoundException {
+            throw new InvalidClassException("Proxy classes are not allowed");
         }
     }
 

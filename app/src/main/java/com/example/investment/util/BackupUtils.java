@@ -509,7 +509,7 @@ public class BackupUtils {
     }
     private static @Nullable Object loadStagedRecord(@NonNull File file) throws IOException {
         try {
-            return FileUtils.loadObject(file);
+            return FileUtils.loadObjectFromUntrustedFile(file);
         } catch (ClassNotFoundException | IOException | RuntimeException e) {
             throw new IOException("Backup is not compatible with this version of the app", e);
         }

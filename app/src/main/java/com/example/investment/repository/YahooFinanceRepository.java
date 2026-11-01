@@ -607,7 +607,7 @@ public class YahooFinanceRepository {
                             @NonNull BigDecimal upperBand = densePrice.multiply(
                                 dbSumNum.divide(dbSumDen, DECIMAL128).abs().add(BigDecimal.ONE), DECIMAL128
                             );
-                            if (prevUpperBand != null && upperBand.compareTo(prevUpperBand) <= 0) {
+                            if (prevUpperBand == null || upperBand.compareTo(prevUpperBand) <= 0) {
                                 startPrice = upperBand;
                                 startPriceTimestampSeconds = bTimestamp;
                             }
