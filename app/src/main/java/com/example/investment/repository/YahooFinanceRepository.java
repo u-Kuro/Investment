@@ -53,13 +53,13 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import okhttp3.ResponseBody;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -85,6 +85,29 @@ public class YahooFinanceRepository {
             super(message);
         }
     }
+    private static class NextHostException extends Exception {
+        NextHostException(@NonNull String message) {
+            super(message);
+        }
+        NextHostException(@SuppressWarnings("SameParameterValue") @NonNull String message, @Nullable Throwable cause) {
+            super(message, cause);
+        }
+    }
+    private static class NextIntervalException extends Exception {
+        NextIntervalException(@NonNull String message) {
+            super(message);
+        }
+    }
+    private static class RejectedException extends Exception {
+        RejectedException(@NonNull String message) {
+            super(message);
+        }
+    }
+    private static class HistoryChangedException extends Exception {
+        HistoryChangedException(@SuppressWarnings("SameParameterValue") @NonNull String message) {
+            super(message);
+        }
+    }
     @NonNull private static final OkHttpClient client = new OkHttpClient.Builder().build();
     @NonNull private static final OkHttpClient proxyClient = new OkHttpClient.Builder()
         .connectTimeout(REQUEST_CONNECT_TIMEOUT_MILLISECONDS, TimeUnit.MILLISECONDS)
@@ -92,6 +115,7 @@ public class YahooFinanceRepository {
         .build();
     @NonNull private static final BigDecimal TWO = BigDecimal.valueOf(2);
     @NonNull private static final BigDecimal FOUR = BigDecimal.valueOf(4);
+    @NonNull private static final Set<Integer> PROXY_BLOCKED_STATUS_CODES = Set.of(401, 403, 407, 408, 429, 451);
 
     @NonNull private static final ProxyRepository proxyRepository = new ProxyRepository();
 
@@ -192,8 +216,9 @@ public class YahooFinanceRepository {
                 JSONArray quotes = fetchResponse(context, url, this::parseScreenerResponse);
                 int length = quotes.length();
 
-                String firstSymbol = quotes.getJSONObject(0).optString("symbol", "");
-                if (firstSymbol.equals(prevFirstSymbol)) throw new Exception("Duplicate symbol found.");
+                @Nullable JSONObject firstQuote = quotes.optJSONObject(0);
+                String firstSymbol = firstQuote != null ? firstQuote.optString("symbol", "") : "";
+                if (firstSymbol.equals(prevFirstSymbol)) throw new NextHostException("Duplicate symbol found.");
                 prevFirstSymbol = firstSymbol;
 
                 for (int i = 0; i < length; i++) {
@@ -213,15 +238,12 @@ public class YahooFinanceRepository {
                 startIndex = startIndex.add(BigInteger.valueOf(length));
                 listener.onSymbolsProgress(foundSymbolCount + symbols.size());
 
-            } catch (InterruptedException | OfflineException | NotFoundException e) {
-                throw e;
+            } catch (NextHostException e) {
+                if (useAlternativeUrl) throw e;
+                useAlternativeUrl = true;
             } catch (NoDataException e) {
                 if (startIndex.signum() > 0) break;
                 throw e;
-            } catch (Exception e) {
-                // Every candidate already had its turn, only the other host is left
-                if (useAlternativeUrl) throw e;
-                useAlternativeUrl = true;
             }
         }
 
@@ -229,23 +251,30 @@ public class YahooFinanceRepository {
     }
 
     private JSONArray parseScreenerResponse(@NonNull Response response) throws Exception {
-        JSONArray quotes = new JSONObject(response.body().string())
-            .getJSONObject("finance")
-            .getJSONArray("result")
-            .getJSONObject(0)
-            .getJSONArray("quotes");
+        @Nullable JSONObject finance = new JSONObject(response.body().string()).optJSONObject("finance");
+        if (finance == null) throw new IOException("Unexpected body: No finance");
+
+        @Nullable JSONArray results = finance.optJSONArray("result");
+        boolean hasResult = results != null && results.length() > 0;
+        if (!hasResult && !finance.isNull("error")) throw new RejectedException("Screener error: " + finance.opt("error"));
+
+        @Nullable JSONObject firstResult = hasResult ? results.optJSONObject(0) : null;
+        @Nullable JSONArray quotes = firstResult != null ? firstResult.optJSONArray("quotes") : null;
+        if (quotes == null) throw new IOException("Unexpected body: No quotes");
         if (quotes.length() < 1) throw new NoDataException("Empty quotes");
         return quotes;
     }
 
     // Ticker Fetching
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private FetchTickerResult fetchTickerWithInterval(
+    private @NonNull TickerData processTickerData(
         @NonNull Context context,
-        @NonNull String symbol,
+        @NonNull UpdateTarget target,
         @Nullable TickerData oldTicker,
         boolean isFullRefresh
     ) throws Exception {
+        @NonNull String symbol = target.symbol();
+
         List<FetchTickerAttempt> attempts = new ArrayList<>();
         for (String interval : ASSET_INTERVALS) {
             attempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL));
@@ -254,7 +283,7 @@ public class YahooFinanceRepository {
 
         for (int i = 0; i < attempts.size(); i++) {
             if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException("Thread interrupted during fetchTickerData");
+                throw new InterruptedException("Thread interrupted during processTickerData");
             }
 
             FetchTickerAttempt attempt = attempts.get(i);
@@ -291,11 +320,14 @@ public class YahooFinanceRepository {
             try {
                 JSONObject resultObj = fetchResponse(context, url, this::parseChartResponse);
 
-                return new FetchTickerResult(resultObj, interval, hasFixedHistoricalData);
+                return buildTickerData(target, oldTicker, isFullRefresh, new FetchTickerResult(resultObj, interval, hasFixedHistoricalData));
 
-            } catch (InterruptedException | OfflineException | NotFoundException e) {
-                throw e;
-            } catch (Exception e) {
+            } catch (HistoryChangedException e) {
+                return processTickerData(context, target, null, true);
+            } catch (NextHostException e) {
+                if (i == attempts.size() - 1) throw e;
+            } catch (NextIntervalException | RejectedException | InvalidHistoryException e) {
+                while (i + 1 < attempts.size() && attempts.get(i + 1).interval().equals(interval)) i++;
                 if (i == attempts.size() - 1) throw e;
             }
         }
@@ -304,11 +336,17 @@ public class YahooFinanceRepository {
     }
 
     private JSONObject parseChartResponse(@NonNull Response response) throws Exception {
-        ResponseBody body = response.body();
-        return new JSONObject(body.string())
-            .getJSONObject("chart")
-            .getJSONArray("result")
-            .getJSONObject(0);
+        @Nullable JSONObject chart = new JSONObject(response.body().string()).optJSONObject("chart");
+        if (chart == null) throw new IOException("Unexpected body: No chart");
+
+        @Nullable JSONArray results = chart.optJSONArray("result");
+        if (results == null || results.length() < 1) throw new NextIntervalException("No chart result, error: " + chart.opt("error"));
+
+        @Nullable JSONObject result = results.optJSONObject(0);
+        if (result == null || result.optJSONArray("timestamp") == null || result.optJSONObject("indicators") == null) {
+            throw new NextIntervalException("Chart result lacks timestamp or indicators");
+        }
+        return result;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -340,7 +378,7 @@ public class YahooFinanceRepository {
                     proxyRepository.reportFailure(possibleThrottledCandidate);
                 }
                 return result;
-            } catch (InterruptedException | NotFoundException e) {
+            } catch (InterruptedException | NotFoundException | RejectedException | NextHostException | NextIntervalException e) {
                 throw e;
             } catch (NoDataException e) {
                 if (noDataError != null) throw e;
@@ -354,15 +392,9 @@ public class YahooFinanceRepository {
             }
         }
 
-        if (noDataError != null) {
-            // Prior IP was possibly being throttled, it needs to cooldown
-            proxyRepository.reportFailure(possibleThrottledCandidate);
-            throw noDataError;
-        } else if (lastError != null) {
-            throw lastError;
-        } else {
-            throw new Exception("No candidate available");
-        }
+        if (possibleThrottledCandidate != null) proxyRepository.reportFailure(possibleThrottledCandidate);
+
+        throw new NextHostException("No candidate left", lastError != null ? lastError : noDataError);
     }
 
     private <T> T send(
@@ -377,24 +409,32 @@ public class YahooFinanceRepository {
             usedClient = proxyClient.newBuilder().proxy(proxy).build();
         }
         try (Response response = usedClient.newCall(new Request.Builder().url(url).build()).execute()) {
-            if (response.code() == 404) throw new NotFoundException("Unexpected response: " + response);
-            if (!response.isSuccessful()) throw new IOException("Unexpected response: " + response);
+            if (!response.isSuccessful()) throw getStatusException(response);
 
             return parser.parse(response);
         }
     }
 
+    private @NonNull Exception getStatusException(@NonNull Response response) {
+        int code = response.code();
+        @NonNull String message = "Unexpected response: " + response;
+
+        if (code == 404 || code == 410) return new NotFoundException(message);
+        if (code >= 500 && code < 600) return new NextHostException(message);
+        if (code >= 400 && code < 500 && !PROXY_BLOCKED_STATUS_CODES.contains(code)) return new RejectedException(message);
+
+        return new IOException(message);
+    }
+
     // Ticker Processing
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    private @NonNull TickerData processTickerData(
-        @NonNull Context context,
+    private @NonNull TickerData buildTickerData(
         @NonNull UpdateTarget target,
         @Nullable TickerData oldTicker,
-        boolean isFullRefresh
+        boolean isFullRefresh,
+        @NonNull FetchTickerResult fetchResult
     ) throws Exception {
         @NonNull String symbol = target.symbol();
-
-        FetchTickerResult fetchResult = fetchTickerWithInterval(context, symbol, oldTicker, isFullRefresh);
         @NonNull JSONObject result = fetchResult.result();
         @NonNull String interval = fetchResult.interval();
 
@@ -476,7 +516,7 @@ public class YahooFinanceRepository {
 
             // Pull full history if history changed (for example: split, data correction, etc.)
             if (hasStoredHistoryChanged(apiTimestamps, apiOpens, apiHighs, apiLows, apiCloses, apiVolumes, fixedData)) {
-                return processTickerData(context, target, null, true);
+                throw new HistoryChangedException("Stored history changed");
             }
 
             prevUpperBand = dpSumNum.divide(dpSumDen, DECIMAL128)
