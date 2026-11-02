@@ -81,7 +81,7 @@ public class YahooFinanceRepository {
         }
     }
     private static class NoDataException extends Exception {
-        NoDataException(@SuppressWarnings("SameParameterValue") @NonNull String message) {
+        NoDataException(@NonNull String message) {
             super(message);
         }
     }
@@ -281,6 +281,7 @@ public class YahooFinanceRepository {
             attempts.add(new FetchTickerAttempt(interval, YAHOO_CHART_URL_ALT));
         }
 
+        boolean hasUnansweredInterval = false;
         for (int i = 0; i < attempts.size(); i++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new InterruptedException("Thread interrupted during processTickerData");
@@ -323,12 +324,17 @@ public class YahooFinanceRepository {
                 return buildTickerData(target, oldTicker, isFullRefresh, new FetchTickerResult(resultObj, interval, hasFixedHistoricalData));
 
             } catch (HistoryChangedException e) {
+                // Pull full history if history changed (for example: split, data correction, etc.)
                 return processTickerData(context, target, null, true);
             } catch (NextHostException e) {
+                if (i + 1 == attempts.size() || !attempts.get(i + 1).interval().equals(interval)) hasUnansweredInterval = true;
                 if (i == attempts.size() - 1) throw e;
-            } catch (NextIntervalException | RejectedException | InvalidHistoryException e) {
+            } catch (NextIntervalException | NoDataException | RejectedException | InvalidHistoryException e) {
                 while (i + 1 < attempts.size() && attempts.get(i + 1).interval().equals(interval)) i++;
-                if (i == attempts.size() - 1) throw e;
+                if (i == attempts.size() - 1) {
+                    if (e instanceof InvalidHistoryException && hasUnansweredInterval) throw new Exception(e.getMessage(), e);
+                    throw e;
+                }
             }
         }
 
@@ -340,7 +346,10 @@ public class YahooFinanceRepository {
         if (chart == null) throw new IOException("Unexpected body: No chart");
 
         @Nullable JSONArray results = chart.optJSONArray("result");
-        if (results == null || results.length() < 1) throw new NextIntervalException("No chart result, error: " + chart.opt("error"));
+        if (results == null || results.length() < 1) {
+            if (!chart.isNull("error")) throw new NextIntervalException("Chart error: " + chart.opt("error"));
+            throw new NoDataException("No chart result");
+        }
 
         @Nullable JSONObject result = results.optJSONObject(0);
         if (result == null || result.optJSONArray("timestamp") == null || result.optJSONObject("indicators") == null) {

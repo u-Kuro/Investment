@@ -71,6 +71,7 @@ public class Constants {
     public static final String SCREENER_CRYPTO = "ALL_CRYPTOCURRENCIES_US";
     public static final String SCREENER_STOCKS = "LARGE_CAP_STOCKS";
     public static final int MAX_SCREENER_COUNT = 250;
+    public static final int MIN_SCREENER_SIZE_PERCENT = 70;
     public static final BigInteger MIN_HISTORICAL_TIMESTAMP_SECONDS = BigInteger.valueOf(Long.MIN_VALUE).divide(THOUSAND_BI); // May 17, 292,275,056 BCE, 16:47:05 UTC (proleptic Gregorian)
 
     // Yahoo Finance Request Limit

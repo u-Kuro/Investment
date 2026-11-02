@@ -1,6 +1,7 @@
 package com.example.investment.task;
 
 import static com.example.investment.util.Constants.CRYPTOCURRENCY_TYPE;
+import static com.example.investment.util.Constants.MIN_SCREENER_SIZE_PERCENT;
 import static com.example.investment.util.Constants.SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.SCREENER_STOCKS;
 import static com.example.investment.util.Constants.STOCK_TYPE;
@@ -52,6 +53,10 @@ public class ScreenerResolver {
         return SCREENER_CRYPTO.equals(screenerId) ? CRYPTOCURRENCY_TYPE : STOCK_TYPE;
     }
 
+    private static boolean isCutShort(@NonNull List<ScreenerSymbol> symbols, @NonNull ScreenerRecord record) {
+        return (long) symbols.size() * 100 < (long) record.symbols().size() * MIN_SCREENER_SIZE_PERCENT;
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static @NonNull Resolution resolve(
         @NonNull Map<String, ScreenerRecord> savedRecords,
@@ -70,10 +75,20 @@ public class ScreenerResolver {
             }
 
             @NonNull String type = getAssetType(screenerId);
+            @Nullable ScreenerRecord record = savedRecords.get(screenerId);
 
             try {
                 @NonNull List<ScreenerSymbol> symbols = fetcher.fetch(screenerId);
                 if (symbols.isEmpty()) throw new IllegalStateException("Screener has no symbols");
+
+                if (record != null && isCutShort(symbols, record)) {
+                    Logger.error(screenerId + ": Screener is cut short", new IllegalStateException(symbols.size() + " of " + record.symbols().size() + " saved symbols"));
+
+                    universe.addAll(symbols);
+                    universe.addAll(record.symbols());
+                    continue;
+                }
+
                 recordSaver.accept(new ScreenerRecord(screenerId, new ArrayList<>(symbols), nowMillis));
                 universe.addAll(symbols);
                 authoritativeTypes.add(type);
@@ -82,7 +97,6 @@ public class ScreenerResolver {
             } catch (Exception e) {
                 Logger.error(screenerId + ": Error fetching screener", e);
 
-                @Nullable ScreenerRecord record = savedRecords.get(screenerId);
                 if (record != null && record.retrievedAtMillis() >= dayStartMillis) {
                     universe.addAll(record.symbols());
                     authoritativeTypes.add(type);
