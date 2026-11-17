@@ -22,6 +22,7 @@ public class Constants {
     }
 
     // BigDecimal Constants
+    public static final BigDecimal HUNDRED_BD = BigDecimal.valueOf(100);
     public static final BigDecimal THOUSAND_BD = BigDecimal.valueOf(1_000);
     public static final BigInteger THOUSAND_BI = BigInteger.valueOf(1_000);
     public static final BigInteger DAYS_PER_WEEK = BigInteger.valueOf(7);
@@ -31,6 +32,7 @@ public class Constants {
     public static final String FILE_RECORD_TICKERS = "tickers.ser";
     public static final String FILE_RECORD_PASSIVE_LEADING_TICKERS = "passive_leading_tickers.ser";
     public static final String FILE_RECORD_MOMENTUM_LEADING_TICKERS = "momentum_leading_tickers.ser";
+    public static final String FILE_RECORD_MARKET_DISTRIBUTION = "market_distribution.ser";
     public static final String FILE_RECORD_PROXIES = "proxies.ser";
     public static final String FILE_RECORD_SCREENER_CRYPTO = "screener_crypto.ser";
     public static final String FILE_RECORD_SCREENER_STOCKS = "screener_stocks.ser";
@@ -56,6 +58,7 @@ public class Constants {
         FILE_RECORD_TICKERS,
         FILE_RECORD_PASSIVE_LEADING_TICKERS,
         FILE_RECORD_MOMENTUM_LEADING_TICKERS,
+        FILE_RECORD_MARKET_DISTRIBUTION,
         FILE_RECORD_PROXIES,
         FILE_RECORD_SCREENER_STOCKS,
         FILE_RECORD_SCREENER_CRYPTO
@@ -124,6 +127,11 @@ public class Constants {
     public static final String PRICE_BELOW = "below_lower";
     public static final String PRICE_BETWEEN = "between";
 
+    // Market Distribution States
+    public static final String MARKET_DISTRIBUTION_ABOVE = "market_above_upper";
+    public static final String MARKET_DISTRIBUTION_MIDDLE = "market_middle";
+    public static final String MARKET_DISTRIBUTION_BELOW = "market_below_lower";
+
     // Notification Channel IDs
     public static final String CHANNEL_ID_SERVICE = "investment_updates";
     public static final String CHANNEL_ID_NEW_LEADING_ASSET = "new_leading_asset";
@@ -133,6 +141,7 @@ public class Constants {
     public static final String CHANNEL_ID_LEADING_ASSET_RISK = "asset_risk";
     public static final String CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET = "missing_removed_leading_asset";
     public static final String CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA = "outdated_leading_asset_data";
+    public static final String CHANNEL_ID_MARKET_DISTRIBUTION = "market_distribution";
 
     // Notification Channel Names
     public static final String CHANNEL_NAME_SERVICE = "Investment Updates";
@@ -143,6 +152,7 @@ public class Constants {
     public static final String CHANNEL_NAME_LEADING_ASSET_RISK = "Leading Asset Risk";
     public static final String CHANNEL_NAME_MISSING_REMOVED_LEADING_ASSET = "Missing/Removed Leading Asset";
     public static final String CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA = "Outdated Leading Asset Data";
+    public static final String CHANNEL_NAME_MARKET_DISTRIBUTION = "Market Distribution";
 
     // Notification IDs
     public static final int NOTIFICATION_ID_SERVICE = 1;
@@ -157,11 +167,14 @@ public class Constants {
     public static final int NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET_GROUP_SUMMARY = 10;
     public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA = 11;
     public static final int NOTIFICATION_ID_OUTDATED_LEADING_ASSET_DATA_GROUP_SUMMARY = 12;
+    public static final int NOTIFICATION_ID_MARKET_DISTRIBUTION = 13;
+    public static final int NOTIFICATION_ID_MARKET_DISTRIBUTION_GROUP_SUMMARY = 14;
 
     // Notification Messages
     public static final String OUTDATED_TICKER_NOTIFICATION_SUBTEXT = "OUTDATED";
     public static final String PASSIVE_NOTIFICATION_SUBTEXT = "PASSIVE";
     public static final String MOMENTUM_NOTIFICATION_SUBTEXT = "MOMENTUM";
+    public static final String MARKET_NOTIFICATION_SUBTEXT = "MARKET";
 
     // Ticker Defaults
     public static final int DEFAULT_NUMBER_OF_TOP_HOLDINGS = 4;

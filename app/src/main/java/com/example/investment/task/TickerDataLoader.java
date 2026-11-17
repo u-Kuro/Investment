@@ -1,6 +1,7 @@
 package com.example.investment.task;
 
 import static com.example.investment.util.Constants.FILE_RECORD_FAILED_TICKERS;
+import static com.example.investment.util.Constants.FILE_RECORD_MARKET_DISTRIBUTION;
 import static com.example.investment.util.Constants.FILE_RECORD_MOMENTUM_LEADING_TICKERS;
 import static com.example.investment.util.Constants.FILE_RECORD_PASSIVE_LEADING_TICKERS;
 import static com.example.investment.util.Constants.FILE_RECORD_REFRESH_POINT;
@@ -32,6 +33,7 @@ import com.example.investment.model.listener.TickerUpdateListener;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.repository.YahooFinanceRepository;
 import com.example.investment.util.Logger;
+import com.example.investment.util.MarketDistribution;
 import com.example.investment.util.PendingTickers;
 
 import java.util.ArrayList;
@@ -275,6 +277,25 @@ public class TickerDataLoader {
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void requestManualRefresh(@NonNull Context context, boolean isFullRefresh) {
         saveRefreshPoint(context, new RefreshPoint(System.currentTimeMillis(), isFullRefresh));
+    }
+
+    // Market Distribution
+    public @Nullable String getMarketDistributionState(@NonNull Context context) {
+        try {
+            if (!(loadObject(context, FILE_RECORD_MARKET_DISTRIBUTION) instanceof String state)) return null;
+            return MarketDistribution.isState(state) ? state : null;
+        } catch (Exception e) {
+            Logger.error("Error loading market distribution state", e);
+            return null;
+        }
+    }
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public void saveMarketDistributionState(@NonNull Context context, @NonNull String state) {
+        try {
+            saveObject(context, FILE_RECORD_MARKET_DISTRIBUTION, state);
+        } catch (Exception e) {
+            Logger.error("Error saving market distribution state", e);
+        }
     }
 
     // Ticker Failures

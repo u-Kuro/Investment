@@ -75,6 +75,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import android.net.Uri;
 
+import com.example.investment.model.InvestmentConfig;
 import com.example.investment.model.adapter.TickerAdapter;
 import com.example.investment.model.ticker.TickerData;
 import com.example.investment.task.TickerDataLoader;
@@ -83,6 +84,7 @@ import com.example.investment.util.Logger;
 import com.example.investment.util.BackupUtils;
 import com.example.investment.util.CustomTabsUtils;
 import com.example.investment.util.ImportUpdateGuard;
+import com.example.investment.util.MarketDistribution;
 import com.example.investment.util.SafeSingleTaskRunner;
 import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputLayout;
@@ -129,6 +131,8 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout searchBarContainer;
     private EditText searchInput;
     private TextView updateText;
+    private TextView marketDistributionText;
+    private @Nullable MarketDistribution.Result marketDistribution;
     private ProgressBar progressBar;
     private RecyclerView recyclerView;
     private TickerAdapter adapter;
@@ -184,6 +188,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recyclerView);
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         updateText = findViewById(R.id.updateText);
+        marketDistributionText = findViewById(R.id.marketDistributionText);
         progressBar = findViewById(R.id.progressBar);
 
         searchIcon = findViewById(R.id.searchIcon);
@@ -296,6 +301,7 @@ public class MainActivity extends AppCompatActivity {
                                 if (hasPendingTickers) updateTickers(false);
                                 swipeRefreshLayout.setRefreshing(false);
                             });
+                            updateMarketDistribution(tickers);
                         } else {
                             if (hasPendingTickers) updateTickers(true);
                             swipeRefreshLayout.setRefreshing(false);
@@ -408,11 +414,48 @@ public class MainActivity extends AppCompatActivity {
     public void updateTickerList(@NonNull List<TickerData> tickers) {
         ASSERT_MAIN_THREAD();
         adapter.setTickers(tickers);
+        updateMarketDistribution(tickers);
+    }
+
+    private void updateMarketDistribution() {
+        updateMarketDistribution(null);
+    }
+    private final Object UPDATE_MARKET_DISTRIBUTION_TASK_ID = new Object();
+    private void updateMarketDistribution(@Nullable final List<TickerData> tickers) {
+        final TickerDataLoader dataLoader = this.tickerDataLoader;
+        final Context applicationContext = getApplicationContext();
+        DEFERRED_THREAD.replaceUniqueTask(UPDATE_MARKET_DISTRIBUTION_TASK_ID, ui -> {
+            final long nowMillis = System.currentTimeMillis();
+            final @Nullable List<TickerData> marketTickers = tickers != null ? tickers : dataLoader.getTickers(applicationContext);
+            final @Nullable MarketDistribution.Result marketDistribution = marketTickers == null ? null : MarketDistribution.calculate(
+                marketTickers,
+                InvestmentConfig.fromPreferences(applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)),
+                nowMillis
+            );
+            ui.post(() -> showMarketDistribution(marketDistribution));
+        });
+    }
+    private void showMarketDistribution(@Nullable MarketDistribution.Result marketDistribution) {
+        ASSERT_MAIN_THREAD();
+        this.marketDistribution = marketDistribution;
+        renderMarketDistribution();
+    }
+    private void renderMarketDistribution() {
+        ASSERT_MAIN_THREAD();
+        // Removed while updating, so the progress holds the whole line
+        if (marketDistribution == null || dataRefreshType != null) {
+            marketDistributionText.setVisibility(View.GONE);
+            return;
+        }
+
+        marketDistributionText.setText(MarketDistribution.getLabel(this, marketDistribution));
+        marketDistributionText.setVisibility(View.VISIBLE);
     }
 
     public void updateTickersProgress(int current, int total, final String dataRefreshType) {
         ASSERT_MAIN_THREAD();
         this.dataRefreshType = dataRefreshType;
+        renderMarketDistribution();
         if (total > 0) {
             progressBar.setMax(total);
             progressBar.setProgress(current);
@@ -442,6 +485,7 @@ public class MainActivity extends AppCompatActivity {
     public void updateSymbolsProgress(int current, final String dataRefreshType) {
         ASSERT_MAIN_THREAD();
         this.dataRefreshType = dataRefreshType;
+        renderMarketDistribution();
         if (current > 0) {
             updateText.setText(getString(R.string.fetching_tickers_found, dataRefreshType, current));
         } else {
@@ -467,6 +511,7 @@ public class MainActivity extends AppCompatActivity {
         updateLastUpdateTime(updateTime);
 
         dataRefreshType = null;
+        renderMarketDistribution();
         isManuallyUpdated = false;
     }
 
@@ -482,6 +527,7 @@ public class MainActivity extends AppCompatActivity {
         autoLoadTickerDataRecord(false, false);
 
         dataRefreshType = null;
+        renderMarketDistribution();
         isManuallyUpdated = false;
     }
 
@@ -497,6 +543,7 @@ public class MainActivity extends AppCompatActivity {
         autoLoadTickerDataRecord(false, true);
 
         dataRefreshType = null;
+        renderMarketDistribution();
         isManuallyUpdated = false;
     }
 
@@ -1112,6 +1159,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "Invalid Input", Toast.LENGTH_SHORT).show();
                 }
 
+                updateMarketDistribution();
                 backupOnSave(isNewExportFolder);
             })
             .setNegativeButton("Cancel", null)

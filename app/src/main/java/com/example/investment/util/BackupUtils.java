@@ -12,6 +12,7 @@ import static com.example.investment.util.Constants.DEFAULT_AGE_IN_SECONDS_THRES
 import static com.example.investment.util.Constants.DEFAULT_DAILY_DOLLAR_VOLUME_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_MARKET_CAP_THRESHOLD;
 import static com.example.investment.util.Constants.DEFAULT_NUMBER_OF_TOP_HOLDINGS;
+import static com.example.investment.util.Constants.FILE_RECORD_MARKET_DISTRIBUTION;
 import static com.example.investment.util.Constants.FILE_RECORD_PROXIES;
 import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_CRYPTO;
 import static com.example.investment.util.Constants.FILE_RECORD_SCREENER_STOCKS;
@@ -470,6 +471,10 @@ public class BackupUtils {
                     || hasInvalidScreenerSymbols(screenerRecord.symbols(), expectedAssetType)
                 ) {
                     throw new IOException("Backup screener records are invalid");
+                }
+            } else if (FILE_RECORD_MARKET_DISTRIBUTION.equals(entry.getKey())) {
+                if (!(loadStagedRecord(file) instanceof String state) || !MarketDistribution.isState(state)) {
+                    throw new IOException("Backup market distribution is invalid");
                 }
             } else if (!(loadStagedRecord(file) instanceof List<?> leadingTickers) || hasNonValidTicker(leadingTickers)) {
                 throw new IOException("Backup leading tickers are invalid");

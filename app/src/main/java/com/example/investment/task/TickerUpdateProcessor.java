@@ -3,6 +3,7 @@ package com.example.investment.task;
 import static com.example.investment.util.Constants.CHANNEL_ID_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.CHANNEL_ID_LEADING_ASSET_RISK;
+import static com.example.investment.util.Constants.CHANNEL_ID_MARKET_DISTRIBUTION;
 import static com.example.investment.util.Constants.CHANNEL_ID_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_ID_NEW_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_ID_OUTDATED_LEADING_ASSET_DATA;
@@ -10,15 +11,19 @@ import static com.example.investment.util.Constants.CHANNEL_ID_PROFIT_TAKING;
 import static com.example.investment.util.Constants.CHANNEL_NAME_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.CHANNEL_NAME_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.CHANNEL_NAME_LEADING_ASSET_RISK;
+import static com.example.investment.util.Constants.CHANNEL_NAME_MARKET_DISTRIBUTION;
 import static com.example.investment.util.Constants.CHANNEL_NAME_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_NAME_NEW_LEADING_ASSET;
 import static com.example.investment.util.Constants.CHANNEL_NAME_OUTDATED_LEADING_ASSET_DATA;
 import static com.example.investment.util.Constants.CHANNEL_NAME_PROFIT_TAKING;
+import static com.example.investment.util.Constants.MARKET_NOTIFICATION_SUBTEXT;
 import static com.example.investment.util.Constants.MOMENTUM_INVESTMENT_TYPE;
 import static com.example.investment.util.Constants.MOMENTUM_NOTIFICATION_SUBTEXT;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_INVESTMENT_OPPORTUNITY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING_ASSET_RECOVERY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_LEADING_ASSET_RISK;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_MARKET_DISTRIBUTION;
+import static com.example.investment.util.Constants.NOTIFICATION_ID_MARKET_DISTRIBUTION_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET_GROUP_SUMMARY;
 import static com.example.investment.util.Constants.NOTIFICATION_ID_MOMENTUM_INVESTMENT_GROUP_SUMMARY;
@@ -50,6 +55,7 @@ import androidx.annotation.RequiresApi;
 
 import com.example.investment.model.InvestmentConfig;
 import com.example.investment.model.ticker.TickerData;
+import com.example.investment.util.MarketDistribution;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,6 +93,9 @@ public class TickerUpdateProcessor {
 
         // Save New Leading Tickers
         saveLeadingTickers(investmentType, currentLeadingTickers);
+
+        // Notify about market distribution changes
+        notifyMarketDistributionChanges(tickers, config);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -426,6 +435,61 @@ public class TickerUpdateProcessor {
             title,
             groupKey,
             NOTIFICATION_ID_MISSING_REMOVED_LEADING_ASSET_GROUP_SUMMARY
+        );
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void notifyMarketDistributionChanges(@NonNull List<TickerData> tickers, @NonNull InvestmentConfig config) {
+        // Market distribution is always momentum based
+        @Nullable MarketDistribution.Result currentMarketDistribution = MarketDistribution.calculate(tickers, config, System.currentTimeMillis());
+        if (currentMarketDistribution == null) return;
+
+        @NonNull String currentState = currentMarketDistribution.state();
+        @Nullable String savedState = tickerDataLoader.getMarketDistributionState(context.getApplicationContext());
+        if (currentState.equals(savedState)) return;
+
+        // Nothing to compare with on the first saved state
+        if (savedState != null) {
+            notifyMarketDistributionChange(currentMarketDistribution);
+        }
+
+        // Save New Market Distribution State
+        tickerDataLoader.saveMarketDistributionState(context.getApplicationContext(), currentState);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void notifyMarketDistributionChange(@NonNull MarketDistribution.Result marketDistribution) {
+        // Construct subtext
+        @NonNull String subtext = MARKET_NOTIFICATION_SUBTEXT + " | " + MOMENTUM_NOTIFICATION_SUBTEXT;
+
+        String channelId = CHANNEL_ID_MARKET_DISTRIBUTION;
+        String channelName = CHANNEL_NAME_MARKET_DISTRIBUTION;
+        String title = "Market Distribution";
+        String content = String.format(
+            "%s | Market changed, check now.",
+            MarketDistribution.getLabel(context, marketDistribution)
+        );
+        String groupKey = CHANNEL_NAME_MARKET_DISTRIBUTION;
+
+        showHighPriorityNotification(
+            context,
+            channelId,
+            channelName,
+            title,
+            content,
+            subtext,
+            null,
+            groupKey,
+                CHANNEL_ID_MARKET_DISTRIBUTION,
+            NOTIFICATION_ID_MARKET_DISTRIBUTION
+        );
+        showGroupSummary(
+            context,
+            channelId,
+            channelName,
+            title,
+            groupKey,
+            NOTIFICATION_ID_MARKET_DISTRIBUTION_GROUP_SUMMARY
         );
     }
 
