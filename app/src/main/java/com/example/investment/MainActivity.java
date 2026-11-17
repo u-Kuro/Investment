@@ -86,6 +86,7 @@ import com.example.investment.util.CustomTabsUtils;
 import com.example.investment.util.ImportUpdateGuard;
 import com.example.investment.util.MarketDistribution;
 import com.example.investment.util.SafeSingleTaskRunner;
+import com.example.investment.util.SignalLightDrawable;
 import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputLayout;
 
@@ -132,6 +133,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText searchInput;
     private TextView updateText;
     private TextView marketDistributionText;
+    private SignalLightDrawable marketSignalLight;
     private @Nullable MarketDistribution.Result marketDistribution;
     private ProgressBar progressBar;
     private RecyclerView recyclerView;
@@ -189,6 +191,8 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         updateText = findViewById(R.id.updateText);
         marketDistributionText = findViewById(R.id.marketDistributionText);
+        marketSignalLight = new SignalLightDrawable(getResources().getDimensionPixelSize(R.dimen.market_signal_size));
+        marketDistributionText.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, marketSignalLight, null);
         progressBar = findViewById(R.id.progressBar);
 
         searchIcon = findViewById(R.id.searchIcon);
@@ -442,13 +446,18 @@ public class MainActivity extends AppCompatActivity {
     }
     private void renderMarketDistribution() {
         ASSERT_MAIN_THREAD();
-        // Removed while updating, so the progress holds the whole line
-        if (marketDistribution == null || dataRefreshType != null) {
+        if (marketDistribution == null) {
             marketDistributionText.setVisibility(View.GONE);
             return;
         }
 
-        marketDistributionText.setText(MarketDistribution.getLabel(this, marketDistribution));
+        final @NonNull String label = MarketDistribution.getLabel(this, marketDistribution);
+        final boolean showLabel = dataRefreshType == null;
+
+        marketDistributionText.setText(showLabel ? label : "");
+        marketDistributionText.setCompoundDrawablePadding(showLabel ? getResources().getDimensionPixelSize(R.dimen.market_signal_gap) : 0);
+        marketDistributionText.setContentDescription(label);
+        marketSignalLight.setColor(MarketDistribution.getSignalColor(this, marketDistribution));
         marketDistributionText.setVisibility(View.VISIBLE);
     }
 

@@ -9,5 +9,8 @@
     <color name="profit_taking">#2962FF</color>
     <color name="momentum">#708090</color>
     <color name="bad">#DC143C</color>
+    <color name="signal_red">#FF3B30</color>
+    <color name="signal_yellow">#FFD60A</color>
+    <color name="signal_green">#30D158</color>
     <color name="transparent">#00000000</color>
 </resources>

@@ -4,9 +4,9 @@
     <string name="ticker_update_notification_title">Ticker update running</string>
     <string name="last_updated_format">Last Updated: %s</string>
     <string name="last_updated_na">Last Update: N/A</string>
-    <string name="market_distribution_above_format">Good Market (%d%%)</string>
-    <string name="market_distribution_middle_format">Neutral Market (%d%%)</string>
-    <string name="market_distribution_below_format">Bad Market (%d%%)</string>
+    <string name="market_distribution_above_format">Good | %d%%</string>
+    <string name="market_distribution_middle_format">Neutral | %d%%</string>
+    <string name="market_distribution_below_format">Bad | %d%%</string>
     <string name="fetching_tickers">Fetching Tickers from YFinance (%s)…</string>
     <string name="fetching_tickers_found" tools:ignore="PluralsCandidate">Fetching Tickers from YFinance (%s) | %d Found</string>
     <string name="processing_tickers">%.2f%% Processing Tickers (%s)</string>
